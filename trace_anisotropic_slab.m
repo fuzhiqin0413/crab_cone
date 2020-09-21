@@ -26,10 +26,10 @@ ePara = 1.53^2;  (1.53-0.0024)^2; % Long axis
 eDiff = ePara-ePerp;
 
 %%% note angles are converted from Oliver's convention to Hwang & Rey 2005
-% Load phi angles
+% Load theta angles
 thetaVolume = loadcsvstack(sprintf('%s/theta', dataFolder), 0);
 
-% Load theta angles
+% Load phi angles
 phiVolume = loadcsvstack(sprintf('%s/phi', dataFolder), 0);
 
 if convertAngleConvention
