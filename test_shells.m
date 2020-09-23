@@ -22,7 +22,7 @@ if convertAngleConvention
     
     temp = thetaVolume;
 
-    thetaVolume = -phiVolume;
+    thetaVolume = phiVolume;
 
     phiVolume = temp;
 
@@ -47,7 +47,7 @@ cols = lines(100);
 
 ringVolume = zeros(volumeSize);
 
-for iSlice = 1; %:volumeSize(3)
+for iSlice = 1:volumeSize(3)
    phiSlice = phiVolume(:,:,iSlice);
    
    phiMask = phiSlice;
@@ -59,8 +59,8 @@ for iSlice = 1; %:volumeSize(3)
    
    ringNum = 1;
    
-   figure; 
-   imshow(phiVolume(:,:,iSlice)/360); hold on
+%    figure; 
+%    imshow(phiVolume(:,:,iSlice)/360); hold on
    
    % Dilate in while some phi not equal to zero
    while any(phiMask(:) == 0)
@@ -89,7 +89,7 @@ for iSlice = 1; %:volumeSize(3)
 
           [tempX, tempY] = ind2sub(volumeSize(1:2), tempInds);
 
-          plot(tempX, tempY, '.', 'color', cols(ringNum, :))
+          %plot(tempX, tempY, '.', 'color', cols(ringNum, :))
       else
          % Click to next ring 
          minVal = 0;
@@ -101,109 +101,272 @@ for iSlice = 1; %:volumeSize(3)
    ringVolume(:,:,iSlice) = ringLayer;
 end
 
-% Look at distribution of angles in ring
-for iSlice = 1; %:volumeSize(3)
-    
-    figure; hold on
-    
-    tempRingSlice = ringVolume(:,:,iSlice);
-    
-    tempThetaSlice = thetaVolume(:,:,iSlice);
-    
-    tempPhiSlice = phiVolume(:,:,iSlice);
-    
-    numRings = max(tempRingSlice(:));
-    
-    % get points in each ring
-    for jRing = 1:numRings
-       ringInds = find(tempRingSlice == jRing); 
-       
-       % get orientation within each ring
-       for kPhi = 1:length(phiVals)
-           
-           phiInds = find(tempPhiSlice(ringInds) == phiVals(kPhi));
-           
-           [n, x] = hist(tempThetaSlice(ringInds(phiInds)), -90:10:90);
+maxRings = max(ringVolume(:));
 
-           subplot(2,5,kPhi); hold on
-           plot(x, n, 'color', cols(jRing, :))
-           
-       end
+figure; subplot(1,3,1);
+imshow(ringVolume(:,:,1)/maxRings)
+subplot(1,3,2);
+imshow(ringVolume(:,:,end)/maxRings)
+subplot(1,3,3);
+imshow( permute( ringVolume(volumeSize(1)/2,:,:), [2 3 1])/maxRings)
+
+% Look at distribution of angles in ring
+if 0
+    for iSlice = 1; %:volumeSize(3)
+
+        figure; hold on
+
+        tempRingSlice = ringVolume(:,:,iSlice);
+
+        tempThetaSlice = thetaVolume(:,:,iSlice);
+
+        tempPhiSlice = phiVolume(:,:,iSlice);
+
+        numRings = max(tempRingSlice(:));
+
+        % get points in each ring
+        for jRing = 1:numRings
+           ringInds = find(tempRingSlice == jRing); 
+
+           % get orientation within each ring
+           for kPhi = 1:length(phiVals)
+
+               phiInds = find(tempPhiSlice(ringInds) == phiVals(kPhi));
+
+               [n, x] = hist(tempThetaSlice(ringInds(phiInds)), -90:10:90);
+
+               if kPhi < 10
+                   subplot(2,5,kPhi); hold on
+                   plot(x, n, 'color', cols(jRing, :))
+               end
+
+           end
+        end
+    end
+end
+%% For plotting inclination of all pixels
+if 0
+    for iSlice = 1; %:volumeSize(3)
+        figure; 
+        subplot(1,2,1);
+        imshow(phiVolume(:,:,iSlice)/360); hold on
+
+        subplot(1,2,2);
+        imshow((thetaVolume(:,:,iSlice)+90)/180); hold on
+
+        tempRingSlice = ringVolume(:,:,iSlice);
+
+        tempThetaSlice = thetaVolume(:,:,iSlice);
+
+        tempPhiSlice = phiVolume(:,:,iSlice);
+
+        numRings = max(tempRingSlice(:));
+
+        % get points in each ring
+        for jRing = 1 %:numRings
+           ringInds = find(tempRingSlice == jRing); 
+
+           [ringX, ringY] = ind2sub(volumeSize(1:2), ringInds);
+
+           % Get zero orientation within each ring
+           zeroInds = find(tempPhiSlice(ringInds) == phiVals(1));
+
+           % Get orientation of each zero ind
+           for kInd = 1 %00:length(zeroInds)
+               % firstly get nearby within thickness
+                    % Less than phi vals should always get entire band...?
+               nearbyInds = find(sqrt((ringX - ringX(zeroInds(kInd))).^2 + ...
+                   (ringY - ringY(zeroInds(kInd))).^2) < length(phiVals));
+
+               for mNearby = 1:length(nearbyInds)
+                    tempPhiPoint = tempPhiSlice(ringInds(nearbyInds(mNearby)))/180*pi;
+
+                    tempThetaPoint = tempThetaSlice(ringInds(nearbyInds(mNearby)))/180*pi;
+
+                    % Border with zero phi has nan for theta.
+                    if isnan(tempThetaPoint)
+                       tempThetaPoint = 0; 
+                    end
+
+                    vecX = cos(tempPhiPoint)*cos(tempThetaPoint);
+
+                    vecY = sin(tempPhiPoint)*cos(tempThetaPoint);
+
+                    vecZ = sin(tempThetaPoint);
+
+                    % if pointing down in Z, flip
+                    if vecZ < 0
+                        vecX = -vecX; vecY = -vecY; vecZ = -vecZ; 
+                    end
+
+                    % Check angle if vector is pointing towards center 
+                    % (based on shorter distance at top of vector than base)
+
+                    % Does not work if flat
+                    if vecZ ~= 0 
+                        basedDist = sqrt((ringX(nearbyInds(mNearby)) - volumeSize(1)/2)^2 + ...
+                            (ringY(nearbyInds(mNearby)) - volumeSize(2)/2)^2);
+
+                        topDist = sqrt((ringX(nearbyInds(mNearby)) + vecX - volumeSize(1)/2)^2 + ...
+                            (ringY(nearbyInds(mNearby)) + vecY - volumeSize(2)/2)^2);
+
+                        if topDist > basedDist
+                           % Roate by 180 degrees 
+
+                           vecX = -vecX;
+                           vecY = -vecY;
+
+                           tempCols = 'r';
+                        else
+                            tempCols = 'b';
+                        end
+                    else
+                       tempCols = cols(jRing, :);
+                    end
+
+                    subplot(1,2,1)
+                    line( [0 4*vecX]+ringX(nearbyInds(mNearby)), [0 4*vecY]+ringY(nearbyInds(mNearby)),...
+                        [0 4*vecZ], 'color', tempCols)
+
+                    subplot(1,2,2)
+                    line( [0 4*vecX]+ringX(nearbyInds(mNearby)), [0 4*vecY]+ringY(nearbyInds(mNearby)),...
+                        [0 4*vecZ], 'color', tempCols) 
+
+               end
+           end
+        end
     end
 end
 
-%% Get max inclinaltion and plot
-for iSlice = 1; %:volumeSize(3)
+%% Get max inclination per band and plot
+if 1
+    volumeVectorX = zeros(volumeSize)*NaN;
+    volumeVectorY = zeros(volumeSize)*NaN;   
+    volumeVectorZ = zeros(volumeSize)*NaN;
     
-    figure; 
-    subplot(1,2,1);
-    imshow(phiVolume(:,:,iSlice)/360); hold on
-    
-    subplot(1,2,2);
-    imshow((thetaVolume(:,:,iSlice)+90)/180); hold on
-    
-    tempRingSlice = ringVolume(:,:,iSlice);
-    
-    tempThetaSlice = thetaVolume(:,:,iSlice);
-    
-    tempPhiSlice = phiVolume(:,:,iSlice);
-    
-    numRings = max(tempRingSlice(:));
-    
-    % get points in each ring
-    for jRing = 1:numRings
-       ringInds = find(tempRingSlice == jRing); 
-       
-       [ringX, ringY] = ind2sub(volumeSize(1:2), ringInds);
-       
-       % Get zero orientation within each ring
-       zeroInds = find(tempPhiSlice(ringInds) == phiVals(1));
-       
-       % Get orientation of each zero ind
-       for kInd = 1 % length(zeroInds)
-           % firstly get nearby within thickness
-                % Less than phi vals should always get entire band...?
-           nearbyInds = find(sqrt((ringX - ringX(zeroInds(kInd))).^2 + ...
-               (ringY - ringY(zeroInds(kInd))).^2) < length(phiVals));
+    for iSlice = 1:volumeSize(3)
+
+%         figure; 
+%         imshow((thetaVolume(:,:,iSlice)+90)/180); hold on
+
+        tempRingSlice = ringVolume(:,:,iSlice);
+
+        tempThetaSlice = thetaVolume(:,:,iSlice);
+
+        tempPhiSlice = phiVolume(:,:,iSlice);
+
+        numRings = max(tempRingSlice(:));
+
+        % get points in each ring
+        for jRing = 1:numRings
+           ringInds = find(tempRingSlice == jRing); 
+
+           [ringX, ringY] = ind2sub(volumeSize(1:2), ringInds);
+
+           % Get zero inclination within each ring (should be two bands)
+           %zeroInds = find(tempThetaSlice(ringInds) == 0 | isnan(tempThetaSlice(ringInds)));
+           zeroInds = find((tempPhiSlice(ringInds) == 0 | tempPhiSlice(ringInds) == 180 | ...
+               tempPhiSlice(ringInds) == 360) & ringX == volumeSize(1)/2);
+           %%% Note cutting along middle of volume
            
-           %plot(ringX(nearbyInds), ringY(nearbyInds), '.', 'color', cols(jRing, :))
+           %plot(ringX(zeroInds), ringY(zeroInds), '.')
            
-%            unique(tempThetaSlice(ringInds(nearbyInds)))
-%            
-%            unique(tempPhiSlice(ringInds(nearbyInds)))
-      
-           
-           for mNearby = 1:length(nearbyInds)
-                tempPhiPoint = tempPhiSlice(ringInds(nearbyInds(mNearby)))/180*pi;
-                
-                tempThetaPoint = tempThetaSlice(ringInds(nearbyInds(mNearby)))/180*pi;
+           % Get orientation of each zero ind
+           for kInd = 1:length(zeroInds)
+               % get nearby within half ring thickness, and that are closer
+               % to center
                
-                % Border with zero phi has nan for theta.
-                if isnan(tempThetaPoint)
-                   tempThetaPoint = 0; 
-                end
-                
-                vecX = cos(tempPhiPoint)*cos(tempThetaPoint);
+               distToCenter = sqrt((ringX - volumeSize(1)/2).^2 + ...
+                   (ringY - volumeSize(2)/2).^2);
+               
+               distToPoint = sqrt((ringX - ringX(zeroInds(kInd))).^2 + ...
+                   (ringY - ringY(zeroInds(kInd))).^2);
+               
+               nearbyInds = find(distToPoint < length(phiVals)/2 & ...
+                   distToCenter < distToCenter(zeroInds(kInd)));
 
-                vecY = sin(tempPhiPoint)*cos(tempThetaPoint);
+               if ~isempty(nearbyInds)
+                   % plot(ringX(nearbyInds), ringY(nearbyInds), '.', 'color', cols(jRing, :))
 
-                vecZ = sin(tempThetaPoint);
+                   % Take point with largest theta to use
+                   [~, pointToUse] = max( abs( tempThetaSlice(ringInds(nearbyInds)) ));
 
-                % if pointing down, flip
-                if vecZ < 0
-                    %vecX = -vecX; vecY = -vecY; vecZ = -vecZ; 
-                end
-                
-                subplot(1,2,1)
-                line( [0 5*vecX]+ringX(nearbyInds(mNearby)), [0 5*vecY]+ringY(nearbyInds(mNearby)),...
-                    [0 5*vecZ], 'color', cols(jRing, :))
+                   tempPhiPoint = tempPhiSlice(ringInds(nearbyInds(pointToUse)))/180*pi;
 
-                subplot(1,2,2)
-                line( [0 5*vecX]+ringX(nearbyInds(mNearby)), [0 5*vecY]+ringY(nearbyInds(mNearby)),...
-                    [0 5*vecZ], 'color', cols(jRing, :) ) 
-                
+                   tempThetaPoint = tempThetaSlice(ringInds(nearbyInds(pointToUse)))/180*pi;
+
+                   % Border with zero phi has nan for theta.
+                    if isnan(tempThetaPoint)
+                       tempThetaPoint = 0; 
+                    end
+
+                    % Will not work if completely vertical..
+                    if tempThetaPoint == pi/2
+                        tempThetaPoint = 85/180*pi;
+                    elseif tempThetaPoint == -pi/2
+                        tempThetaPoint = -85/180*pi;
+                    end
+
+                    vecX = cos(tempPhiPoint)*cos(tempThetaPoint);
+
+                    vecY = sin(tempPhiPoint)*cos(tempThetaPoint);
+
+                    vecZ = sin(tempThetaPoint);
+
+                    % if pointing down in Z, flip
+                    if vecZ < 0
+                        vecX = -vecX; vecY = -vecY; vecZ = -vecZ; 
+                    end
+
+                    % Check angle if vector is pointing towards center 
+                    % (based on shorter distance at top of vector than base)
+
+                    % Does not work if flat
+                    if vecZ ~= 0 
+                        basedDist = sqrt((ringX(nearbyInds(pointToUse)) - volumeSize(1)/2)^2 + ...
+                            (ringY(nearbyInds(pointToUse)) - volumeSize(2)/2)^2);
+
+                        topDist = sqrt((ringX(nearbyInds(pointToUse)) + vecX - volumeSize(1)/2)^2 + ...
+                            (ringY(nearbyInds(pointToUse)) + vecY - volumeSize(2)/2)^2);
+
+                        if topDist > basedDist
+                           % Roate by 180 degrees 
+
+                           vecX = -vecX;
+                           vecY = -vecY;
+                        end
+                    end
+
+    %                line( [0 4*vecX]+ringX(zeroInds(kInd)), [0 4*vecY]+ringY(zeroInds(kInd)),...
+    %                         [0 4*vecZ], 'color', cols(jRing, :))
+
+                   volumeVectorX(ringX(zeroInds(kInd)), ringY(zeroInds(kInd)), iSlice) = vecX;
+                   volumeVectorY(ringX(zeroInds(kInd)), ringY(zeroInds(kInd)), iSlice) = vecY;
+                   volumeVectorZ(ringX(zeroInds(kInd)), ringY(zeroInds(kInd)), iSlice) = vecZ;
+               end
            end
-       end
+        end
+    end
+end
+
+%% Plot vectors along 2D slice
+
+ringsSlice = permute(ringVolume(volumeSize(1)/2,:,:),[2 3 1]);
+sliceVectorY = permute(volumeVectorY(volumeSize(1)/2,:,:),[2 3 1]);
+sliceVectorZ = permute(volumeVectorZ(volumeSize(1)/2,:,:),[2 3 1]);
+
+figure; hold on
+
+indsToPlot = find(~isnan(sliceVectorY));
+
+[plotX, plotY] = ind2sub(volumeSize(2:3), indsToPlot);
+
+for iVec = 1:length(indsToPlot)
+    ang = atan2(sliceVectorZ(indsToPlot(iVec)), sliceVectorY(indsToPlot(iVec)))/pi*180;
+    
+    if ang > 20 & ang < 160
+        line( [0 4*sliceVectorY(indsToPlot(iVec))]+plotX(iVec), [0 4*sliceVectorZ(indsToPlot(iVec))]+plotY(iVec),...
+            'color', cols(ringsSlice(indsToPlot(iVec)), :))
     end
 end
 
