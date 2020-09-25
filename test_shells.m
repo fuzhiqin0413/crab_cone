@@ -146,7 +146,7 @@ if 0
 end
 %% For plotting inclination of all pixels
 if 0
-    for iSlice = 1; %:volumeSize(3)
+    for iSlice = 1 %:volumeSize(3)
         figure; 
         subplot(1,2,1);
         imshow(phiVolume(:,:,iSlice)/360); hold on
@@ -172,7 +172,7 @@ if 0
            zeroInds = find(tempPhiSlice(ringInds) == phiVals(1));
 
            % Get orientation of each zero ind
-           for kInd = 1 %00:length(zeroInds)
+           for kInd = 1:50:length(zeroInds)
                % firstly get nearby within thickness
                     % Less than phi vals should always get entire band...?
                nearbyInds = find(sqrt((ringX - ringX(zeroInds(kInd))).^2 + ...
@@ -202,8 +202,8 @@ if 0
                     % Check angle if vector is pointing towards center 
                     % (based on shorter distance at top of vector than base)
 
-                    % Does not work if flat
-                    if vecZ ~= 0 
+                    % Now use for flat as well
+                    if 1; %vecZ ~= 0 
                         basedDist = sqrt((ringX(nearbyInds(mNearby)) - volumeSize(1)/2)^2 + ...
                             (ringY(nearbyInds(mNearby)) - volumeSize(2)/2)^2);
 
@@ -266,7 +266,8 @@ if 1
            % Get zero inclination within each ring (should be two bands)
            %zeroInds = find(tempThetaSlice(ringInds) == 0 | isnan(tempThetaSlice(ringInds)));
            zeroInds = find((tempPhiSlice(ringInds) == 0 | tempPhiSlice(ringInds) == 180 | ...
-               tempPhiSlice(ringInds) == 360) & ringX == volumeSize(1)/2);
+               tempPhiSlice(ringInds) == 360) & ...
+               (ringX == volumeSize(1)/2 |ringY == volumeSize(2)/2));
            %%% Note cutting along middle of volume
            
            %plot(ringX(zeroInds), ringY(zeroInds), '.')
@@ -321,8 +322,8 @@ if 1
                     % Check angle if vector is pointing towards center 
                     % (based on shorter distance at top of vector than base)
 
-                    % Does not work if flat
-                    if vecZ ~= 0 
+                    % Now use for flat as well
+                    if 1; %vecZ ~= 0
                         basedDist = sqrt((ringX(nearbyInds(pointToUse)) - volumeSize(1)/2)^2 + ...
                             (ringY(nearbyInds(pointToUse)) - volumeSize(2)/2)^2);
 
@@ -330,7 +331,7 @@ if 1
                             (ringY(nearbyInds(pointToUse)) + vecY - volumeSize(2)/2)^2);
 
                         if topDist > basedDist
-                           % Roate by 180 degrees 
+                           % Rotate by 180 degrees 
 
                            vecX = -vecX;
                            vecY = -vecY;
@@ -351,6 +352,7 @@ end
 
 %% Plot vectors along 2D slice
 
+% Center of X
 ringsSlice = permute(ringVolume(volumeSize(1)/2,:,:),[2 3 1]);
 sliceVectorY = permute(volumeVectorY(volumeSize(1)/2,:,:),[2 3 1]);
 sliceVectorZ = permute(volumeVectorZ(volumeSize(1)/2,:,:),[2 3 1]);
@@ -364,10 +366,31 @@ indsToPlot = find(~isnan(sliceVectorY));
 for iVec = 1:length(indsToPlot)
     ang = atan2(sliceVectorZ(indsToPlot(iVec)), sliceVectorY(indsToPlot(iVec)))/pi*180;
     
-    if ang > 20 & ang < 160
+    %if ang > 20 & ang < 160
         line( [0 4*sliceVectorY(indsToPlot(iVec))]+plotX(iVec), [0 4*sliceVectorZ(indsToPlot(iVec))]+plotY(iVec),...
             'color', cols(ringsSlice(indsToPlot(iVec)), :))
-    end
+    %end
+end
+
+% Center of Y
+ringsSlice = permute(ringVolume(:,volumeSize(2)/2,:),[1 3 2]);
+sliceVectorX = permute(volumeVectorX(:,volumeSize(2)/2,:),[1 3 2]);
+sliceVectorY = permute(volumeVectorY(:,volumeSize(2)/2,:),[1 3 2]);
+sliceVectorZ = permute(volumeVectorZ(:,volumeSize(2)/2,:),[1 3 2]);
+
+figure; hold on
+
+indsToPlot = find(~isnan(sliceVectorX));
+
+[plotX, plotY] = ind2sub(volumeSize([1, 2]), indsToPlot);
+
+for iVec = 1:length(indsToPlot)
+    ang = atan2(sliceVectorZ(indsToPlot(iVec)), sliceVectorX(indsToPlot(iVec)))/pi*180;
+    
+    %if ang > 20 & ang < 160
+        line( [0 4*sliceVectorX(indsToPlot(iVec))]+plotX(iVec), [0 4*sliceVectorZ(indsToPlot(iVec))]+plotY(iVec), ...
+            'color', cols(ringsSlice(indsToPlot(iVec)), :))
+    %end
 end
 
 %% Get some shells - old
