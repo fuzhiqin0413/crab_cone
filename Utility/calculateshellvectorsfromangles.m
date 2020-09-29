@@ -1,4 +1,4 @@
-function [vecX, vecY, vecZ] = calculateshellvectorsfromangles(tempPhiPoint, tempThetaPoint)
+function [vecX, vecY, vecZ] = calculateshellvectorsfromangles(tempPhiPoint, tempThetaPoint, inclineVertical, volumeSize, xVal, yVal)
 
 if inclineVertical
     % Will not work if completely vertical..
@@ -23,11 +23,11 @@ end
 
 % Now use for flat as well
 if 1; %vecZ ~= 0
-    basedDist = sqrt((ringX(nearbyInds(pointToUse)) - volumeSize(1)/2)^2 + ...
-        (ringY(nearbyInds(pointToUse)) - volumeSize(2)/2)^2);
+    basedDist = sqrt((xVal - volumeSize(1)/2)^2 + ...
+        (yVal - volumeSize(2)/2)^2);
 
-    topDist = sqrt((ringX(nearbyInds(pointToUse)) + vecX - volumeSize(1)/2)^2 + ...
-        (ringY(nearbyInds(pointToUse)) + vecY - volumeSize(2)/2)^2);
+    topDist = sqrt((xVal + vecX - volumeSize(1)/2)^2 + ...
+        (yVal + vecY - volumeSize(2)/2)^2);
 
     if topDist > basedDist
        % Rotate by 180 degrees 

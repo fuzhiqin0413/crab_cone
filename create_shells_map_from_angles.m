@@ -2,13 +2,15 @@ clear
 clc
 close all
 
-% Load in angle data
-dataFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/Data/liquid angle csv/400nm';
+%%% Butchered for 200, noted where bits swapped
 
-convertAngleConvention = 1;
+% Load in angle data
+dataFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/Data/liquid angle csv/200nm_thick';
+
+convertAngleConvention = 0;
 
 % Convert to mm
-voxelSize = 400/10^6;
+voxelSize = 200/10^6;
 
 nPerp = 1.53; % Short axis
 
@@ -22,8 +24,7 @@ thetaVolume = loadcsvstack(sprintf('%s/theta', dataFolder), 0);
 % Load phi angles
 phiVolume = loadcsvstack(sprintf('%s/phi', dataFolder), 0);
 
-%%% May need to rethink later angle corrections if corrected convenction
-%%% used
+%%% May need to rethink later angle corrections if corrected convenction used
 
 if convertAngleConvention
     
@@ -36,6 +37,11 @@ if convertAngleConvention
     clear temp;
 end
 
+%%% 200
+phiVolume = single(phiVolume);
+
+thetaVolume = single(thetaVolume);
+
 volumeSize = size(phiVolume);
 
 phiVals = unique(phiVolume(~isnan(phiVolume)));
@@ -45,22 +51,24 @@ thetaVals = unique(thetaVolume(~isnan(thetaVolume)));
 % some Nan on theta border where phi has value, replace with 0
 thetaVolume(isnan(thetaVolume) & phiVolume == 0) = 0;
 
-% Convert to radians
+%Convert to radians
 thetaVolume = thetaVolume/180*pi;
 
 phiVolume = phiVolume/180*pi;
 
+%%% 200
 %Get good inds
-goodVolume = ~isnan(phiVolume); 
+%goodVolume = ~isnan(phiVolume); 
 
-goodInds = find(goodVolume);
+%goodInds = find(goodVolume);
 
 figure; 
 subplot(1,2,1);
-imshow(phiVolume(:,:,10)/pi)
+imshow(phiVolume(:,:,10)/2/pi)
 
 subplot(1,2,2);
 imshow((thetaVolume(:,:,10)+pi/2)/pi)
+
 
 %% Convert map directly to RI (Given rays along optical axis)
 
@@ -69,12 +77,21 @@ imshow((thetaVolume(:,:,10)+pi/2)/pi)
 
 outSideValue = NaN;
 
+%%% 200
+phiVolumeTemp = double( permute( phiVolume(volumeSize(1)/2,:,:),[2 3 1]));
+
+thetaVolumeTemp = double( permute( thetaVolume(volumeSize(1)/2,:,:),[2 3 1]));
+
+goodSlice = ~isnan(phiVolumeTemp); 
+
+goodInds = find(goodSlice);
+
 % Calculate vector components
-fiberXVolume = cos(phiVolume).*cos(thetaVolume);
+fiberXVolume = cos(phiVolumeTemp).*cos(thetaVolumeTemp);
 
-fiberYVolume = sin(phiVolume).*cos(thetaVolume);
+fiberYVolume = sin(phiVolumeTemp).*cos(thetaVolumeTemp);
 
-fiberZVolume = sin(thetaVolume);
+fiberZVolume = sin(thetaVolumeTemp);
 
 % Flip z if pointing down
 downZInds = find(fiberZVolume < 0);
@@ -83,7 +100,9 @@ fiberXVolume(downZInds) = -fiberXVolume(downZInds);
 fiberYVolume(downZInds) = -fiberYVolume(downZInds);
 fiberZVolume(downZInds) = -fiberZVolume(downZInds); 
 
-directRIVolume = ones(volumeSize)*outSideValue;
+%%% 200
+%directRIVolume = ones(volumeSize)*outSideValue;
+directRIVolume = ones(size(phiVolumeTemp))*outSideValue;
 
 % For on axis light.
 angle2Fiber = acos( (fiberXVolume(goodInds)*0 + fiberYVolume(goodInds)*0 + fiberZVolume(goodInds)*1) ./ ...
@@ -100,12 +119,19 @@ plot(angle2Fiber(tempInd)/pi*180, tempVal); hold on
 plot(0:5:90, nPara+sin(((0:5:90)/180*pi)*2-pi/2)*nDif/2 + nDif/2, 'x')
 
 figure;
-subplot(1,2,1)
-imshow((directRIVolume(:,:,round(volumeSize(3)*0.2))-1.5)/0.1)
+%%% 200
+% subplot(1,2,1)
+% imshow((directRIVolume(:,:,round(volumeSize(3)*0.2))-1.5)/0.1)
+% 
+% subplot(1,2,2)
+% imshow((flipud(permute(directRIVolume(round(volumeSize(1)/2),:,:), [3 2 1]))-1.5)/0.1)
+% line([volumeSize(1)/2 volumeSize(1)/2], [1 volumeSize(3)], 'color', 'g')
 
-subplot(1,2,2)
-imshow((flipud(permute(directRIVolume(round(volumeSize(1)/2),:,:), [3 2 1]))-1.5)/0.1)
+imshow(flipud(directRIVolume'-1.50)/0.03)
 line([volumeSize(1)/2 volumeSize(1)/2], [1 volumeSize(3)], 'color', 'g')
+
+directRIVolume(isnan(directRIVolume)) = -1;
+writematrix(directRIVolume,'200_cone_long_section.csv') 
 
 %% Split into rings
 close all
@@ -187,25 +213,35 @@ imshow( permute( ringVolume(volumeSize(1)/2,:,:), [2 3 1])/maxRings)
 %%% Had to add ring sampled/averaged aniso RI
 %%% Also have to add interpolate at finer steps (say 2/4 values between points)
 %%% Convert ring sampled back to full (also consider exterior if not)
-%%% %%% Needs testing!!!
 
 % If set 90 theta inclined to 85
 inclineVertical = 1;
 
+calcFullVec = 1;
+
 % Where to place RI (shell is always set to edge)
 riPlacment = 'centre'; % alternative is 'edge' which is at phi 0/180
 
-%%% Sparse allocation is being stored in full matrix
-    %%% Probably more efficient to determine points and then use lists...
+% Sparse allocation is being stored in full matrix
+    % Probably more efficient to determine points and then use lists...
+%%% Shell has out of plane discontinuities, need to check.
+warning('point to check')
 shellVolumeX = zeros(volumeSize)*NaN;
 shellVolumeY = zeros(volumeSize)*NaN; 
 shellVolumeZ = zeros(volumeSize)*NaN;
 
 %For isotropic
-%%% Check how this matches data for direct method
 ringSampledRIVolume = zeros(volumeSize)*NaN;
     
-for iSlice = 1:volumeSize(3)
+if calcFullVec
+    vectorRIVolume = zeros(volumeSize)*NaN;
+
+    fullVolumeX = zeros(volumeSize)*NaN;
+    fullVolumeY = zeros(volumeSize)*NaN; 
+    fullVolumeZ = zeros(volumeSize)*NaN;
+end
+
+for iSlice = 1 %1:volumeSize(3)
 
     %figure; 
     %imshow((thetaVolume(:,:,iSlice) + pi/2)/pi); hold on
@@ -231,11 +267,12 @@ for iSlice = 1:volumeSize(3)
        % Get orientation of each zero ind
        for kInd = 1:length(zeroInds)
            % Get vectors for zero point
-           tempPhiPoint = tempPhiSlice(zeroInds(kInd));
+           tempPhiPoint = tempPhiSlice(ringInds(zeroInds(kInd)));
 
-           tempThetaPoint = tempThetaSlice(zeroInds(kInd));
+           tempThetaPoint = tempThetaSlice(ringInds(zeroInds(kInd)));
            
-           [vecXZero, vecYZero, vecZZero] = calculateshellvectorsfromangles(tempPhiPoint, tempThetaPoint);
+           [vecXZero, vecYZero, vecZZero] = calculateshellvectorsfromangles(tempPhiPoint, tempThetaPoint, ...
+               inclineVertical, volumeSize, ringX(zeroInds(kInd)), ringY(zeroInds(kInd)));
            
            % Get angle to zero fibre    
            angle2Fiber = acos( (vecXZero*0 + vecYZero*0 + vecZZero*1) ./ ...
@@ -243,8 +280,6 @@ for iSlice = 1:volumeSize(3)
     
            % Adjusted range compared to original
            zeroRI = nPara + sin(angle2Fiber*2-pi/2)*nDif/2 + nDif/2;
-           
-           
            
            % get nearby within half ring thickness, and that are closer to center
            distToCenter = sqrt((ringX - volumeSize(1)/2).^2 + ...
@@ -262,18 +297,17 @@ for iSlice = 1:volumeSize(3)
                % Take point with largest theta to use
                [~, pointToUse] = max( abs( tempThetaSlice(ringInds(nearbyInds)) ));
 
-               %%% Need to do calculation for both zero ind and max ind
-               
                tempPhiPoint = tempPhiSlice(ringInds(nearbyInds(pointToUse)));
 
                tempThetaPoint = tempThetaSlice(ringInds(nearbyInds(pointToUse)));
 
-               [vecX, vecY, vecZ] = calculateshellvectorsfromangles(tempPhiPoint, tempThetaPoint);
+               [vecX, vecY, vecZ] = calculateshellvectorsfromangles(tempPhiPoint, tempThetaPoint, ...
+                    inclineVertical, volumeSize, ringX(nearbyInds(pointToUse)), ringY(nearbyInds(pointToUse)));
 
                % Place vector data in shells 
-               shellVectorX(ringX(zeroInds(kInd)), ringY(zeroInds(kInd)), iSlice) = vecX;
-               shellVectorY(ringX(zeroInds(kInd)), ringY(zeroInds(kInd)), iSlice) = vecY;
-               shellVectorZ(ringX(zeroInds(kInd)), ringY(zeroInds(kInd)), iSlice) = vecZ;
+               shellVolumeX(ringX(zeroInds(kInd)), ringY(zeroInds(kInd)), iSlice) = vecX;
+               shellVolumeY(ringX(zeroInds(kInd)), ringY(zeroInds(kInd)), iSlice) = vecY;
+               shellVolumeZ(ringX(zeroInds(kInd)), ringY(zeroInds(kInd)), iSlice) = vecZ;
                
                % Place averaged GRIN data
                if strcmp(riPlacment, 'centre')
@@ -295,10 +329,127 @@ for iSlice = 1:volumeSize(3)
                % Adjusted range compared to original
                otherRI = nPara + sin(angle2Fiber*2-pi/2)*nDif/2 + nDif/2;
                
+               % Average both RIs
                ringSampledRIVolume(riX, riY, iSlice) = (zeroRI + otherRI)/2;
-               
-               %%% Check how this matches data from direct method
+           end
+       end
+       
+       if calcFullVec
+           % Also calc RI diretly on each voxel for comparison
+           for kInd = 1:length(ringInds)
+               % Get vectors for zero point
+               tempPhiPoint = tempPhiSlice(ringInds(kInd));
+
+               tempThetaPoint = tempThetaSlice(ringInds(kInd));
+
+               [vecX, vecY, vecZ] = calculateshellvectorsfromangles(tempPhiPoint, tempThetaPoint, ...
+                   inclineVertical, volumeSize, ringX(kInd), ringY(kInd) );
+
+               if isnan(vecX)
+                    b = 1;
+               end
+               fullVolumeX(ringX(kInd), ringY(kInd), iSlice) = vecX;
+               fullVolumeY(ringX(kInd), ringY(kInd), iSlice) = vecY;
+               fullVolumeZ(ringX(kInd), ringY(kInd), iSlice) = vecZ;
+
+               % Get angle to zero fibre    
+               angle2Fiber = acos( (vecX*0 + vecY*0 + vecZ*1) ./ ...
+                    (sqrt(vecX.^2 + vecY.^2 + vecZ.^2) * norm([0 0 1])) );
+
+               % Adjusted range compared to original
+               vectorRIVolume(ringX(kInd), ringY(kInd), iSlice) = nPara + sin(angle2Fiber*2-pi/2)*nDif/2 + nDif/2;
+
            end
        end
     end
+end
+
+% Plot to check
+figure; 
+subplot(2,2,1);
+imshow((directRIVolume(:,:,iSlice)-1.5)/0.1)
+
+temp = vectorRIVolume(:,:,iSlice)-directRIVolume(:,:,iSlice);
+max(abs(temp(~isnan(temp))))
+
+subplot(2,2,2);
+imshow(temp)
+
+subplot(2,2,3);
+imshow((ringSampledRIVolume(:,:,iSlice)-1.5)/0.1)
+
+subplot(2,2,4);
+imshow((vectorRIVolume(:,:,iSlice)-1.5)/0.1)
+
+% Plot hists to check
+figure; hold on
+temp = ringSampledRIVolume(:,:,iSlice);
+inds2Use = find(~isnan(temp));
+[n, x] = hist(temp(inds2Use), 1.5:0.001:1.55);
+plot(x, n)
+
+temp = directRIVolume(:,:,iSlice);
+[n, x] = hist(temp(inds2Use), 1.5:0.001:1.55);
+plot(x,n);
+
+%% Plot vectors on slice to check
+figure; 
+
+% Plot for full X cross.section
+subplot(2,2,1); hold on
+ringsSlice = permute(ringVolume(volumeSize(1)/2,:,:),[2 3 1]);
+sliceVectorX = permute(fullVolumeX(volumeSize(1)/2,:,:),[2 3 1]);
+sliceVectorY = permute(fullVolumeY(volumeSize(1)/2,:,:),[2 3 1]);
+sliceVectorZ = permute(fullVolumeZ(volumeSize(1)/2,:,:),[2 3 1]);
+
+indsToPlot = find(~isnan(sliceVectorZ));
+[plotX, plotY] = ind2sub(volumeSize(2:3), indsToPlot);
+
+for iVec = 1:length(indsToPlot)
+    line( [0 4*sliceVectorY(indsToPlot(iVec))]+plotX(iVec), [0 4*sliceVectorZ(indsToPlot(iVec))]+plotY(iVec),...
+         [0 4*sliceVectorX(indsToPlot(iVec))], 'color', cols(ringsSlice(indsToPlot(iVec)), :))
+end
+
+% Plot for rings X cross.section
+subplot(2,2,2); hold on
+sliceVectorX = permute(shellVolumeX(volumeSize(1)/2,:,:),[2 3 1]);
+sliceVectorY = permute(shellVolumeY(volumeSize(1)/2,:,:),[2 3 1]);
+sliceVectorZ = permute(shellVolumeZ(volumeSize(1)/2,:,:),[2 3 1]);
+
+indsToPlot = find(~isnan(sliceVectorZ));
+[plotX, plotY] = ind2sub(volumeSize(2:3), indsToPlot);
+
+for iVec = 1:length(indsToPlot)
+    line( [0 4*sliceVectorY(indsToPlot(iVec))]+plotX(iVec), [0 4*sliceVectorZ(indsToPlot(iVec))]+plotY(iVec),...
+        [0 4*sliceVectorX(indsToPlot(iVec))], 'color', cols(ringsSlice(indsToPlot(iVec)), :))
+end
+
+% Plot for full Y Cross.section
+%%% Shows discontinuities in mirror angles, probably not good?
+subplot(2,2,3); hold on
+ringsSlice = permute(ringVolume(:,volumeSize(2)/2,:),[1 3 2]);
+sliceVectorX = permute(fullVolumeX(:,volumeSize(2)/2,:),[1 3 2]);
+sliceVectorY = permute(fullVolumeY(:,volumeSize(2)/2,:),[1 3 2]);
+sliceVectorZ = permute(fullVolumeZ(:,volumeSize(2)/2,:),[1 3 2]);
+
+indsToPlot = find(~isnan(sliceVectorZ));
+[plotX, plotY] = ind2sub(volumeSize([1, 2]), indsToPlot);
+
+for iVec = 1:length(indsToPlot)
+    line( [0 4*sliceVectorX(indsToPlot(iVec))]+plotX(iVec), [0 4*sliceVectorZ(indsToPlot(iVec))]+plotY(iVec), ...
+        [0 4*sliceVectorY(indsToPlot(iVec))], 'color', cols(ringsSlice(indsToPlot(iVec)), :))
+end
+
+% Plot for full Y Cross.section
+subplot(2,2,4); hold on
+sliceVectorX = permute(shellVolumeX(:,volumeSize(2)/2,:),[1 3 2]);
+sliceVectorY = permute(shellVolumeY(:,volumeSize(2)/2,:),[1 3 2]);
+sliceVectorZ = permute(shellVolumeZ(:,volumeSize(2)/2,:),[1 3 2]);
+
+indsToPlot = find(~isnan(sliceVectorZ));
+[plotX, plotY] = ind2sub(volumeSize([1, 2]), indsToPlot);
+
+for iVec = 1:length(indsToPlot)
+    line( [0 4*sliceVectorX(indsToPlot(iVec))]+plotX(iVec), [0 4*sliceVectorZ(indsToPlot(iVec))]+plotY(iVec), ...
+        [0 4*sliceVectorY(indsToPlot(iVec))], 'color', cols(ringsSlice(indsToPlot(iVec)), :))
 end
