@@ -7,7 +7,14 @@ dataFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/Dat
 
 convertAngleConvention = 1;
 
-shrinkForRISlice = 00;
+% Check conversion is set correctly
+if isempty(strfind(dataFolder, 'thick')) & ~convertAngleConvention
+    warning('Check if convertAngleConvention should be set')
+
+elseif ~isempty(strfind(dataFolder, 'thick')) & convertAngleConvention
+    warning('Check if convertAngleConvention should be unset')
+    
+end
 
 % Convert to mm
 voxelSize = 200/10^6;
@@ -37,12 +44,6 @@ if convertAngleConvention
     clear temp;
 end
 
-if shrinkForRISlice
-    phiVolume = single(phiVolume);
-
-    thetaVolume = single(thetaVolume);
-end
-
 volumeSize = size(phiVolume);
 
 phiVals = unique(phiVolume(~isnan(phiVolume)));
@@ -59,11 +60,9 @@ phiVolume = phiVolume/180*pi;
 
 
 %Get good inds
-if ~shrinkForRISlice
-    goodVolume = ~isnan(phiVolume); 
+goodVolume = ~isnan(phiVolume); 
 
-    goodInds = find(goodVolume);
-end
+goodInds = find(goodVolume);
 
 figure; 
 subplot(1,2,1);
@@ -79,26 +78,12 @@ imshow((thetaVolume(:,:,10)+pi/2)/pi)
 
 outSideValue = NaN;
 
-if shrinkForRISlice
-    phiVolumeTemp = double( permute( phiVolume(volumeSize(1)/2,:,:),[2 3 1]));
-
-    thetaVolumeTemp = double( permute( thetaVolume(volumeSize(1)/2,:,:),[2 3 1]));
-
-    goodSlice = ~isnan(phiVolumeTemp); 
-
-    goodInds = find(goodSlice);
-else
-    phiVolumeTemp = phiVolume;
-    
-    thetaVolumeTemp = thetaVolume;
-end
-
 % Calculate vector components
-fiberXVolume = cos(phiVolumeTemp).*cos(thetaVolumeTemp);
+fiberXVolume = cos(phiVolume).*cos(thetaVolume);
 
-fiberYVolume = sin(phiVolumeTemp).*cos(thetaVolumeTemp);
+fiberYVolume = sin(phiVolume).*cos(thetaVolume);
 
-fiberZVolume = sin(thetaVolumeTemp);
+fiberZVolume = sin(thetaVolume);
 
 % Flip z if pointing down
 downZInds = find(fiberZVolume < 0);
@@ -107,11 +92,7 @@ fiberXVolume(downZInds) = -fiberXVolume(downZInds);
 fiberYVolume(downZInds) = -fiberYVolume(downZInds);
 fiberZVolume(downZInds) = -fiberZVolume(downZInds); 
 
-if shrinkForRISlice
-    directRIVolume = ones(size(phiVolumeTemp))*outSideValue;
-else
-    directRIVolume = ones(volumeSize)*outSideValue;
-end
+directRIVolume = ones(volumeSize)*outSideValue;
 
 % For on axis light.
 angle2Fiber = acos( (fiberXVolume(goodInds)*0 + fiberYVolume(goodInds)*0 + fiberZVolume(goodInds)*1) ./ ...
@@ -128,21 +109,12 @@ plot(angle2Fiber(tempInd)/pi*180, tempVal); hold on
 plot(0:5:90, nPara+sin(((0:5:90)/180*pi)*2-pi/2)*nDif/2 + nDif/2, 'x')
 
 figure;
+subplot(1,2,1)
+imshow((directRIVolume(:,:,round(volumeSize(3)*0.2))-1.5)/0.1)
 
-if ~shrinkForRISlice
-    subplot(1,2,1)
-    imshow((directRIVolume(:,:,round(volumeSize(3)*0.2))-1.5)/0.1)
-
-    subplot(1,2,2)
-    imshow((flipud(permute(directRIVolume(round(volumeSize(1)/2),:,:), [3 2 1]))-1.5)/0.1)
-    line([volumeSize(1)/2 volumeSize(1)/2], [1 volumeSize(3)], 'color', 'g')
-else
-    imshow(flipud(directRIVolume'-1.50)/0.03)
-    line([volumeSize(1)/2 volumeSize(1)/2], [1 volumeSize(3)], 'color', 'g')
-
-    directRIVolume(isnan(directRIVolume)) = -1;
-    writematrix(directRIVolume,'200_cone_long_section.csv') 
-end
+subplot(1,2,2)
+imshow((flipud(permute(directRIVolume(round(volumeSize(1)/2),:,:), [3 2 1]))-1.5)/0.1)
+line([volumeSize(1)/2 volumeSize(1)/2], [1 volumeSize(3)], 'color', 'g')
 %% Split into rings
 close all
 
