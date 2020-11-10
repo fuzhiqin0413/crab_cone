@@ -19,7 +19,7 @@ elseif ~isempty(strfind(dataFolder, 'thick')) & convertAngleConvention
     
 end
 
-shrinkForRISlice = 00;
+shrinkForRISlice = 0;
 
 % Convert to mm
 voxelSize = 200/10^6;
@@ -258,15 +258,17 @@ line([volumeSize(2)/2 volumeSize(2)/2], [1 volumeSize(3)], 'color', 'g')
 currentDirectory = pwd; 
 cd('/Users/gavintaylor/Desktop')
 
+warning('check names are correct')
+
 directRIVolume(isnan(directRIVolume)) = -1;
 
-writematrix(directRIVolume,'200_cone_long_section_lamellae.csv') 
+writematrix(directRIVolume,'500_cone_full_section_lamellae.csv') 
 
 averagedRIVolume(isnan(averagedRIVolume)) = -1;
 
-writematrix(averagedRIVolume,'200_cone_long_section_averaged.csv') 
+writematrix(averagedRIVolume,'500_cone_full_section_averaged.csv') 
 
 interpolatedRIVolume(isnan(interpolatedRIVolume)) = -1;
 
-writematrix(interpolatedRIVolume,'200_cone_long_section_interpolated.csv') 
+writematrix(interpolatedRIVolume,'500_cone_full_section_interpolated.csv') 
 cd(pwd)

@@ -15,7 +15,7 @@ clear;
     
 %create luneburg lens
 radius = 1;
-step_size = 0.0625;
+step_size = 0.0625; 
 
 vol_size = 3*radius/step_size;
 lens_volume = ones(vol_size,vol_size,vol_size);

@@ -9,7 +9,7 @@ clc
 close all
 
 % Load in angle data
-dataFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/Data/liquid angle csv/800nm_thick';
+dataFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/Data/liquid angle csv/400nm_thick';
 
 % Convert to mm
 voxelSize = 800/10^6;
@@ -39,13 +39,42 @@ for i = 1:volumeSize(3)
     
 end
 
-% Modified! To match Oliver code, radius to big.
+% Modified! To match Oliver code, radius too big.
 radiusList = radiusList - 1;
 
 radiusList = floor(radiusList);
 
-figure;
-plot(radiusList)
+%%% For fitting
+radiusList = [radiusList 1];
+
+heightList = 1:length(radiusList);
+
+[radiusListTemp, tempI] = unique(radiusList);
+
+heightListTemp = heightList(tempI);
+
+radiusListTempEqual = radiusListTemp(1):radiusListTemp(end);
+
+heightListTemp = interp1(radiusListTemp, heightListTemp, radiusListTempEqual, 'linear');
+
+%%% Run CF tool here on a+b/(1+exp((c-x)*d)), guess were 200, -200, 100, 0.01
+
+a = 401.3;
+b = -454.7;
+c = 141.5;
+d = 0.03701;
+
+figure; subplot(1,2,1);
+plot(radiusList, heightList, '.'); hold on
+yVals = a+b./(1+exp((c-radiusList)*d));
+plot(radiusList, yVals);
+xlabel('radius'); ylabel('height');
+
+subplot(1,2,2);
+plot(heightList, radiusList, '.'); hold on
+yVals = -log(b./(heightList-a)-1)/d+c;
+plot(heightList, yVals);
+ylabel('radius'); xlabel('height');
 
 %%% dimensions, scaling, slice select etc
 orig_dimension = 300;
@@ -210,6 +239,7 @@ testThetaVolume(testThetaVolume == 0) = NaN;
 testThetaVolume(abs(testThetaVolume) < 1) = 0;
 
 testThetaVolume = int16(testThetaVolume);
+
 
 % ### build the theta array
 % slice_theta = np.zeros((y.size,x.size))

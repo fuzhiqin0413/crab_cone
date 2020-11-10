@@ -18,8 +18,10 @@ if 1
     saveOutPut = 0;
     folderToSave = '';
 
-    folderToGet = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/Data/Sync CT/Amira project/Matlab/Initail_1_cone'; sphericalAxis = [];
+    folderToGet = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/Data/Sync CT/Amira project/Matlab/Inital_1_cone'; 
+    sphericalAxis = [];
     
+    % Either 1 or 2 micron...
     pixelScale = 1;
     dsP = 30; %down sampling for plotting surfaces
     dsFact = 1; %resize input volumes if desired

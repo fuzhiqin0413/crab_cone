@@ -70,6 +70,7 @@ function [ arrayOut ] = loadcsvstack( address, loadSmall)
         
         counter = counter + 1;
     
+        pause(0.01)
     end
     
     cd(currentDirectory)
