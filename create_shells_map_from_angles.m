@@ -3,9 +3,9 @@ clc
 close all
 
 % Load in angle data
-dataFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/Data/liquid angle csv/400nm';
+dataFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/Data/liquid angle csv/800nm_thick';
 
-convertAngleConvention = 1;
+convertAngleConvention = 0;
 
 % Check conversion is set correctly
 if isempty(strfind(dataFolder, 'thick')) & ~convertAngleConvention

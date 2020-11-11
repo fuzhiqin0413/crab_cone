@@ -9,14 +9,14 @@ function [ arrayOut ] = loadcsvstack( address, loadSmall)
     currentDirectory = pwd;          
               
     % Find which files to load.
-    cd(address); dirtoryContents = dir; includedFiles = [];
+    cd(address); directoryContents = dir; includedFiles = [];
     
     % natural langueg sort then remove from cells
-    directoryNames = natsortfiles({dirtoryContents.name});
+    directoryNames = natsortfiles({directoryContents.name});
     
-    %directoryNames = {dirtoryContents.name};
+    %directoryNames = {directoryContents.name};
 
-    for i = 1:length(dirtoryContents)
+    for i = 1:length(directoryContents)
         if strfind(directoryNames{i}, 'csv')   
             
             includedFiles = [ includedFiles i ];
