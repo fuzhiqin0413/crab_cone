@@ -85,13 +85,13 @@ function [X, T, new_delta] = ray_interpolation(type, RIType, X0, T0, delta, vol_
         
     elseif type == '4'
         % Shifted delta down as in 5th order code
-        T_4th = T0 + delta*(k1*25/216 +k3*1408/2565 +k4*2197/4104 + k5*-1/5);
+        T = T0 + delta*(k1*25/216 +k3*1408/2565 +k4*2197/4104 + k5*-1/5);
         % 4th order coeffs
         k1C = 1408/2565*3/32 + 2197/4104*1932/2197 + -1/5*439/216;
         k2C = 1408/2565*9/32 + 2197/4104*-7200/2197 + -1/5*-8; %close to zero
         k3C = 2197/4104*7296/2197 + -1/5*3680/513;
         k4C = -1/5*-845/4104;
-        X_4th = X0 + delta*T0 + delta^2*(k1*k1C + k2*k2C + k3*k3C + k4*k4C);
+        X = X0 + delta*T0 + delta^2*(k1*k1C + k2*k2C + k3*k3C + k4*k4C);
         
         new_delta = delta;
         
@@ -156,6 +156,7 @@ function [X, T, new_delta] = ray_interpolation(type, RIType, X0, T0, delta, vol_
         k4C = -9/50*-845/4104 + 2/55*1859/4104;
         k5C = 2/55*-11/40; 
         %X = X0 + delta*(T0+(k1*k1C + k3*k3C + k4*k4C + k5*k5C)); %these be coeffs should sum to 0.5
+        
         X = X0 + delta*T0 + delta^2*(k1*k1C + k3*k3C + k4*k4C + k5*k5C);
         
         new_delta = delta;

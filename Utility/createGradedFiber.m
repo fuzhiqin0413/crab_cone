@@ -1,7 +1,7 @@
 function [lensRIVolume]  = createGradedFiber(radiusPixels, fiberLengthPixels, volumeSize)
     % As described in Nishidate 2011
 
-    lensRIVolume = zeros(volumeSize, volumeSize, volumeSize)*NaN;
+    lensRIVolume = zeros(volumeSize)*NaN;
     
     if fiberLengthPixels > volumeSize(3)
        error('Fiber too long') 
@@ -15,12 +15,12 @@ function [lensRIVolume]  = createGradedFiber(radiusPixels, fiberLengthPixels, vo
         
         for j = 1:volumeSize
             
-            x = (i-volumeSize/2);
-            y = (j-volumeSize/2);
+            x = (i-volumeSize(1)/2);
+            y = (j-volumeSize(2)/2);
 
             r = sqrt(x^2+y^2);
 
-            if r < radius
+            if r < radiusPixels
                 lensRIVolume(i,j,pixelsToFill) = sqrt(2.5-(r/radiusPixels)^2);
             end
         end
