@@ -8,12 +8,12 @@ function [lensRIVolume]  = createGradedFiber(radiusPixels, fiberLengthPixels, vo
     end
     
     % Centre fiber around middle of volume
-    pixelsToFill = (volumeSize(3)/2-fiberLengthPixels/2):(volumeSize(3)/2+fiberLengthPixels/2);
+    pixelsToFill = round(volumeSize(3)/2-fiberLengthPixels/2):round(volumeSize(3)/2+fiberLengthPixels/2);
      
     % Iterate through x and y to assign RI along z
-    for i = 1:volumeSize
+    for i = 1:volumeSize(1)
         
-        for j = 1:volumeSize
+        for j = 1:volumeSize(2)
             
             x = (i-volumeSize(1)/2);
             y = (j-volumeSize(2)/2);

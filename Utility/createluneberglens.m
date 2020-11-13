@@ -4,11 +4,11 @@ function [lensRIVolume] = createluneberglens(radiusPixels, volumeSize)
     lensRIVolume = zeros(volumeSize)*NaN;
     
     % Iterate through x and y an z to assign RI based on pixels
-    for i = 1:volumeSize
+    for i = 1:volumeSize(1)
         
-        for j = 1:volumeSize
+        for j = 1:volumeSize(2)
             
-            for k = 1:volumeSize
+            for k = 1:volumeSize(3)
                 x = (i-volumeSize(1)/2);
                 y = (j-volumeSize(2)/2);
                 z = (k-volumeSize(3)/2);
