@@ -18,6 +18,10 @@
     % all values in region are equal
         % Should test this speed up
 
+    %%% To do after debug:
+        % Revise above
+        % Do step in to get entry and exit
+
 clear; clc; close all
 
 %% Set parameters
@@ -52,8 +56,12 @@ if useRealData
     %%% If not doing direction updating, calcualte RI for all
     
 elseif useTestData
+    if ~xor(createLunebergLens, createCreateGradedFiber)
+        error('Either or neither lens/fiber flags set. Check.')
+    end
+    
     if createLunebergLens
-        volumeSize = ceil(1.5*radius*2/voxelSize*[1 1 1]);
+        volumeSize = ceil(radius*2*1.5/voxelSize*[1 1 1]);
         
         lensRIVolume = createluneberglens(radius/voxelSize, volumeSize);
     
@@ -66,6 +74,14 @@ elseif useTestData
     goodVolume = ~isnan(lensRIVolume);
     
     lensRIVolume(isnan(lensRIVolume)) = exteriorRI;
+    
+    figure;
+    subplot(1,2,1);
+    imshow((lensRIVolume(:,:,round(volumeSize(3)/2)))/(max(lensRIVolume(:))))
+    
+    subplot(1,2,2);
+    imshow(permute((lensRIVolume(:,round(volumeSize(2)/2),:))/...
+        (max(lensRIVolume(:))), [1 3 2]))
 end
 
 %% Do general set up
@@ -103,12 +119,16 @@ volCoords = ([tempX(:), tempY(:), tempZ(:)])*voxelSize;
 zSteps = (1:volumeSize(3))*voxelSize;
 
 %%% Replace with meshgrid later on
-xStartPoints = 1:10:volumeSize(1);
+xStartPoints = 1:5:volumeSize(1);
 
-rayOrigins = [xStartPoints(:), ones(numel(xStartPoints),1)*volumeSize(2)/2, ...
+rayOrigins = [xStartPoints(:), ones(numel(xStartPoints),1)*volumeSize(2)/2,  ...
     ones(numel(xStartPoints),1)]*voxelSize; 
 
 nOrigins = size(rayOrigins,1);
+
+startRayT = [0, 0, 1];
+
+rayCols = lines(nOrigins);
 
 %% Run ray tracer
 
@@ -120,47 +140,47 @@ exitPoints = zeros(3, nOrigins)*NaN;
 
 if testPlot
     figure; hold on; axis equal;
-    
+    view(0, 0)
     plot3(surfaceX(plotInds)*voxelSize, surfaceY(plotInds)*voxelSize,...
         surfaceZ(plotInds)*voxelSize, '.')
 end
 
 for iOrigin = 1:nOrigins
     %%% Could set up to do for series of ray angles
-    rayT = [0, 0, 1]; %3x1 : ray will move from bottom to top
+    rayT = startRayT; %3x1 : ray will move from bottom to top
 
     % In phyisical coordiantes
     %%%% Was in voxel coordinates
     rayX = rayOrigins(iOrigin,:);
     
-    %%% Note rayX and x (voxelX) swapped!!! 
-
     inGraded = 0;
     
     %%%% Was ray x in phyiscial coordinates
     voxelX = round(rayOrigins(iOrigin,:)/voxelSize);
     
-    lastNearbyX = rayX;
+    lastNearbyX = [rayX(1), rayX(2), -1];
     
     go = 1;
 
+    %%% just do in main loop, remove from here.
+    
     % Get initial values for ray-tracer to use (it takes closest 128)
     % For unit matrix, radius 4 will take ~26 8 (*2?) points
-    [tempX, tempY, tempZ] = meshgrid((voxelX(1)-4:voxelX(1)+4)', (voxelX(2)-4:voxelX(2)+4)',...
-        (voxelX(3)-4:voxelX(3)+4)');
-
-    testCoords= [tempX(:), tempY(:), tempZ(:)];
-    
-    tempInd = find(testCoords(:,1) < 1 | testCoords(:,2) < 1 | testCoords(:,3) < 1 | ...
-            testCoords(:,1) > volumeSize(1) | testCoords(:,2) > volumeSize(2) | testCoords(:,3) > volumeSize(3));
-
-    testCoords(tempInd, :) = [];
-
-    testInds = sub2ind(volumeSize, testCoords(:,1), testCoords(:,2), testCoords(:,3));
-
-    [testInds, tempInds] = intersect(testInds, goodInds);
-    
-    testCoords = testCoords(tempInds,:);
+%     [tempX, tempY, tempZ] = meshgrid((voxelX(1)-4:voxelX(1)+4)', (voxelX(2)-4:voxelX(2)+4)',...
+%         (voxelX(3)-4:voxelX(3)+4)');
+% 
+%     testCoords= [tempX(:), tempY(:), tempZ(:)];
+%     
+%     tempInd = find(testCoords(:,1) < 1 | testCoords(:,2) < 1 | testCoords(:,3) < 1 | ...
+%             testCoords(:,1) > volumeSize(1) | testCoords(:,2) > volumeSize(2) | testCoords(:,3) > volumeSize(3));
+% 
+%     testCoords(tempInd, :) = [];
+% 
+%     testInds = sub2ind(volumeSize, testCoords(:,1), testCoords(:,2), testCoords(:,3));
+% 
+%     [testInds, tempInds] = intersect(testInds, goodInds);
+%     
+%     testCoords = testCoords(tempInds,:);
     
     %%% If doing direction updating, calculate RI for initial direction
     
@@ -217,6 +237,9 @@ for iOrigin = 1:nOrigins
             
             testCoords = testCoords(tempInds,:);
             
+%             figure; plot3(testCoords(:,1), testCoords(:,2), testCoords(:,3), '.')
+%             hold on; plot3(voxelX(1), voxelX(2), voxelX(3), 'rx')
+            
             %%% If doing direction updating, calculate RI for current direction
             
             [rayX rayT deltaS*10^3]
@@ -254,9 +277,8 @@ for iOrigin = 1:nOrigins
             end
             
             if testPlot
-                plot3(rayX(1), rayX(2), rayX(3), '.b');
+                plot3(rayX(1), rayX(2), rayX(3), '.', 'color', rayCols(iOrigin,:));
                 
-                pause(0.01)
             end
         end
         
@@ -265,6 +287,8 @@ for iOrigin = 1:nOrigins
            go = 0; 
         end
     end
+
+    pause(0.01)
 end
 %% Plot results
 close all
@@ -275,50 +299,163 @@ else
     
     if createLunebergLens
         % Plot ray path in object
-        figure; subplot(1,2,1); hold on; axis equal;
+        figure; subplot(2,2,1); hold on; axis equal;
+        view(0, 0)
         for iOrigin = 1:nOrigins
             rayPath = permute(rayPathArray(:, :, iOrigin), [2 1]);
 
-            plot3(rayPath(:,1), rayPath(:,2), rayPath(:,3));
+            plot3(rayPath(:,1), rayPath(:,2), rayPath(:,3), 'color', rayCols(iOrigin,:));
         end
+        %%% Consider replacing lines with circle drawing...
+        
+        line([1 volumeSize(1)]*voxelSize, [1 1]*volumeSize(2)/2*voxelSize, ...
+            [1 1]*zSteps(bottomZ), 'color', 'b')
+        
+        line([1 volumeSize(1)]*voxelSize, [1 1]*volumeSize(2)/2*voxelSize, ...
+            [1 1]*zSteps(topZ), 'color', 'b')
+        
         title('Ray path')
         
-        % plot spot diagram
-        subplot(1,2,2); hold on; axis equal;
+        % Plot analytic ray path - for on axis rays along central y axis
+        subplot(2,2,2); hold on; axis equal;
+        view(0, 0)
+        trueRayPathArray = zeros(3, volumeSize(3), nOrigins)*NaN;
+        
+        lensCentreX = volumeSize(1)/2*voxelSize;
+        
+        if rem(volumeSize(1), 2) == 0
+            lensCentreZ = zSteps(volumeSize(1)/2);
+        else
+            lensCentreZ = mean( zSteps( floor(volumeSize(1)/2):ceil(volumeSize(1)/2)));
+        end
+        
+        for iOrigin = 1:nOrigins
+            tempRayPath = zeros(3, volumeSize(3))*NaN;
+            
+            if rayOrigins(iOrigin,2) ~= volumeSize(2)/2*voxelSize | ... 
+                    any(startRayT - [0, 0, 1])
+                %%% Can gernalize to X component and off-axis rays from
+                %%% Eq 2 in Babayigit ... Turduev 2019
+                
+                error('Analytic solution only set up for Y on midline and parallel rays')
+            end
+            
+            % Check it's within fiber radius
+            if abs(rayOrigins(iOrigin,1)-lensCentreX) < radius
+
+                %%% Later, use exact points intersection point for start and end
+                
+                %Find first pixel in lens for ray
+                startZ = find(goodVolume(round(rayOrigins(iOrigin,1)/voxelSize),...
+                    round(rayOrigins(iOrigin,2)/voxelSize), :));
+
+                startZ = startZ(1);
+                
+                % Just a line up to enterance
+                tempRayPath(1,1:startZ-1) = rayOrigins(iOrigin,1)-lensCentreX; % offset to fiber centre
+                tempRayPath(2,:) = rayOrigins(iOrigin,2);
+                tempRayPath(3,:) = zSteps - lensCentreZ;            
+
+                tempRayPath(1, startZ:topZ) = tempRayPath(1,1)*(tempRayPath(3,startZ)*tempRayPath(3,startZ:topZ) + ...
+                    radius*sqrt(radius^2 + tempRayPath(3,startZ)^2 - tempRayPath(3,startZ:topZ).^2))/...
+                    (tempRayPath(3,startZ)^2 + radius^2);
+
+                %%% Plot ray afterwards?
+                tempRayPath(:, topZ+1:end) = NaN;
+                
+                % Add fiber centre back for X
+                tempRayPath(1,:) = tempRayPath(1,:) + lensCentreX;
+                tempRayPath(3,:) = tempRayPath(3,:) + lensCentreZ;   
+            else
+                % outside fiber, just propogate along z
+                
+                tempRayPath(1,:) = rayOrigins(iOrigin,1); 
+                tempRayPath(2,:) = rayOrigins(iOrigin,2);
+                tempRayPath(3,:) = zSteps;
+            end
+            
+            plot3(tempRayPath(1,:), tempRayPath(2,:), tempRayPath(3,:), 'color', rayCols(iOrigin,:));
+                
+            trueRayPathArray(:,:,iOrigin) = tempRayPath;
+        end
+        % plot lines at top and bottom
+        line([1 volumeSize(1)]*voxelSize, [1 1]*volumeSize(2)/2*voxelSize, ...
+            [1 1]*zSteps(bottomZ), 'color', 'b')
+        
+        line([1 volumeSize(1)]*voxelSize, [1 1]*volumeSize(2)/2*voxelSize, ...
+            [1 1]*zSteps(topZ), 'color', 'b')
+        
+        title('Plot true ray path')
+
+        % Plot X error along Z
+        subplot(2,2,3); hold on;
         for iOrigin = 1:nOrigins
             rayPath = permute(rayPathArray(:, :, iOrigin), [2 1]);
-
-            plot3(rayPath(:,1), rayPath(:,2), rayPath(:,3));
+            
+            tempRayPath = permute(trueRayPathArray(:, :, iOrigin), [2 1]);
+            
+            plot((rayPath(:,1) - tempRayPath(:,1))*10^3, zSteps, 'color', rayCols(iOrigin,:))
+        end
+        line([-20 20], [1 1]*zSteps(bottomZ), 'color', 'b')
+        
+        line([-20 20], [1 1]*zSteps(topZ), 'color', 'b')
+        
+        
+        xlabel('Error in micron')
+        title('Ray error')
+        
+        % plot spot diagram
+        subplot(2,2,4); hold on; axis equal;
+        for iOrigin = 1:nOrigins
+%             rayPath = permute(rayPathArray(:, :, iOrigin), [2 1]);
+% 
+%             plot3(rayPath(:,1), rayPath(:,2), rayPath(:,3), 'color', rayCols(iOrigin,:));
         end
         title('Spot diagram')
     else
         % Plot ray path in object
         figure; subplot(1,3,1); hold on; axis equal;
+        view(0, 0)
+        
         for iOrigin = 1:nOrigins
             rayPath = permute(rayPathArray(:, :, iOrigin), [2 1]);
 
-            plot3(rayPath(:,1), rayPath(:,2), rayPath(:,3));
+            plot3(rayPath(:,1), rayPath(:,2), rayPath(:,3), 'color', rayCols(iOrigin,:));
         end
         title('Plot ray path')
         
-        % Plot analytic ray path - for on axis rays on central y axis
+        % plot lines at top and bottom
+        line([1 volumeSize(1)]*voxelSize, [1 1]*volumeSize(2)/2*voxelSize, ...
+            [1 1]*zSteps(bottomZ), 'color', 'b')
+        
+        line([1 volumeSize(1)]*voxelSize, [1 1]*volumeSize(2)/2*voxelSize, ...
+            [1 1]*zSteps(topZ), 'color', 'b')
+        
+        % Plot analytic ray path - for on axis rays along central y axis
         subplot(1,3,2); hold on; axis equal;
+        view(0, 0)
         
         trueRayPathArray = zeros(3, volumeSize(3), nOrigins)*NaN;
         
         fiberCentreX = volumeSize(1)/2*voxelSize;
         
-        %%% Test comapred to paper       
-            %%% Paper possibly wrongly labeled, ray should bend away from normal 
+        %%% Test compared to paper       
+            %%% Paper possibly wrongly labeled, ray should bend away from surface normal 
 %         rayOrigins(1,:) = [volumeSize(1)/2 + radius/2/voxelSize, volumeSize(2)/2, 1]*voxelSize;
 %         rayOrigins(2,:) = [volumeSize(1)/2 - radius/2/voxelSize, volumeSize(2)/2, 1]*voxelSize;
 %         nOrigins = 2;
         
+        warning('Test solution may be wrong, refraction also doesnt match paper')
+
         for iOrigin = 1:nOrigins
             tempRayPath = zeros(3, volumeSize(3))*NaN;
             
-            if rayOrigins(iOrigin,2) ~= volumeSize(2)/2*voxelSize
-                error('Analytic solution only set up for Y on midline')
+            if rayOrigins(iOrigin,2) ~= volumeSize(2)/2*voxelSize | ... 
+                    any(startRayT - [0, 0, 1])
+                %%% Can gernalize to X component and off-axis rays from
+                %%% Section 5.3 in Merchland 1978
+                
+                error('Analytic solution only set up for Y on midline and parallel rays')
             end
             
             % Check it's within fiber radius
@@ -330,17 +467,24 @@ else
                 tempRayPath(3,:) = zSteps;
 
                 % Get initial RI
-                initalRI = lensRIVolume(round(rayOrigins(iOrigin,1)/voxelSize), ...
-                    round(rayOrigins(iOrigin,2)/voxelSize), bottomZ);
+%                 initalRI = lensRIVolume(round(rayOrigins(iOrigin,1)/voxelSize), ...
+%                     round(rayOrigins(iOrigin,2)/voxelSize), bottomZ);
+                initalRI = sqrt(2.5-(tempRayPath(1,bottomZ-1))^2);
 
+                rayPeriod = 2*pi*initalRI;
+                
+                %%% This lets groups split, where as sim keeps together...
+                
                 % Ray path in fiber - Nishidate 2011, eqn 31
+                % Corresponds to eqn. 5.41 from Merchland 1978, where b = 1
                 tempRayPath(1, bottomZ:topZ) = tempRayPath(1,bottomZ-1)*cos((zSteps(bottomZ:topZ) - ...
                     zSteps(bottomZ))/initalRI);
 
                 % Ray path after fiber - add fiber centre back for X
-                finalRI = lensRIVolume(round((tempRayPath(1, topZ)+fiberCentreX)/voxelSize), ...
-                    round(rayOrigins(iOrigin,2)/voxelSize), topZ);
-
+%                 finalRI = lensRIVolume(round((tempRayPath(1, topZ)+fiberCentreX)/voxelSize), ...
+%                     round(rayOrigins(iOrigin,2)/voxelSize), topZ);
+                finalRI = sqrt(2.5-(tempRayPath(1, topZ))^2);
+                
                 qc = -(tempRayPath(1,bottomZ))*sin((zSteps(topZ)-zSteps(bottomZ))/initalRI);
 
                 %qc = -tempRayPath(1,bottomZ)*sin(10)/initalRI;
@@ -376,10 +520,16 @@ else
                 
                 line([0 4]*vec(1) + tempRayPath(1, topZ), [0 4]*vec(2) + tempRayPath(2, topZ), ...
                     [0 4]*vec(3) + tempRayPath(3, topZ), 'color', 'g')
+                
+                % Point on one period
+                %plot3(tempRayPath(1,1), tempRayPath(2,1), tempRayPath(3,bottomZ) + rayPeriod, 'rx');
+                
+                % Point at second center after some dispersion
+                plot3(fiberCentreX, tempRayPath(2,1), tempRayPath(3,bottomZ) + rayPeriod*3/4, 'rx');
             end
             
-            plot3(tempRayPath(1,:), tempRayPath(2,:), tempRayPath(3,:), 'r');
-                
+            plot3(tempRayPath(1,:), tempRayPath(2,:), tempRayPath(3,:), 'color', rayCols(iOrigin,:)); 
+            
             trueRayPathArray(:,:,iOrigin) = tempRayPath;
         end
         % plot lines at top and bottom
@@ -389,9 +539,7 @@ else
         line([1 volumeSize(1)]*voxelSize, [1 1]*volumeSize(2)/2*voxelSize, ...
             [1 1]*zSteps(topZ), 'color', 'b')
         
-        title('Plot true ray path - post refraction wrong?')
-        
-        warning('Refraction after fibre probably wrong')
+        title('Plot true ray path - check all')
         
         % Plot X error along Z
         subplot(1,3,3); hold on; axis equal;
@@ -400,8 +548,13 @@ else
             
             tempRayPath = permute(trueRayPathArray(:, :, iOrigin), [2 1]);
            
-            plot(rayPath(:,1) - tempRayPath(:,1), zSteps)
+            plot(rayPath(:,1) - tempRayPath(:,1), zSteps, 'color', rayCols(iOrigin,:))
         end
+        
+        line([-2 2]*voxelSize, [1 1]*zSteps(bottomZ), 'color', 'b')
+        
+        line([-2 2]*voxelSize, [1 1]*zSteps(topZ), 'color', 'b')
+        
         title('Ray error')
     end
 end
