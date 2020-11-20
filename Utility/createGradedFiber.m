@@ -26,6 +26,8 @@ function [lensRIVolume]  = createGradedFiber(radiusPixels, fiberLengthPixels, vo
                 % Corresponds to eqn. 5.34 from Merchland 1978, where b = 1
                     % Note, 2.5 represents No^2
                 lensRIVolume(i,j,pixelsToFill) = sqrt(2.5-(r/radiusPixels)^2);
+                
+                %lensRIVolume(i,j,pixelsToFill) = sqrt(2.5)*ex(-)
             end
         end
     end

@@ -45,7 +45,7 @@ limitToLens = 1;
     exteriorRI = 1;
 
 % Options, 1, 4, 5, 45 - could add 3        
-interpType = '1';        
+interpType = '5';        
 
 initialDeltaS = 10^-3;
         
@@ -74,14 +74,35 @@ elseif useTestData
     goodVolume = ~isnan(lensRIVolume);
     
     lensRIVolume(isnan(lensRIVolume)) = exteriorRI;
-    
+
+    % Get surface voxels
+    tempVolume = imdilate(~goodVolume, strel('Sphere',1)) & goodVolume;
+
+    surfaceInds = find(tempVolume);
+
+    [surfaceX, surfaceY, surfaceZ] = ind2sub(volumeSize, surfaceInds);
+
+    bottomZ = min(surfaceZ);
+
+    topZ = max(surfaceZ);
+
     figure;
-    subplot(1,2,1);
+    subplot(1,3,1);
     imshow((lensRIVolume(:,:,round(volumeSize(3)/2)))/(max(lensRIVolume(:))))
     
-    subplot(1,2,2);
+    subplot(1,3,2);
     imshow(permute((lensRIVolume(:,round(volumeSize(2)/2),:))/...
         (max(lensRIVolume(:))), [1 3 2]))
+
+    subplot(1,3,3); hold on
+    plot(lensRIVolume(:,round(volumeSize(2)/2),bottomZ),'b');
+    
+    centreLine = find(goodVolume(:,round(volumeSize(2)/2),bottomZ));
+    tempRadius = sqrt((centreLine - volumeSize(1)/2).^2 + ...
+        (round(volumeSize(2)/2) - volumeSize(2)/2)^2 );
+    plot(centreLine, sqrt(2.5-(tempRadius*voxelSize/radius).^2));
+    
+    plot(centreLine, sqrt(2.5)*exp(-(1/(2*pi*sqrt(2.5)))^2*(tempRadius*voxelSize/radius).^2/2), 'g');
 end
 
 %% Do general set up
@@ -95,17 +116,6 @@ else
         error('NaNs in lensRIVolume?')
     end
 end
-
-% Get surface voxels
-tempVolume = imdilate(~goodVolume, strel('Sphere',1)) & goodVolume;
-
-surfaceInds = find(tempVolume);
-
-[surfaceX, surfaceY, surfaceZ] = ind2sub(volumeSize, surfaceInds);
-
-bottomZ = min(surfaceZ);
-
-topZ = max(surfaceZ);
 
 plotInds = 1:length(surfaceX);
 
@@ -257,6 +267,9 @@ for iOrigin = 1:nOrigins
             [x, t, deltaS] = ray_interpolation(interpType, 'iso', x0', t0', deltaS, testCoords*voxelSize, ...
                 testInds, lensRIVolume);
 
+%             [x, t, deltaS] = ray_interpolation(interpType, 'iso', x0', t0', deltaS, volCoords(goodInds,:), ...
+%                 goodInds, lensRIVolume);
+            
             rayX = x';
             
             rayT = t';
@@ -321,18 +334,12 @@ else
         view(0, 0)
         trueRayPathArray = zeros(3, volumeSize(3), nOrigins)*NaN;
         
-        lensCentreX = volumeSize(1)/2*voxelSize;
-        
-        if rem(volumeSize(1), 2) == 0
-            lensCentreZ = zSteps(volumeSize(1)/2);
-        else
-            lensCentreZ = mean( zSteps( floor(volumeSize(1)/2):ceil(volumeSize(1)/2)));
-        end
+        lensCentre = volumeSize/2*voxelSize;
         
         for iOrigin = 1:nOrigins
             tempRayPath = zeros(3, volumeSize(3))*NaN;
             
-            if rayOrigins(iOrigin,2) ~= volumeSize(2)/2*voxelSize | ... 
+            if rayOrigins(iOrigin,2) ~= lensCentre(2) | ... 
                     any(startRayT - [0, 0, 1])
                 %%% Can gernalize to X component and off-axis rays from
                 %%% Eq 2 in Babayigit ... Turduev 2019
@@ -341,7 +348,7 @@ else
             end
             
             % Check it's within fiber radius
-            if abs(rayOrigins(iOrigin,1)-lensCentreX) < radius
+            if abs(rayOrigins(iOrigin,1)-lensCentre(1)) < radius
 
                 %%% Later, use exact points intersection point for start and end
                 
@@ -352,20 +359,21 @@ else
                 startZ = startZ(1);
                 
                 % Just a line up to enterance
-                tempRayPath(1,1:startZ-1) = rayOrigins(iOrigin,1)-lensCentreX; % offset to fiber centre
+                tempRayPath(1,1:startZ-1) = rayOrigins(iOrigin,1)-lensCentre(1); % offset to fiber centre
                 tempRayPath(2,:) = rayOrigins(iOrigin,2);
-                tempRayPath(3,:) = zSteps - lensCentreZ;            
+                tempRayPath(3,:) = zSteps - lensCentre(3);            
 
+                %%% Doesn't account for any y offset in ray as fiber does
                 tempRayPath(1, startZ:topZ) = tempRayPath(1,1)*(tempRayPath(3,startZ)*tempRayPath(3,startZ:topZ) + ...
                     radius*sqrt(radius^2 + tempRayPath(3,startZ)^2 - tempRayPath(3,startZ:topZ).^2))/...
                     (tempRayPath(3,startZ)^2 + radius^2);
 
-                %%% Plot ray afterwards?
+                %%% Doesn't plot ray after exit
                 tempRayPath(:, topZ+1:end) = NaN;
                 
                 % Add fiber centre back for X
-                tempRayPath(1,:) = tempRayPath(1,:) + lensCentreX;
-                tempRayPath(3,:) = tempRayPath(3,:) + lensCentreZ;   
+                tempRayPath(1,:) = tempRayPath(1,:) + lensCentre(1);
+                tempRayPath(3,:) = tempRayPath(3,:) + lensCentre(3);   
             else
                 % outside fiber, just propogate along z
                 
@@ -437,7 +445,7 @@ else
         
         trueRayPathArray = zeros(3, volumeSize(3), nOrigins)*NaN;
         
-        fiberCentreX = volumeSize(1)/2*voxelSize;
+        fiberCentre = volumeSize(1:2)/2*voxelSize;
         
         %%% Test compared to paper       
             %%% Paper possibly wrongly labeled, ray should bend away from surface normal 
@@ -450,7 +458,7 @@ else
         for iOrigin = 1:nOrigins
             tempRayPath = zeros(3, volumeSize(3))*NaN;
             
-            if rayOrigins(iOrigin,2) ~= volumeSize(2)/2*voxelSize | ... 
+            if rayOrigins(iOrigin,2) ~= fiberCentre(2) | ... 
                     any(startRayT - [0, 0, 1])
                 %%% Can gernalize to X component and off-axis rays from
                 %%% Section 5.3 in Merchland 1978
@@ -459,17 +467,17 @@ else
             end
             
             % Check it's within fiber radius
-            if abs(rayOrigins(iOrigin,1)-fiberCentreX) < radius
+            if abs(rayOrigins(iOrigin,1)-fiberCentre(1)) < radius
             
                 % Just a line up to enterance
-                tempRayPath(1,1:bottomZ-1) = rayOrigins(iOrigin,1)-fiberCentreX; % offset to fiber centre
-                tempRayPath(2,:) = rayOrigins(iOrigin,2);
+                tempRayPath(1,1:bottomZ-1) = rayOrigins(iOrigin,1)-fiberCentre(1); % offset to fiber centre
+                tempRayPath(2,:) = rayOrigins(iOrigin,2)-fiberCentre(2);
                 tempRayPath(3,:) = zSteps;
 
                 % Get initial RI
 %                 initalRI = lensRIVolume(round(rayOrigins(iOrigin,1)/voxelSize), ...
 %                     round(rayOrigins(iOrigin,2)/voxelSize), bottomZ);
-                initalRI = sqrt(2.5-(tempRayPath(1,bottomZ-1))^2);
+                initalRI = sqrt(2.5-sqrt(tempRayPath(1,bottomZ-1)^2 + tempRayPath(2,bottomZ-1)^2)^2);
 
                 rayPeriod = 2*pi*initalRI;
                 
@@ -479,11 +487,14 @@ else
                 % Corresponds to eqn. 5.41 from Merchland 1978, where b = 1
                 tempRayPath(1, bottomZ:topZ) = tempRayPath(1,bottomZ-1)*cos((zSteps(bottomZ:topZ) - ...
                     zSteps(bottomZ))/initalRI);
+                % Fixing RI produces matched result, but requires offset for correct period...
+%                 tempRayPath(1, bottomZ:topZ) = tempRayPath(1,bottomZ-1)*cos((zSteps(bottomZ:topZ) - ...
+%                     zSteps(bottomZ))/(sqrt(2.5)/1.5));
 
                 % Ray path after fiber - add fiber centre back for X
 %                 finalRI = lensRIVolume(round((tempRayPath(1, topZ)+fiberCentreX)/voxelSize), ...
 %                     round(rayOrigins(iOrigin,2)/voxelSize), topZ);
-                finalRI = sqrt(2.5-(tempRayPath(1, topZ))^2);
+                finalRI = sqrt(2.5-sqrt(tempRayPath(1, topZ)^2 + tempRayPath(2, topZ)^2)^2);
                 
                 qc = -(tempRayPath(1,bottomZ))*sin((zSteps(topZ)-zSteps(bottomZ))/initalRI);
 
@@ -500,7 +511,8 @@ else
                     (zSteps(topZ+1:end) - zSteps(topZ)) + tempRayPath(1, topZ);
  
                  % Add fiber centre back for X
-                 tempRayPath(1,:) = tempRayPath(1,:) + fiberCentreX;
+                 tempRayPath(1,:) = tempRayPath(1,:) + fiberCentre(1);
+                 tempRayPath(2,:) = tempRayPath(2,:) + fiberCentre(2);
                  
                  plotVec = 1;
             else
@@ -525,7 +537,7 @@ else
                 %plot3(tempRayPath(1,1), tempRayPath(2,1), tempRayPath(3,bottomZ) + rayPeriod, 'rx');
                 
                 % Point at second center after some dispersion
-                plot3(fiberCentreX, tempRayPath(2,1), tempRayPath(3,bottomZ) + rayPeriod*3/4, 'rx');
+                plot3(fiberCentre(1), tempRayPath(2,1), tempRayPath(3,bottomZ) + rayPeriod*3/4, 'rx');
             end
             
             plot3(tempRayPath(1,:), tempRayPath(2,:), tempRayPath(3,:), 'color', rayCols(iOrigin,:)); 

@@ -13,10 +13,10 @@
 %close all; 
 clear;    
     
-%create luneburg lens
 radius = 1;
 step_size = 0.0625; 
 
+%create luneburg lens
 vol_size = 3*radius/step_size;
 lens_volume = ones(vol_size,vol_size,vol_size);
 
@@ -34,6 +34,26 @@ for i = 1:vol_size
         end
     end
 end
+
+% create fiber
+%%% note fully implement
+% fiber_length = 10;
+% 
+% vol_size = 3*radius/step_size;
+% lens_volume = ones(ceil([vol_size vol_size fiber_length*1.5/step_size]));
+% 
+% for i = 1:vol_size
+%     for j = 1:vol_size
+%        
+%         x = (i-vol_size/2)*step_size;
+%         y = (j-vol_size/2)*step_size;
+%         r = sqrt(x^2+y^2);
+% 
+%         if r < radius
+%             lens_volume(i,j,:) = sqrt(2.5-(r/radius)^2);
+%         end
+%     end
+% end
 
 [temp_x, temp_y, temp_z] = meshgrid(1:vol_size, 1:vol_size, 1:vol_size);
 vol_inds = sub2ind([vol_size, vol_size, vol_size], temp_x(:), temp_y(:), temp_z(:));
