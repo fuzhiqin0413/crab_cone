@@ -7,34 +7,32 @@ function [X, T, new_delta] = ray_interpolation(type, RIType, X0, T0, delta, vol_
     % using coeffs from Table 1
 
     if strcmp(RIType, 'iso')
-        k1 = numerical_dT_dt(X0,...
+        k1 = delta*numerical_dT_dt(X0,...
             vol_coords, vol_inds, lens_volume); 
 
-        % New where both X and T are modified and delta shifted down
         if type ~= '1'
-            k2 = numerical_dT_dt(X0 + delta*(T0/4),...
+            k2 = delta*numerical_dT_dt(X0 + delta*(T0/4) + delta*(k1/4),...
                 vol_coords, vol_inds, lens_volume); 
 
-            % Expanded eqns for X on terms below - all but 2 equal or less than 5e-16 off
-            k3 = numerical_dT_dt(X0 + delta*T0*(3/32+9/32) + delta^2*(k1*(9/32*1/4)),...
+            k3 = delta*numerical_dT_dt(X0 + delta*T0*(3/8) + delta*(k1*3/32 +k2*9/32),...
                 vol_coords, vol_inds, lens_volume); 
 
-            k4 = numerical_dT_dt(X0 + delta*T0*(1932/2197-7200/2197+7296/2197)+ ...
-                delta^2*(k1*(-7200/2197*1/4 + 7296/2197*3/32) + k2*(7296/2197*9/32)),...
+            k4 = delta*numerical_dT_dt(X0 + delta*T0*(12/13)+ ...
+                delta*(k1*1932/2197 +k2*-7200/2197 +k3*7296/2197),...
                 vol_coords, vol_inds, lens_volume); 
 
-            %%% Difference in K1 terms for X
-            k5 = numerical_dT_dt(X0 + delta*T0*(439/216 - 8 +3680/513 - 845/4104) + ...
-                delta^2*(k1*(-8/4 + 3680/513*3/32 - 845/4104*1932/2197) +k2*(3680/513*9/32 -845/4104*-7200/2197) +k3*(-845/4104*7296/2197)),...
+            k5 = delta*numerical_dT_dt(X0 + delta*T0 + ...
+                delta*(k1*439/216 +k2*-8 +k3*3680/513 +k4*-845/4104),...
                 vol_coords, vol_inds, lens_volume); 
 
-            %%% Difference in K4 term for X
-            k6 = numerical_dT_dt(X0 + delta*T0*(-8/27 + 2 - 3544/2565 + 1859/4104 - 11/40) + ...
-                delta^2*(k1*(2*1/4 - 3544/2565*3/32 +1859/4104*1932/2197 -11/40*439/216) +k2*(-3544/2565*9/32 + 1859/4104*-7200/2197 - 11/40*-8) +k3*(1859/4104*7296/2197  - 11/40*3680/513) +k4*(-11/40*-845/4104)),...
+            k6 = delta*numerical_dT_dt(X0 + delta*T0*(1/2) + ...
+                delta*(k1*-8/27 +k2*2 +k3*-3544/2565 +k4*1859/4104 +k5*-11/40),...
                 vol_coords, vol_inds, lens_volume); 
 
         end
     elseif strcmp(RIType, 'aniso')
+        
+        error('Adapted treatment from *Upgrading ... for second order* paper, seems wrong')
         % treat as anisotropic
         k1 = numerical_dt_ds(X0, ...
             T0,...
@@ -44,6 +42,7 @@ function [X, T, new_delta] = ray_interpolation(type, RIType, X0, T0, delta, vol_
         if type ~= '1'
             negT = 1; % set to 0 for testing
             
+            %%% Adjust to match iso
             k2 = numerical_dt_ds(X0 + delta*(T0/4), ...
                 T0 +delta*(k1/4)*negT,...
                 vol_coords, vol_inds, lens_volume); 
@@ -79,19 +78,33 @@ function [X, T, new_delta] = ray_interpolation(type, RIType, X0, T0, delta, vol_
     if type == '1'
         % Euler solver
         X = X0 + delta*T0;
-        T = T0 + delta*k1;
+        T = T0 + k1;
         
         new_delta = delta;
         
     elseif type == '4'
-        % Shifted delta down as in 5th order code
-        T = T0 + delta*(k1*25/216 +k3*1408/2565 +k4*2197/4104 + k5*-1/5);
-        % 4th order coeffs
+
+        T = T0 + (k1*25/216 +k3*1408/2565 +k4*2197/4104 + k5*-1/5);
+
+        % Not really sure these are correct
+            %%% Would be good to get alternate reference to Upgrading paper
         k1C = 1408/2565*3/32 + 2197/4104*1932/2197 + -1/5*439/216;
         k2C = 1408/2565*9/32 + 2197/4104*-7200/2197 + -1/5*-8; %close to zero
         k3C = 2197/4104*7296/2197 + -1/5*3680/513;
         k4C = -1/5*-845/4104;
-        X = X0 + delta*T0 + delta^2*(k1*k1C + k2*k2C + k3*k3C + k4*k4C);
+        X = X0 + delta*(T0 + k1*k1C + k2*k2C + k3*k3C + k4*k4C);
+        
+        % From Shwarma, generaly taken as reference.
+%         A = delta*numerical_dT_dt(X0, vol_coords, vol_inds, lens_volume); 
+%         B = delta*numerical_dT_dt(X0+delta*T0/2    +delta*A/8, vol_coords, vol_inds, lens_volume);
+%         C = delta*numerical_dT_dt(X0+delta*T0    +delta*B/2, vol_coords, vol_inds, lens_volume);
+%         
+%         X2 = X0 + delta*(T0 + (A + 2*B)/6); %b coeffs should add to 0.5
+%         T2 = T0 + (A + 4*B + C)/6;
+%         
+%         T - T2
+%         
+%         X - X2
         
         new_delta = delta;
         

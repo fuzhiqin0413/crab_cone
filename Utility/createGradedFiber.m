@@ -1,4 +1,4 @@
-function [lensRIVolume]  = createGradedFiber(radiusPixels, fiberLengthPixels, volumeSize)
+function [lensRIVolume]  = createGradedFiber(radiusPixels, fiberLengthPixels, volumeSize, n0, alpha, voxelSize)
     % As described in Nishidate 2011 eqn. 30
 
     lensRIVolume = zeros(volumeSize)*NaN;
@@ -10,8 +10,6 @@ function [lensRIVolume]  = createGradedFiber(radiusPixels, fiberLengthPixels, vo
     % Centre fiber around middle of volume
     pixelsToFill = round(volumeSize(3)/2-fiberLengthPixels/2):round(volumeSize(3)/2+fiberLengthPixels/2);
      
-    warning('RI changed from 2.5')
-
     % Iterate through x and y to assign RI along z
     for i = 1:volumeSize(1)
         
@@ -25,9 +23,9 @@ function [lensRIVolume]  = createGradedFiber(radiusPixels, fiberLengthPixels, vo
             if r < radiusPixels
                 % Corresponds to eqn. 5.34 from Merchland 1978, where b = 1
                     % Note, 2.5 represents No^2
-                lensRIVolume(i,j,pixelsToFill) = sqrt(2.5-(r/radiusPixels)^2);
-                
-                %lensRIVolume(i,j,pixelsToFill) = sqrt(2.5)*ex(-)
+%                 lensRIVolume(i,j,pixelsToFill) = sqrt(2.5-(r/radiusPixels)^2);
+
+                lensRIVolume(i,j,pixelsToFill) = sqrt(n0^2*(1-alpha^2*(r*voxelSize).^2));
             end
         end
     end

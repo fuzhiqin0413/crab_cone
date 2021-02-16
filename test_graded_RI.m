@@ -236,7 +236,7 @@ function [X, T, new_delta_t] = ray_interpolation(type, X0, T0, delta_t, vol_coor
         new_delta_t = delta_t;
         
     elseif type == 2
-        % RK4 standard - works as Sharma
+        % RK4 standard - works as Sharma (but not exactly the same???)
         % general description from Meggit and wiki is a confusing
         % explicit method on wiki and second-order eqn w/ Simpson's rule from Scaraborough - Numerical Mathmatical Analysis p 382 (ref- from Sharma) are helpful
             % can also derive w/ first order simultaneous eqns?
@@ -268,7 +268,7 @@ function [X, T, new_delta_t] = ray_interpolation(type, X0, T0, delta_t, vol_coor
         k6 = delta_t*numerical_dT_dt(X0+delta_t*T0/2        +delta_t*(k1*-8/27 +k2*2 +k3*-3544/2565 +k4*1859/4104 +k5*-11/40), vol_coords, vol_inds, lens_volume); 
         
         T_4th = T0 +k1*25/216 +k3*1408/2565 +k4*2197/4104 + k5*-1/5;
-        T_5th = T0 +k1*16/135 +k3*6656/12825 +k4*28561/56430 +k5*-9/50 +k6*2/55; %these b coeffs should sum to 1
+        T_5th = T0 +k1*16/135 +k3*6656/12825 +k4*28561/56430 +k5*-9/50 +k6*2/55; %these coeffs should sum to 1
         
         % from Upgrading Runge-Kutta-Fehlberg Method (RKFM) for Second Order Ordinary Differential Equations (note error in 5th order coeffs)
                 % in same manner as Scaraborough
@@ -285,7 +285,7 @@ function [X, T, new_delta_t] = ray_interpolation(type, X0, T0, delta_t, vol_coor
         k3C = 28561/56430*7296/2197 + -9/50*3680/513 + 2/55*-3544/2565;
         k4C = -9/50*-845/4104 + 2/55*1859/4104;
         k5C = 2/55*-11/40; 
-        X_5th = X0 + delta_t*(T0+(k1*k1C + k3*k3C + k4*k4C + k5*k5C)); %these be coeffs should sum to 0.5
+        X_5th = X0 + delta_t*(T0+(k1*k1C + k3*k3C + k4*k4C + k5*k5C)); %these coeffs should sum to 0.5
         
         % Get error - normalize position terms to meters
         % As eqn 16

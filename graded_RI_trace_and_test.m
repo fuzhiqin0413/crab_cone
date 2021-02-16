@@ -38,16 +38,18 @@ radius = 1; %mm - used for both lens and fiber
         
     createCreateGradedFiber = 1;
         fiberLength = 10;
-
+        n0 = sqrt(2.5);
+        alpha = 1;
+        
 % 0 will search all voxels        
 limitToLens = 1;
     %Only used if above is zero
     exteriorRI = 1;
 
 % Options, 1, 4, 5, 45 - could add 3        
-interpType = '5';        
+interpType = '4';        
 
-initialDeltaS = 10^-3;
+initialDeltaS = 10^-4;
         
 testPlot = 1;
 %% Load or create test data     
@@ -68,7 +70,8 @@ elseif useTestData
     elseif createCreateGradedFiber
         volumeSize = ceil([radius*2 radius*2 fiberLength]*1.5/voxelSize);
         
-        lensRIVolume = createGradedFiber(radius/voxelSize, fiberLength/voxelSize, volumeSize);
+        lensRIVolume = createGradedFiber(radius/voxelSize, fiberLength/voxelSize, volumeSize, ...
+            n0, alpha, voxelSize);
     end
     
     goodVolume = ~isnan(lensRIVolume);
@@ -100,9 +103,9 @@ elseif useTestData
     centreLine = find(goodVolume(:,round(volumeSize(2)/2),bottomZ));
     tempRadius = sqrt((centreLine - volumeSize(1)/2).^2 + ...
         (round(volumeSize(2)/2) - volumeSize(2)/2)^2 );
-    plot(centreLine, sqrt(2.5-(tempRadius*voxelSize/radius).^2));
+    %plot(centreLine, sqrt(2.5-(tempRadius*voxelSize/radius).^2));
     
-    plot(centreLine, sqrt(2.5)*exp(-(1/(2*pi*sqrt(2.5)))^2*(tempRadius*voxelSize/radius).^2/2), 'g');
+    plot(centreLine, sqrt(n0^2*(1-alpha^2*(tempRadius*voxelSize).^2)), 'g');
 end
 
 %% Do general set up
@@ -155,7 +158,7 @@ if testPlot
         surfaceZ(plotInds)*voxelSize, '.')
 end
 
-for iOrigin = 1:nOrigins
+for iOrigin = 3% :nOrigins
     %%% Could set up to do for series of ray angles
     rayT = startRayT; %3x1 : ray will move from bottom to top
 
@@ -304,7 +307,7 @@ for iOrigin = 1:nOrigins
     pause(0.01)
 end
 %% Plot results
-close all
+% close all
 
 if ~useTestData
 
@@ -448,13 +451,6 @@ else
         fiberCentre = volumeSize(1:2)/2*voxelSize;
         
         %%% Test compared to paper       
-            %%% Paper possibly wrongly labeled, ray should bend away from surface normal 
-%         rayOrigins(1,:) = [volumeSize(1)/2 + radius/2/voxelSize, volumeSize(2)/2, 1]*voxelSize;
-%         rayOrigins(2,:) = [volumeSize(1)/2 - radius/2/voxelSize, volumeSize(2)/2, 1]*voxelSize;
-%         nOrigins = 2;
-        
-        warning('Test solution may be wrong, refraction also doesnt match paper')
-
         for iOrigin = 1:nOrigins
             tempRayPath = zeros(3, volumeSize(3))*NaN;
             
@@ -475,18 +471,19 @@ else
                 tempRayPath(3,:) = zSteps;
 
                 % Get initial RI
-%                 initalRI = lensRIVolume(round(rayOrigins(iOrigin,1)/voxelSize), ...
-%                     round(rayOrigins(iOrigin,2)/voxelSize), bottomZ);
-                initalRI = sqrt(2.5-sqrt(tempRayPath(1,bottomZ-1)^2 + tempRayPath(2,bottomZ-1)^2)^2);
+                initalRI = lensRIVolume(round(rayOrigins(iOrigin,1)/voxelSize), ...
+                    round(rayOrigins(iOrigin,2)/voxelSize), bottomZ);
+%                 initalRI = sqrt(2.5-sqrt(tempRayPath(1,bottomZ-1)^2 + tempRayPath(2,bottomZ-1)^2)^2);
 
-                rayPeriod = 2*pi*initalRI;
-                
-                %%% This lets groups split, where as sim keeps together...
-                
                 % Ray path in fiber - Nishidate 2011, eqn 31
-                % Corresponds to eqn. 5.41 from Merchland 1978, where b = 1
+%                 tempRayPath(1, bottomZ:topZ) = tempRayPath(1,bottomZ-1)*cos((zSteps(bottomZ:topZ) - ...
+%                     zSteps(bottomZ))/initalRI);
+
+                % Gives correct result? From Merchland 5.41 and other refs,
+                % not really clear why multiplication by n0
                 tempRayPath(1, bottomZ:topZ) = tempRayPath(1,bottomZ-1)*cos((zSteps(bottomZ:topZ) - ...
-                    zSteps(bottomZ))/initalRI);
+                    zSteps(bottomZ))*alpha*n0);
+                
                 % Fixing RI produces matched result, but requires offset for correct period...
 %                 tempRayPath(1, bottomZ:topZ) = tempRayPath(1,bottomZ-1)*cos((zSteps(bottomZ:topZ) - ...
 %                     zSteps(bottomZ))/(sqrt(2.5)/1.5));
@@ -494,27 +491,27 @@ else
                 % Ray path after fiber - add fiber centre back for X
 %                 finalRI = lensRIVolume(round((tempRayPath(1, topZ)+fiberCentreX)/voxelSize), ...
 %                     round(rayOrigins(iOrigin,2)/voxelSize), topZ);
-                finalRI = sqrt(2.5-sqrt(tempRayPath(1, topZ)^2 + tempRayPath(2, topZ)^2)^2);
-                
-                qc = -(tempRayPath(1,bottomZ))*sin((zSteps(topZ)-zSteps(bottomZ))/initalRI);
-
-                %qc = -tempRayPath(1,bottomZ)*sin(10)/initalRI;
-                
-                % Ray tangent at exit - eqn 32
-                vec = [qc, 0, initalRI]/finalRI;
-
-                % Refracted ray tangent - eqn 33
-                rVec = [finalRI*qc, 0, sqrt(initalRI^2 + (1 - finalRI^2)*qc^2)]/finalRI;
-
-                % Actual path - eqn 34
-                tempRayPath(1, topZ+1:end) = finalRI*qc/sqrt(initalRI^2 + (1 - finalRI^2)*qc^2)*...
-                    (zSteps(topZ+1:end) - zSteps(topZ)) + tempRayPath(1, topZ);
- 
-                 % Add fiber centre back for X
+%                 finalRI = sqrt(2.5-sqrt(tempRayPath(1, topZ)^2 + tempRayPath(2, topZ)^2)^2);
+%                 
+%                 qc = -(tempRayPath(1,bottomZ))*sin((zSteps(topZ)-zSteps(bottomZ))/initalRI);
+% 
+%                 %qc = -tempRayPath(1,bottomZ)*sin(10)/initalRI;
+%                 
+%                 % Ray tangent at exit - eqn 32
+%                 vec = [qc, 0, initalRI]/finalRI;
+% 
+%                 % Refracted ray tangent - eqn 33
+%                 rVec = [finalRI*qc, 0, sqrt(initalRI^2 + (1 - finalRI^2)*qc^2)]/finalRI;
+% 
+%                 % Actual path - eqn 34
+%                 tempRayPath(1, topZ+1:end) = finalRI*qc/sqrt(initalRI^2 + (1 - finalRI^2)*qc^2)*...
+%                     (zSteps(topZ+1:end) - zSteps(topZ)) + tempRayPath(1, topZ);
+%  
+%                  % Add fiber centre back for X
                  tempRayPath(1,:) = tempRayPath(1,:) + fiberCentre(1);
                  tempRayPath(2,:) = tempRayPath(2,:) + fiberCentre(2);
                  
-                 plotVec = 1;
+                 plotVec = 0;
             else
                 % outside fiber, just propogate along z
                 
@@ -554,7 +551,7 @@ else
         title('Plot true ray path - check all')
         
         % Plot X error along Z
-        subplot(1,3,3); hold on; axis equal;
+        subplot(1,3,3); hold on; %axis equal;
         for iOrigin = 1:nOrigins
             rayPath = permute(rayPathArray(:, :, iOrigin), [2 1]);
             
@@ -567,6 +564,7 @@ else
         
         line([-2 2]*voxelSize, [1 1]*zSteps(topZ), 'color', 'b')
         
+        xlim([-voxelSize voxelSize]*2)
         title('Ray error')
     end
 end
