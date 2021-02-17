@@ -22,7 +22,8 @@
         % Revise above
         % Do step in to get entry and exit
 
-clear; clc; close all
+clear; 
+clc; close all
 
 %% Set parameters
 voxelSize = 0.065; % mm
@@ -39,17 +40,27 @@ radius = 1; %mm - used for both lens and fiber
     createCreateGradedFiber = 1;
         fiberLength = 10;
         n0 = sqrt(2.5);
-        alpha = 1;
+        alpha = 1/sqrt(2.5);
         
 % 0 will search all voxels        
 limitToLens = 1;
     %Only used if above is zero
     exteriorRI = 1;
 
-% Options, 1, 4, 5, 45 - could add 3        
-interpType = '4';        
+% Options, 1, 4(S B F), 5(B F), 45       
+interpType = '45';        
 
-initialDeltaS = 10^-4;
+% Manual testing, a bit crap...
+iRayTest = 3;
+
+testResults = [];
+
+if iRayTest == 1
+    testTypes = cell(3,1);
+    testResults = cell(3,1);
+end
+
+initialDeltaS = 10^-3;
         
 testPlot = 1;
 %% Load or create test data     
@@ -103,7 +114,8 @@ elseif useTestData
     centreLine = find(goodVolume(:,round(volumeSize(2)/2),bottomZ));
     tempRadius = sqrt((centreLine - volumeSize(1)/2).^2 + ...
         (round(volumeSize(2)/2) - volumeSize(2)/2)^2 );
-    %plot(centreLine, sqrt(2.5-(tempRadius*voxelSize/radius).^2));
+    
+    plot(centreLine, sqrt(2.5-(tempRadius*voxelSize/radius).^2), 'rx');
     
     plot(centreLine, sqrt(n0^2*(1-alpha^2*(tempRadius*voxelSize).^2)), 'g');
 end
@@ -132,7 +144,7 @@ volCoords = ([tempX(:), tempY(:), tempZ(:)])*voxelSize;
 zSteps = (1:volumeSize(3))*voxelSize;
 
 %%% Replace with meshgrid later on
-xStartPoints = 1:5:volumeSize(1);
+xStartPoints = volumeSize(1)*0.25; %1:5:volumeSize(1);
 
 rayOrigins = [xStartPoints(:), ones(numel(xStartPoints),1)*volumeSize(2)/2,  ...
     ones(numel(xStartPoints),1)]*voxelSize; 
@@ -158,7 +170,7 @@ if testPlot
         surfaceZ(plotInds)*voxelSize, '.')
 end
 
-for iOrigin = 3% :nOrigins
+for iOrigin = 1% 1:nOrigins
     %%% Could set up to do for series of ray angles
     rayT = startRayT; %3x1 : ray will move from bottom to top
 
@@ -306,6 +318,11 @@ for iOrigin = 3% :nOrigins
 
     pause(0.01)
 end
+
+if ~isempty(testResults)
+    testResults{iRayTest} = rayPathArray;
+    testTypes{iRayTest} = interpType
+end
 %% Plot results
 % close all
 
@@ -428,10 +445,28 @@ else
         figure; subplot(1,3,1); hold on; axis equal;
         view(0, 0)
         
-        for iOrigin = 1:nOrigins
-            rayPath = permute(rayPathArray(:, :, iOrigin), [2 1]);
+        if ~isempty(testResults)
+           for iResult = 1:length(testResults)
+               
+                rayPathArray = testResults{iResult};
+        
+                for iOrigin = 1:nOrigins
+                    rayPath = permute(rayPathArray(:, :, iOrigin), [2 1]);
+                    if ~isempty(rayPath)
 
-            plot3(rayPath(:,1), rayPath(:,2), rayPath(:,3), 'color', rayCols(iOrigin,:));
+                        plot3(rayPath(:,1), rayPath(:,2), rayPath(:,3));
+                    end
+                end
+
+           end
+           
+           legend(testTypes)
+        else
+            for iOrigin = 1:nOrigins
+                rayPath = permute(rayPathArray(:, :, iOrigin), [2 1]);
+
+                plot3(rayPath(:,1), rayPath(:,2), rayPath(:,3), 'color', rayCols(iOrigin,:));
+            end
         end
         title('Plot ray path')
         
@@ -473,39 +508,17 @@ else
                 % Get initial RI
                 initalRI = lensRIVolume(round(rayOrigins(iOrigin,1)/voxelSize), ...
                     round(rayOrigins(iOrigin,2)/voxelSize), bottomZ);
-%                 initalRI = sqrt(2.5-sqrt(tempRayPath(1,bottomZ-1)^2 + tempRayPath(2,bottomZ-1)^2)^2);
 
                 % Ray path in fiber - Nishidate 2011, eqn 31
+                %%% This seems incorrect
 %                 tempRayPath(1, bottomZ:topZ) = tempRayPath(1,bottomZ-1)*cos((zSteps(bottomZ:topZ) - ...
 %                     zSteps(bottomZ))/initalRI);
 
-                % Gives correct result? From Merchland 5.41 and other refs,
-                % not really clear why multiplication by n0
+                % Gives correct result From Merchland 5.41 and other refs,
                 tempRayPath(1, bottomZ:topZ) = tempRayPath(1,bottomZ-1)*cos((zSteps(bottomZ:topZ) - ...
                     zSteps(bottomZ))*alpha*n0);
                 
-                % Fixing RI produces matched result, but requires offset for correct period...
-%                 tempRayPath(1, bottomZ:topZ) = tempRayPath(1,bottomZ-1)*cos((zSteps(bottomZ:topZ) - ...
-%                     zSteps(bottomZ))/(sqrt(2.5)/1.5));
-
-                % Ray path after fiber - add fiber centre back for X
-%                 finalRI = lensRIVolume(round((tempRayPath(1, topZ)+fiberCentreX)/voxelSize), ...
-%                     round(rayOrigins(iOrigin,2)/voxelSize), topZ);
-%                 finalRI = sqrt(2.5-sqrt(tempRayPath(1, topZ)^2 + tempRayPath(2, topZ)^2)^2);
-%                 
-%                 qc = -(tempRayPath(1,bottomZ))*sin((zSteps(topZ)-zSteps(bottomZ))/initalRI);
-% 
-%                 %qc = -tempRayPath(1,bottomZ)*sin(10)/initalRI;
-%                 
-%                 % Ray tangent at exit - eqn 32
-%                 vec = [qc, 0, initalRI]/finalRI;
-% 
-%                 % Refracted ray tangent - eqn 33
-%                 rVec = [finalRI*qc, 0, sqrt(initalRI^2 + (1 - finalRI^2)*qc^2)]/finalRI;
-% 
-%                 % Actual path - eqn 34
-%                 tempRayPath(1, topZ+1:end) = finalRI*qc/sqrt(initalRI^2 + (1 - finalRI^2)*qc^2)*...
-%                     (zSteps(topZ+1:end) - zSteps(topZ)) + tempRayPath(1, topZ);
+                % Need to get analytic expression after exit
 %  
 %                  % Add fiber centre back for X
                  tempRayPath(1,:) = tempRayPath(1,:) + fiberCentre(1);
@@ -552,14 +565,31 @@ else
         
         % Plot X error along Z
         subplot(1,3,3); hold on; %axis equal;
-        for iOrigin = 1:nOrigins
-            rayPath = permute(rayPathArray(:, :, iOrigin), [2 1]);
-            
-            tempRayPath = permute(trueRayPathArray(:, :, iOrigin), [2 1]);
-           
-            plot(rayPath(:,1) - tempRayPath(:,1), zSteps, 'color', rayCols(iOrigin,:))
-        end
-        
+        if ~isempty(testResults)
+           for iResult = 1:length(testResults)
+               
+               rayPathArray = testResults{iResult};
+               
+               for iOrigin = 1:nOrigins
+                    rayPath = permute(rayPathArray(:, :, iOrigin), [2 1]);
+
+                    tempRayPath = permute(trueRayPathArray(:, :, iOrigin), [2 1]);
+                    if ~isempty(rayPath)
+
+                        plot(rayPath(:,1) - tempRayPath(:,1), zSteps)
+                    end
+               end
+           end
+       else
+            for iOrigin = 1:nOrigins
+                rayPath = permute(rayPathArray(:, :, iOrigin), [2 1]);
+
+                tempRayPath = permute(trueRayPathArray(:, :, iOrigin), [2 1]);
+
+                plot(rayPath(:,1) - tempRayPath(:,1), zSteps, 'color', rayCols(iOrigin,:))
+           end
+       end
+       
         line([-2 2]*voxelSize, [1 1]*zSteps(bottomZ), 'color', 'b')
         
         line([-2 2]*voxelSize, [1 1]*zSteps(topZ), 'color', 'b')
