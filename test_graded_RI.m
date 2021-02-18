@@ -96,7 +96,10 @@ for i = 1:size(ray_origins,2)
         if ~in_graded; ray_X = ray_X + initial_ray_T; end
         
         if sqrt((ray_X(1)-vol_size/2)^2+(ray_X(2)-vol_size/2)^2+(ray_X(3)-vol_size/2)^2)*step_size < radius
+            
             if ~in_graded
+                %%% Strictly speaking should test continuously as no interface to sphere
+                
                 %entry to graded
                 in_graded = 1;
                 ray_x_back = ray_X-initial_ray_T; %step back one

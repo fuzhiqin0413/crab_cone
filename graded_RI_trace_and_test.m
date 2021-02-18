@@ -21,7 +21,8 @@
     %%% To do after debug:
         % Revise above
         % Do step in to get entry and exit
-
+           
+        
 clear; 
 clc; close all
 
@@ -40,16 +41,23 @@ radius = 1; %mm - used for both lens and fiber
     createCreateGradedFiber = 1;
         fiberLength = 10;
         n0 = sqrt(2.5);
-        alpha = 1/sqrt(2.5);
+        alpha = 1/sqrt(2.5); sqrt(2.5);
         
 % 0 will search all voxels        
 limitToLens = 1;
     %Only used if above is zero
     exteriorRI = 1;
 
-% Options, 1, 4(S B F), 5(B F), 45       
-interpType = '45';        
-
+% Options, 1, 4(S, RKN), 5RKN, 45RKN       
+interpType = '4S';        
+    tolerance = 10^-9;
+    
+    % Should be on order of final deltaS
+    initialDeltaS = 10^-2;
+    
+% For fiber - 0.25 is border, 0.375 is 25% and 0.5 is center.    
+startPos = 0.375;    
+    
 % Manual testing, a bit crap...
 iRayTest = 3;
 
@@ -59,8 +67,6 @@ if iRayTest == 1
     testTypes = cell(3,1);
     testResults = cell(3,1);
 end
-
-initialDeltaS = 10^-3;
         
 testPlot = 1;
 %% Load or create test data     
@@ -86,6 +92,8 @@ elseif useTestData
     end
     
     goodVolume = ~isnan(lensRIVolume);
+    
+    goodInds = find(goodVolume);
     
     lensRIVolume(isnan(lensRIVolume)) = exteriorRI;
 
@@ -144,7 +152,7 @@ volCoords = ([tempX(:), tempY(:), tempZ(:)])*voxelSize;
 zSteps = (1:volumeSize(3))*voxelSize;
 
 %%% Replace with meshgrid later on
-xStartPoints = volumeSize(1)*0.25; %1:5:volumeSize(1);
+xStartPoints = volumeSize(1)*startPos; %1:5:volumeSize(1);
 
 rayOrigins = [xStartPoints(:), ones(numel(xStartPoints),1)*volumeSize(2)/2,  ...
     ones(numel(xStartPoints),1)]*voxelSize; 
@@ -159,16 +167,15 @@ rayCols = lines(nOrigins);
 
 rayPathArray = zeros(3, volumeSize(3), nOrigins)*NaN;
 
-enterancePoints = zeros(3, nOrigins)*NaN;
-
-exitPoints = zeros(3, nOrigins)*NaN;
-
 if testPlot
     figure; hold on; axis equal;
     view(0, 0)
     plot3(surfaceX(plotInds)*voxelSize, surfaceY(plotInds)*voxelSize,...
         surfaceZ(plotInds)*voxelSize, '.')
 end
+
+% Turn of warning on singular matrix, otherwise backslash will slow down a lot
+warning('off', 'MATLAB:nearlySingularMatrix')
 
 for iOrigin = 1% 1:nOrigins
     %%% Could set up to do for series of ray angles
@@ -187,28 +194,6 @@ for iOrigin = 1% 1:nOrigins
     
     go = 1;
 
-    %%% just do in main loop, remove from here.
-    
-    % Get initial values for ray-tracer to use (it takes closest 128)
-    % For unit matrix, radius 4 will take ~26 8 (*2?) points
-%     [tempX, tempY, tempZ] = meshgrid((voxelX(1)-4:voxelX(1)+4)', (voxelX(2)-4:voxelX(2)+4)',...
-%         (voxelX(3)-4:voxelX(3)+4)');
-% 
-%     testCoords= [tempX(:), tempY(:), tempZ(:)];
-%     
-%     tempInd = find(testCoords(:,1) < 1 | testCoords(:,2) < 1 | testCoords(:,3) < 1 | ...
-%             testCoords(:,1) > volumeSize(1) | testCoords(:,2) > volumeSize(2) | testCoords(:,3) > volumeSize(3));
-% 
-%     testCoords(tempInd, :) = [];
-% 
-%     testInds = sub2ind(volumeSize, testCoords(:,1), testCoords(:,2), testCoords(:,3));
-% 
-%     [testInds, tempInds] = intersect(testInds, goodInds);
-%     
-%     testCoords = testCoords(tempInds,:);
-    
-    %%% If doing direction updating, calculate RI for initial direction
-    
     deltaS = initialDeltaS;
 
     currentStep = 1;
@@ -216,23 +201,24 @@ for iOrigin = 1% 1:nOrigins
     rayPathArray(:, currentStep, iOrigin) = rayX;
     
     while go
-        % test if nearest voxel is graded or not
-        if goodVolume(voxelX(1), voxelX(2), voxelX(3)) == 0
-            %indicate if border transition
-            if inGraded & testPlot
-                plot3(rayX(1), rayX(2), rayX(3), 'mx')
-                
-                %%% Set up better intersect
-                exitPoints(:, iOrigin) = rayX;
-            end
+        % Test if entering a GRIN area
+        if goodVolume(voxelX(1), voxelX(2), voxelX(3)) == 1 & ~inGraded
+            % entering, need to find intersect to graded volume
             
-            inGraded = 0;
-        else
-            if ~inGraded & testPlot
-                plot3(rayX(1), rayX(2), rayX(3), 'cx')
+            if ~inGraded
                 
-                %Set up better intersect
-                enterancePoints(:, iOrigin) = rayX;
+                if useTestData
+                    if createLunebergLens
+                        % Get sphere intersection
+
+                    elseif createCreateGradedFiber
+                        % Extend up to base
+                        % For now, just change z value
+                        rayX(3) = zSteps(bottomZ);
+                        
+                        %%% For inclined rays, will need to adjust X/Y
+                    end
+                end
             end
             
             inGraded = 1;
@@ -280,7 +266,7 @@ for iOrigin = 1% 1:nOrigins
 
             % Calc is fixed to isotropic RI
             [x, t, deltaS] = ray_interpolation(interpType, 'iso', x0', t0', deltaS, testCoords*voxelSize, ...
-                testInds, lensRIVolume);
+                testInds, lensRIVolume, tolerance);
 
 %             [x, t, deltaS] = ray_interpolation(interpType, 'iso', x0', t0', deltaS, volCoords(goodInds,:), ...
 %                 goodInds, lensRIVolume);
@@ -291,6 +277,12 @@ for iOrigin = 1% 1:nOrigins
         end 
         
         voxelX = round(rayX/voxelSize);
+        
+        % Test if leaving a graded volume
+        if goodVolume(voxelX(1), voxelX(2), voxelX(3)) == 0 & inGraded
+            
+            inGraded = 0;
+        end
         
         % At each voxel step, record path for plotting later 
         if rayX(3) >= zSteps(currentStep+1)
@@ -318,6 +310,10 @@ for iOrigin = 1% 1:nOrigins
 
     pause(0.01)
 end
+
+deltaS
+
+warning('on', 'MATLAB:nearlySingularMatrix')
 
 if ~isempty(testResults)
     testResults{iRayTest} = rayPathArray;
@@ -503,7 +499,8 @@ else
                 % Just a line up to enterance
                 tempRayPath(1,1:bottomZ-1) = rayOrigins(iOrigin,1)-fiberCentre(1); % offset to fiber centre
                 tempRayPath(2,:) = rayOrigins(iOrigin,2)-fiberCentre(2);
-                tempRayPath(3,:) = zSteps;
+                % Use actual z value after step.
+                tempRayPath(3,:) = rayPathArray(3, :, iOrigin);
 
                 % Get initial RI
                 initalRI = lensRIVolume(round(rayOrigins(iOrigin,1)/voxelSize), ...
@@ -511,11 +508,14 @@ else
 
                 % Ray path in fiber - Nishidate 2011, eqn 31
                 %%% This seems incorrect
-%                 tempRayPath(1, bottomZ:topZ) = tempRayPath(1,bottomZ-1)*cos((zSteps(bottomZ:topZ) - ...
+%                 tempRayPath(1, bottomZ:topZ) = tempRayPath(1,bottomZ-1)*cos((tempRayPath(3,bottomZ:topZ) - ...
+%                     zSteps(bottomZ))/1.5);
+                
+%                 tempRayPath(1, bottomZ:topZ) = tempRayPath(1,bottomZ-1)*cos((tempRayPath(3,bottomZ:topZ) - ...
 %                     zSteps(bottomZ))/initalRI);
 
                 % Gives correct result From Merchland 5.41 and other refs,
-                tempRayPath(1, bottomZ:topZ) = tempRayPath(1,bottomZ-1)*cos((zSteps(bottomZ:topZ) - ...
+                tempRayPath(1, bottomZ:topZ) = tempRayPath(1,bottomZ-1)*cos((tempRayPath(3,bottomZ:topZ) - ...
                     zSteps(bottomZ))*alpha*n0);
                 
                 % Need to get analytic expression after exit
@@ -587,6 +587,10 @@ else
                 tempRayPath = permute(trueRayPathArray(:, :, iOrigin), [2 1]);
 
                 plot(rayPath(:,1) - tempRayPath(:,1), zSteps, 'color', rayCols(iOrigin,:))
+                
+                worstError = max(abs(rayPath(:,1) - tempRayPath(:,1))) 
+                
+                endError = abs(rayPath(topZ,1) - tempRayPath(topZ,1))
            end
        end
        
@@ -594,7 +598,7 @@ else
         
         line([-2 2]*voxelSize, [1 1]*zSteps(topZ), 'color', 'b')
         
-        xlim([-voxelSize voxelSize]*2)
+        xlim([-1 1]*10^-5)
         title('Ray error')
     end
 end

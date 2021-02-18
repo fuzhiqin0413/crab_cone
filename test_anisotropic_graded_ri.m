@@ -165,6 +165,8 @@ for i = 1:size(ray_origins,2)
     
     ray_path(isnan(ray_path(:,1)),:) = [];
     
+    error('Check these solutions, am a bit suspecious after GRIN paper')
+    
     % Take analytic solution
     if gradientType
         % axial
@@ -205,6 +207,11 @@ function [X, T, new_delta] = ray_interpolation(type, X0, T0, delta, vol_coords, 
 
     % RKF45 from Nishidate 2011 paper with variable step size 
     % using coeffs from Table 1
+
+    error('Adapted treatment from *Upgrading ... for second order* paper, seems wrong')
+    %%% Switch to a Nystrom method or system of first order equations with RKF4(5)
+    % not Bettis 1973 - as abbreviated form of Nystom without T dependence
+    % is assumed
     
     if 1
         k1 = numerical_dt_ds(X0, ...
@@ -530,6 +537,7 @@ function [dt_ds] = numerical_dt_ds(X, T, vol_coords, vol_inds, lens_volume_seper
                     
                     matB = N_of_X*epsilon_of_s(:,i,j);
                     
+                    warning('Maybe best not to use Pinv?')
                     % Just test matB, matA should be good...
                     if rank(matB) >= 3 % && rank(matA) >= 3 
                         a_of_X(:,i,j) = matA\matB; %20x1 : solves M*A=N*n for a, where N*n is 20x1

@@ -93,6 +93,7 @@ function [dt_ds] = numerical_dt_ds(X, T, vol_coords, vol_inds, lens_volume_seper
                     
                     matB = N_of_X*permute(epsilon_of_s(i,j,:), [3,1,2]);
                     
+                    warning('Maybe best not to use Pinv?')
                     % Just test matB, matA should be good...
                     if rank(matB) >= 3 % && rank(matA) >= 3 
                         a_of_X(i,j,:) = matA\matB; %20x1 : solves M*A=N*n for a, where N*n is 20x1
