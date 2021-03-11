@@ -86,7 +86,7 @@ end
 
 % Grow in steps - set until good connection - 50 to far, 10 to short, 30 is a bit too much
 % May need to clean volume more
-for iStep = 1:20
+for iStep = 1:15
     % And to exterior limits growth to surface voxels
     tic
     enlargedLabels = imdilate(coneExteriorLabels, STREL_18_CONNECTED);
@@ -130,48 +130,147 @@ coneCoordsCells = cell(numTips, 1);
     
 %%% Messing around in this section to get reliable centre line
     % PCA isn't great, neither is pixel centre to tip.
-    % Centre line is better
+    % Centre line from Skeleton is better
+    % Fitting ellipse seems to be quite good, unless there is a lot of
+    % material hanging of side, in which case a ball is made...
+        % Should be easy to flag
     
+grid3D.nx = volumeSize(1); grid3D.ny = volumeSize(2); grid3D.nz = volumeSize(3);
+grid3D.minBound = [1 1 1]';
+grid3D.maxBound = volumeSize';
+                
+% Turn off for backslash in ellipsoid fit
+warning('off', 'MATLAB:nearlySingularMatrix')
+
 for iTip = 400:20:600; %1:numTips;
 
     inds = find(coneLabels == iTip);
     
     coneCoords = labelSurfaceCoords(inds,:);
     
+    %Fitting a an ellipsoid
     
+    [ center, radii, evecs, v, chi2 ] = ellipsoid_fit( coneCoords );
+    
+    % hyperboloid has two negative radii
+    if sum(radii < 0) == 2
+        hyperboloid = 1;
+    elseif sum(radii < 0) == 0   
+        hyperboloid = 0;
+    else
+       error('Check what shape this is') 
+    end
+    
+    [~, maxR] = max(radii);
+    
+    mainVec = evecs(:,maxR);
+    % Main vec can point either direction, 
+    % check angle between vector from center vs line from centre to tip
+    tipVec = tipCoords(iTip,:) - center';
+    tipVec = tipVec/norm(tipVec);
+    
+    if sqrt((mainVec(1)-tipVec(1))^2 + (mainVec(2)-tipVec(2))^2 + (mainVec(3)-tipVec(3))^2) > ...
+            sqrt(2)
+       mainVec = -mainVec; 
+    end
+    
+    % Take intersection to surface in volume
+        % Potential issues if there are multiple intersections/fold backs..
+    [intersectX, intersectY, intersectZ] = amanatideswooalgorithm_efficient(center, mainVec, grid3D, 0,...
+                    [], [], 0);
+    
+    indexList = sub2ind(volumeSize, intersectX, intersectY, intersectZ);
+    
+    intersectInds = find(coneExteriorLabels(indexList) == iTip);
+    
+    % Take correct intersect and flip vector if needed
+    if hyperboloid
+        mainVec = -mainVec;
+        
+        % hyperboloid centre is outside, so first intersect will be tip
+        intersectInds = intersectInds(1);
+    else
+        % ellipsoid centre is inside, so last intersect will be tip
+        intersectInds = intersectInds(end);
+    end
+    
+    intersectCoord = [intersectX(intersectInds), intersectY(intersectInds), intersectZ(intersectInds)];
+
+    % To plot
+    figure; axis equal; hold on
+
+    % Test in original coords
+%     plot3(coneCoords(:,1), coneCoords(:,2), coneCoords(:,3), '.')
+% 
+%     plot3(tipCoords(iTip,1), tipCoords(iTip,2), tipCoords(iTip,3), 'go')
+%     
+%     plot3(intersectCoord(1), intersectCoord(2), intersectCoord(3), 'rx')
+    
+    % Test ellipsoid center and vector
+%     plot3(center(1), center(2), center(3), 'rx')
+%     
+%     line([0 mainVec(1)*100] + center(1), [0 mainVec(2)*100] + center(2),...
+%         [0 mainVec(3)*100] + center(3))
+    
+      % Plut full ellipsoid
+%     mind = min( coneCoords );
+%     maxd = max( coneCoords );
+%     nsteps = 50;
+%     step = ( maxd - mind ) / nsteps;
+%     [ x, y, z ] = meshgrid( linspace( mind(1) - step(1), maxd(1) + step(1), nsteps ), linspace( mind(2) - step(2), maxd(2) + step(2), nsteps ), linspace( mind(3) - step(3), maxd(3) + step(3), nsteps ) );
+% 
+%     Ellipsoid = v(1) *x.*x +   v(2) * y.*y + v(3) * z.*z + ...
+%               2*v(4) *x.*y + 2*v(5)*x.*z + 2*v(6) * y.*z + ...
+%               2*v(7) *x    + 2*v(8)*y    + 2*v(9) * z;
+%     p = patch( isosurface( x, y, z, Ellipsoid, -v(10) ) );
+
+    % rotate cone
+    coneCoords = coneCoords - intersectCoord;
+    
+    % Limit to those quite close
+%     coneCoords(sqrt(coneCoords(:,1).^2 + coneCoords(:,2).^2 + coneCoords(:,3).^2) > 15, :) = [];
+
+    elevationAngle = acos(mainVec(3)/norm(mainVec));
+    
+    azimuthAngle = atan2(mainVec(2), mainVec(1));
+    
+    coneCoords = coneCoords*vrrotvec2mat([0 0 1 azimuthAngle])*vrrotvec2mat([0 1 0 elevationAngle]);
+    
+    plot3(coneCoords(:,1), coneCoords(:,2), coneCoords(:,3), '.')
+
     % Looking at taking centre line on subvolume
     %%% Branches could be a problem as border of neighboring cone often included. 
     %%% Also tends to wander at tip rather than staying straight
     
-    coneBounds = [min(coneCoords(:,1))-1, min(coneCoords(:,2))-1, min(coneCoords(:,3))-1; ...
-                  max(coneCoords(:,1))+1, max(coneCoords(:,2))+1, max(coneCoords(:,3))+1];
-    
-    coneVolume = dataVolume(coneBounds(1,1):coneBounds(2,1), coneBounds(1,2):coneBounds(2,2), ...
-        coneBounds(1,3):coneBounds(2,3));          
-    
-    tempIndex = find(coneVolume);
-
-    nIndex = length(tempIndex); tempCoords = zeros(nIndex, 3);
-
-    [tempCoords(:,1), tempCoords(:,2), tempCoords(:,3)] = ...
-        ind2sub(size(coneVolume), tempIndex);
-    
-%     figure; axis equal
-%     plot3(tempCoords(:,1), tempCoords(:,2), tempCoords(:,3), '.')
-
-    S = skeleton(coneVolume);
-    
-    figure,
-  FV = isosurface(coneVolume,0.5);
-  patch(FV,'facecolor',[1 0 0],'facealpha',0.3,'edgecolor','none');
-  view(3)
-  camlight
-% Display the skeleton
-  hold on;
-  for i=1:length(S)
-    L=S{i};
-    plot3(L(:,2),L(:,1),L(:,3),'-','Color',rand(1,3));
-  end
+%     coneBounds = [min(coneCoords(:,1))-1, min(coneCoords(:,2))-1, min(coneCoords(:,3))-1; ...
+%                   max(coneCoords(:,1))+1, max(coneCoords(:,2))+1, max(coneCoords(:,3))+1];
+%     
+%     coneVolume = dataVolume(coneBounds(1,1):coneBounds(2,1), coneBounds(1,2):coneBounds(2,2), ...
+%         coneBounds(1,3):coneBounds(2,3));          
+%     
+%     tempIndex = find(coneVolume);
+% 
+%     nIndex = length(tempIndex); tempCoords = zeros(nIndex, 3);
+% 
+%     [tempCoords(:,1), tempCoords(:,2), tempCoords(:,3)] = ...
+%         ind2sub(size(coneVolume), tempIndex);
+%     
+% %     figure; axis equal
+% %     plot3(tempCoords(:,1), tempCoords(:,2), tempCoords(:,3), '.')
+% 
+%     S = skeleton(coneVolume);
+%     
+%     figure,
+%   FV = isosurface(coneVolume,0.5);
+%   patch(FV,'facecolor',[1 0 0],'facealpha',0.3,'edgecolor','none');
+%   view(3)
+%   camlight
+% % Display the skeleton
+%   hold on;
+%   for i=1:length(S)
+%     L=S{i};
+%     plot3(L(:,2),L(:,1),L(:,3),'-','Color',rand(1,3));
+%   end
 
     
   % Playing with PCA and volume center
@@ -198,6 +297,7 @@ for iTip = 400:20:600; %1:numTips;
 % %         [0 coneCenter(3)], 'color', 'r')
 end
 
+warning('on', 'MATLAB:nearlySingularMatrix')
 
 %% Distance based approach didn't work well as caught borders of adjacent cones
 if 0
