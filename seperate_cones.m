@@ -2,6 +2,8 @@ clear
 clc
 close all
 
+voxSize = 6.17;
+
 % Load in ct data
 dataFolder = '/Users/gavintaylor/Documents/Shared VM Folder/CT labels for Gavin as tif/LP2_matlab/Labels';
 dataVolume = loadtiffstack(dataFolder, 1);
@@ -122,7 +124,7 @@ end
 %% manipulate cones
 coneCoordsCells = cell(numTips, 1);
 
-% figure; hold on; axis equal
+fC = figure; hold on; axis equal
 
 %%% may need to do something extra to tidy up border shapes
     %%% Clean volume, fill gaps cut through on border.
@@ -134,6 +136,9 @@ coneCoordsCells = cell(numTips, 1);
     % Fitting ellipse seems to be quite good, unless there is a lot of
     % material hanging of side, in which case a ball is made...
         % Should be easy to flag
+        
+    %%% Could also try point could registration done on iffy ones against avg. shape
+        % Allow scale to accomodate size variance, but then just adjust orientation
     
 grid3D.nx = volumeSize(1); grid3D.ny = volumeSize(2); grid3D.nz = volumeSize(3);
 grid3D.minBound = [1 1 1]';
@@ -142,7 +147,17 @@ grid3D.maxBound = volumeSize';
 % Turn off for backslash in ellipsoid fit
 warning('off', 'MATLAB:nearlySingularMatrix')
 
-for iTip = 400:20:600; %1:numTips;
+xStep = 0;
+
+yStep = 0;
+
+offSet = 30;
+
+radiiHist = zeros(numTips,1);
+
+goodConeShapes = cell(numTips,1);
+
+for iTip = 1:numTips;
 
     inds = find(coneLabels == iTip);
     
@@ -164,6 +179,14 @@ for iTip = 400:20:600; %1:numTips;
     [~, maxR] = max(radii);
     
     mainVec = evecs(:,maxR);
+    
+    otherRadii = [1 2 3];
+    
+    otherRadii(maxR) = [];
+    
+    radiiHist(iTip) = radii(maxR)/mean(radii(otherRadii));
+    
+    
     % Main vec can point either direction, 
     % check angle between vector from center vs line from centre to tip
     tipVec = tipCoords(iTip,:) - center';
@@ -183,151 +206,243 @@ for iTip = 400:20:600; %1:numTips;
     
     intersectInds = find(coneExteriorLabels(indexList) == iTip);
     
-    % Take correct intersect and flip vector if needed
-    if hyperboloid
-        mainVec = -mainVec;
+    if ~isempty(intersectInds)
+        % Take correct intersect and flip vector if needed
+        if hyperboloid
+            mainVec = -mainVec;
+
+            % hyperboloid centre is outside, so first intersect will be tip
+            intersectInds = intersectInds(1);
+            
+            col = 'b';
+            
+            % These basically always seem to be well oriented
+        else
+            % ellipsoid centre is inside, so last intersect will be tip
+            intersectInds = intersectInds(end);
+            
+            % Groups seem to be above 2.5 is good, above 2 is ok
+            
+            if abs(radiiHist(iTip)) >2.5
+                col = 'b';
+            elseif radiiHist(iTip) > 2
+                col = 'g';
+            else
+                col = 'm';
+            end
+            
+        end
+
+        intersectCoord = [intersectX(intersectInds), intersectY(intersectInds), intersectZ(intersectInds)];
+
+        % rotate cone
+        coneCoords = coneCoords - intersectCoord;
+
+        % Limit to those quite close
+    %     coneCoords(sqrt(coneCoords(:,1).^2 + coneCoords(:,2).^2 + coneCoords(:,3).^2) > 15, :) = [];
+
+        elevationAngle = acos(mainVec(3)/norm(mainVec));
+
+        azimuthAngle = atan2(mainVec(2), mainVec(1));
+
+        coneCoords = coneCoords*vrrotvec2mat([0 0 1 azimuthAngle])*vrrotvec2mat([0 1 0 elevationAngle]);
+
+        %figure(fC)
+        subplot(1,2,1); hold on; axis equal
+        plot3(coneCoords(:,1) + xStep*offSet, coneCoords(:,2), coneCoords(:,3) + yStep*offSet, '.', 'color', col)
         
-        % hyperboloid centre is outside, so first intersect will be tip
-        intersectInds = intersectInds(1);
+        subplot(1,2,2); hold on
+        if col == 'b'
+            plot3(coneCoords(:,1)*voxSize, coneCoords(:,2)*voxSize, coneCoords(:,3)*voxSize, '.')
+            
+            goodConeShapes{iTip} = coneCoords;
+        end
     else
-        % ellipsoid centre is inside, so last intersect will be tip
-        intersectInds = intersectInds(end);
+        %%% Happens on very short cone
+        coneCoords = coneCoords - tipCoords(iTip,:);
+        
+        subplot(1,2,1); hold on; axis equal
+        plot3(coneCoords(:,1) + xStep*offSet, coneCoords(:,2), coneCoords(:,3) + yStep*offSet, '.', 'color', 'r')
+        
+        % To plot
+%         figure; axis equal; hold on
+% 
+%         %Test in original coords
+%         plot3(coneCoords(:,1), coneCoords(:,2), coneCoords(:,3), '.')
+% 
+%         plot3(tipCoords(iTip,1), tipCoords(iTip,2), tipCoords(iTip,3), 'go')
+% 
+%         plot3(intersectCoord(1), intersectCoord(2), intersectCoord(3), 'rx')
+% 
+%         %Test ellipsoid center and vector
+%         plot3(center(1), center(2), center(3), 'rx')
+% 
+%         line([0 mainVec(1)*100] + center(1), [0 mainVec(2)*100] + center(2),...
+%             [0 mainVec(3)*100] + center(3))
+% 
+%           % Plut full ellipsoid
+%         mind = min( coneCoords );
+%         maxd = max( coneCoords );
+%         nsteps = 50;
+%         step = ( maxd - mind ) / nsteps;
+%         [ x, y, z ] = meshgrid( linspace( mind(1) - step(1), maxd(1) + step(1), nsteps ), linspace( mind(2) - step(2), maxd(2) + step(2), nsteps ), linspace( mind(3) - step(3), maxd(3) + step(3), nsteps ) );
+% 
+%         Ellipsoid = v(1) *x.*x +   v(2) * y.*y + v(3) * z.*z + ...
+%                   2*v(4) *x.*y + 2*v(5)*x.*z + 2*v(6) * y.*z + ...
+%                   2*v(7) *x    + 2*v(8)*y    + 2*v(9) * z;
+%         p = patch( isosurface( x, y, z, Ellipsoid, -v(10) ) ); 
     end
-    
-    intersectCoord = [intersectX(intersectInds), intersectY(intersectInds), intersectZ(intersectInds)];
 
-    % To plot
-    figure; axis equal; hold on
+    xStep = xStep + 1;
+        
+    if xStep > 30
+        xStep = 0;
 
-    % Test in original coords
-%     plot3(coneCoords(:,1), coneCoords(:,2), coneCoords(:,3), '.')
-% 
-%     plot3(tipCoords(iTip,1), tipCoords(iTip,2), tipCoords(iTip,3), 'go')
-%     
-%     plot3(intersectCoord(1), intersectCoord(2), intersectCoord(3), 'rx')
-    
-    % Test ellipsoid center and vector
-%     plot3(center(1), center(2), center(3), 'rx')
-%     
-%     line([0 mainVec(1)*100] + center(1), [0 mainVec(2)*100] + center(2),...
-%         [0 mainVec(3)*100] + center(3))
-    
-      % Plut full ellipsoid
-%     mind = min( coneCoords );
-%     maxd = max( coneCoords );
-%     nsteps = 50;
-%     step = ( maxd - mind ) / nsteps;
-%     [ x, y, z ] = meshgrid( linspace( mind(1) - step(1), maxd(1) + step(1), nsteps ), linspace( mind(2) - step(2), maxd(2) + step(2), nsteps ), linspace( mind(3) - step(3), maxd(3) + step(3), nsteps ) );
-% 
-%     Ellipsoid = v(1) *x.*x +   v(2) * y.*y + v(3) * z.*z + ...
-%               2*v(4) *x.*y + 2*v(5)*x.*z + 2*v(6) * y.*z + ...
-%               2*v(7) *x    + 2*v(8)*y    + 2*v(9) * z;
-%     p = patch( isosurface( x, y, z, Ellipsoid, -v(10) ) );
+        yStep = yStep + 1;
+    end
 
-    % rotate cone
-    coneCoords = coneCoords - intersectCoord;
-    
-    % Limit to those quite close
-%     coneCoords(sqrt(coneCoords(:,1).^2 + coneCoords(:,2).^2 + coneCoords(:,3).^2) > 15, :) = [];
-
-    elevationAngle = acos(mainVec(3)/norm(mainVec));
-    
-    azimuthAngle = atan2(mainVec(2), mainVec(1));
-    
-    coneCoords = coneCoords*vrrotvec2mat([0 0 1 azimuthAngle])*vrrotvec2mat([0 1 0 elevationAngle]);
-    
-    plot3(coneCoords(:,1), coneCoords(:,2), coneCoords(:,3), '.')
-
-    % Looking at taking centre line on subvolume
-    %%% Branches could be a problem as border of neighboring cone often included. 
-    %%% Also tends to wander at tip rather than staying straight
-    
-%     coneBounds = [min(coneCoords(:,1))-1, min(coneCoords(:,2))-1, min(coneCoords(:,3))-1; ...
-%                   max(coneCoords(:,1))+1, max(coneCoords(:,2))+1, max(coneCoords(:,3))+1];
-%     
-%     coneVolume = dataVolume(coneBounds(1,1):coneBounds(2,1), coneBounds(1,2):coneBounds(2,2), ...
-%         coneBounds(1,3):coneBounds(2,3));          
-%     
-%     tempIndex = find(coneVolume);
-% 
-%     nIndex = length(tempIndex); tempCoords = zeros(nIndex, 3);
-% 
-%     [tempCoords(:,1), tempCoords(:,2), tempCoords(:,3)] = ...
-%         ind2sub(size(coneVolume), tempIndex);
-%     
-% %     figure; axis equal
-% %     plot3(tempCoords(:,1), tempCoords(:,2), tempCoords(:,3), '.')
-% 
-%     S = skeleton(coneVolume);
-%     
-%     figure,
-%   FV = isosurface(coneVolume,0.5);
-%   patch(FV,'facecolor',[1 0 0],'facealpha',0.3,'edgecolor','none');
-%   view(3)
-%   camlight
-% % Display the skeleton
-%   hold on;
-%   for i=1:length(S)
-%     L=S{i};
-%     plot3(L(:,2),L(:,1),L(:,3),'-','Color',rand(1,3));
-%   end
-
-    
-  % Playing with PCA and volume center
-%     coneCoords = labelSurfaceCoords(inds,:) - tipCoords(iTip,:);
-%     
-%     % Limit to those quite close
-%     %coneCoords(sqrt(coneCoords(:,1).^2 + coneCoords(:,2).^2 + coneCoords(:,3).^2) > 15, :) = [];
-%     
-%     coneCenter = mean(coneCoords);
-% 
-%     %%% Tried taking centreLine with PCA but didn't work well for open shape
-%     
-%     elevationAngle = acos(coneCenter(3)/norm(coneCenter));
-%     
-%     azimuthAngle = atan2(coneCenter(2), coneCenter(1));
-%     
-%     coneCoords = coneCoords*vrrotvec2mat([0 0 1 azimuthAngle])*vrrotvec2mat([0 1 0 elevationAngle]);
-%     
-%     coneCenter = coneCenter*vrrotvec2mat([0 0 1 azimuthAngle])*vrrotvec2mat([0 1 0 elevationAngle]);
-%     
-%     %plot3(coneCoords(:,1), coneCoords(:,2), coneCoords(:,3), '.')
-% 
-% %     line([0 coneCenter(1)], [0 coneCenter(2)],... 
-% %         [0 coneCenter(3)], 'color', 'r')
 end
 
 warning('on', 'MATLAB:nearlySingularMatrix')
 
-%% Distance based approach didn't work well as caught borders of adjacent cones
-if 0
-    %% Take average distance to nearest tip neighbor
+figure;
+hist(radiiHist, 400)
 
-    tipDists = zeros(numTips,1);
+%% Do shape analysis
 
-    for iTip = 1:numTips
-        tempDists = sqrt((tipCoords(:,1) - tipCoords(iTip, 1)).^2 + (tipCoords(:,2) - tipCoords(iTip, 2)).^2 + ...
-            (tipCoords(:,3) - tipCoords(iTip, 3)).^2);
+distStep = 1;
+distStepNumber = 10;
 
-        % Remove self
-        tempDists(tempDists == 0) = [];
+angleStepNumber = 10;
+angleStep = 360/angleStepNumber;
 
-        tipDists(iTip) = min(tempDists);
+interpolatedConeRadius = zeros(numTips, distStepNumber*angleStepNumber)*NaN;
+
+% distVals = (1:distStepNumber)*distStep;
+% Make finer at start
+distVals = [0.25 0.5 1 2 3 4 6 8 10 12];
+
+[distInterp, angleInterp] = meshgrid(distVals, (1:angleStepNumber)*angleStep);
+
+distInterp = -distInterp(:);
+angleInterp = angleInterp(:)/180*pi - pi;
+
+figure; axis equal
+
+toRemove = [];
+
+for iTip = 1:numTips
+    
+    tempCone = goodConeShapes{iTip};
+    if ~isempty(tempCone)
+        % convert x/y to radial cords
+        
+%         distValue = sqrt(tempCone(:,1).^2 + tempCone(:,2).^2 + tempCone(:,3).^2);
+        
+        radialValue = sqrt(tempCone(:,1).^2 + tempCone(:,2).^2);
+        
+        angleValue = atan2(tempCone(:,2), tempCone(:,1));
+        
+        % Wont cross over +/- pi wrap around, could adjust for this.
+        
+        % Find nearest points to angle/distance combos
+%         for jStep = 1:length(distInterp)
+%             [~, minInd] = min(abs(distValue-distInterp(jStep)) + abs(angleValue-angleInterp(jStep)));
+%             
+%             plot3(tempCone(minInd,1), tempCone(minInd,2), tempCone(minInd,3),'x')
+%         end
+        
+%         % make interpolant - works quite well, but kind of misses top   
+        interpRadius = scatteredInterpolant(tempCone(:,3), angleValue, radialValue, 'linear', 'nearest');
+        
+        tempRadius = interpRadius(distInterp, angleInterp);
+%         
+%         % get radius from nearest point to radial vector instead
+%             %%% could do IDW to include a few points near vector
+%             
+%         tempRadius = zeros(length(zInterp), 1);
+%         
+%         for jStep = 1:length(zInterp)
+%             
+%             % from: https://mathworld.wolfram.com/Point-LineDistance3-Dimensional.html
+%             point1 = [0, 0, zInterp(jStep)]; % vertical centre line
+%             point2 = [cos(angleInterp(jStep)), sin(angleInterp(jStep)), zInterp(jStep)];
+%             
+% %             line([point1(1) point2(1)]*20, [point1(2) point2(2)]*20, [point1(3) point2(3)])
+%             
+%             % Gent angle between line and point (shift to equal z)
+% %             pointDists = (tempCone(:,1).*cos(angleInterp(jStep)) + tempCone(:,2).*sin(angleInterp(jStep)))./...
+% %                 (sqrt(tempCone(:,1).^2 + tempCone(:,2).^2 + (tempCone(:,3) - zInterp(jStep)).^2)*...
+% %                 sqrt(cos(angleInterp(jStep))^2 + sin(angleInterp(jStep))^2));
+%             
+%             pointDists = ones(size(tempCone, 1), 1)*100;
+%             for kPoint = 1:size(tempCone, 1)
+%             
+%                 point0 = tempCone(kPoint,:);
+%                 
+%                 % Only take angle on points less than 90 degree back in plane
+%                     % Otherwise reverse point on opposite side of cone can be taken!
+%                 tempXY = point0(1:2)/norm(point0(1:2));
+%                 
+%                 if sqrt((point2(1) - tempXY(1))^2 + (point2(2) - tempXY(2))^2) < sqrt(2)
+%                     pointDists(kPoint) = norm(cross(point0-point1, point0-point2))/norm(point2-point1);
+%                 end
+%             end
+%             
+%             [~, tempRInd] = min(pointDists);
+%             
+%             plot3(tempCone(tempRInd,1), tempCone(tempRInd,2), tempCone(tempRInd,3),'bo')
+%             
+%             tempRadius(jStep) = radialValue(tempRInd);
+%         end
+
+%         plot3(tempCone(:,1)*voxSize, tempCone(:,2)*voxSize, tempCone(:,3)*voxSize,'b.')
+        hold on
+        
+        plot3(tempRadius.*cos(angleInterp)*voxSize, tempRadius.*sin(angleInterp)*voxSize, distInterp*voxSize, 'ro')
+%         
+
+        interpolatedConeRadius(iTip,:) = tempRadius;
+    else
+       toRemove = [toRemove iTip]; 
     end
+end
+ 
+interpolatedConeRadius(toRemove, :) = [];
+%% Plot modes
+[radiusModes,~,~,~,explained] = pca(interpolatedConeRadius);
 
-    %% Get points out to neighbor
-    %%% Should test for connectivity later
+meanRadius = mean(interpolatedConeRadius);
+stdRadius = std(interpolatedConeRadius);
 
-    figure; hold on; axis equal
-    plot3(tipCoords(:,1), tipCoords(:,2), tipCoords(:,3), 'x')
+figure;
+subplot(4,2,1); axis equal; 
+plot3(meanRadius'.*cos(angleInterp)*voxSize, meanRadius'.*sin(angleInterp)*voxSize, distInterp*voxSize, '.g')
+hold on;
 
-    for iTip = 1:numTips
-        tempDists = sqrt((coneSurfaceCoords(:,1) - tipCoords(iTip, 1)).^2 + (coneSurfaceCoords(:,2) - tipCoords(iTip, 2)).^2 + ...
-            (coneSurfaceCoords(:,3) - tipCoords(iTip, 3)).^2);
+plusRadius = meanRadius + stdRadius;
+minusRadius = meanRadius - stdRadius;
 
-        closeInds = find(tempDists < tipDists(iTip)/2);
+plot3(minusRadius'.*cos(angleInterp)*voxSize, minusRadius'.*sin(angleInterp)*voxSize, distInterp*voxSize, '.b')
+plot3(plusRadius'.*cos(angleInterp)*voxSize, plusRadius'.*sin(angleInterp)*voxSize, distInterp*voxSize, '.r')
+    
+title('Mean and SD')
 
-        plot3(tipCoords(iTip,1), tipCoords(iTip,2), tipCoords(iTip,3), 'or')
-        plot3(coneSurfaceCoords(closeInds,1), coneSurfaceCoords(closeInds,2), coneSurfaceCoords(closeInds,3), '.')
-    end
+subplot(4,2,2)
+plot(cumsum(explained), 'x')
+xlabel('Mode')
+ylabel('Total variance explained (%)')
+
+% 1st mode
+for iMode = 1:6
+    subplot(4,2,2 + iMode); axis equal; 
+    plusRadius = meanRadius + radiusModes(:, iMode)'*10;
+    minusRadius = meanRadius - radiusModes(:, iMode)'*10;
+
+    plot3(meanRadius'.*cos(angleInterp)*voxSize, meanRadius'.*sin(angleInterp)*voxSize, distInterp*voxSize, '.g')
+    hold on
+    plot3(minusRadius'.*cos(angleInterp)*voxSize, minusRadius'.*sin(angleInterp)*voxSize, distInterp*voxSize, '.b')
+    plot3(plusRadius'.*cos(angleInterp)*voxSize, plusRadius'.*sin(angleInterp)*voxSize, distInterp*voxSize, '.r')
+
+    title(sprintf('Mode %i', iMode))
 end
