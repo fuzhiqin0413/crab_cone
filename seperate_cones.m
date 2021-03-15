@@ -57,7 +57,6 @@ nIndex = length(surfaceIndexList); coneSurfaceCoords = zeros(nIndex, 3);
 
 plot3(coneSurfaceCoords(:,1), coneSurfaceCoords(:,2), coneSurfaceCoords(:,3), '.')
 
-
 %% Flood fill growth approach
 % Two volumes, one with labels, one with availible
 coneExteriorLabels = coneExterior*0;
@@ -88,7 +87,8 @@ end
 
 % Grow in steps - set until good connection - 50 to far, 10 to short, 30 is a bit too much
 % May need to clean volume more
-for iStep = 1:15
+extendLength = 15;
+for iStep = 1:extendLength
     % And to exterior limits growth to surface voxels
     tic
     enlargedLabels = imdilate(coneExteriorLabels, STREL_18_CONNECTED);
@@ -156,6 +156,10 @@ offSet = 30;
 radiiHist = zeros(numTips,1);
 
 goodConeShapes = cell(numTips,1);
+
+coneTipsCoords = zeros(numTips,3);
+
+coneTipsAngles = zeros(numTips,2);
 
 for iTip = 1:numTips;
 
@@ -256,6 +260,11 @@ for iTip = 1:numTips;
             plot3(coneCoords(:,1)*voxSize, coneCoords(:,2)*voxSize, coneCoords(:,3)*voxSize, '.')
             
             goodConeShapes{iTip} = coneCoords;
+            
+            coneTipsCoords(iTip,:) = intersectCoord;
+
+            coneTipsAngles(iTip,:) = [azimuthAngle, elevationAngle];
+
         end
     else
         %%% Happens on very short cone
@@ -308,7 +317,7 @@ warning('on', 'MATLAB:nearlySingularMatrix')
 figure;
 hist(radiiHist, 400)
 
-%% Do shape analysis
+%% Do shape analysis - 3D
 
 distStep = 1;
 distStepNumber = 10;
@@ -345,62 +354,15 @@ for iTip = 1:numTips
         
         % Wont cross over +/- pi wrap around, could adjust for this.
         
-        % Find nearest points to angle/distance combos
-%         for jStep = 1:length(distInterp)
-%             [~, minInd] = min(abs(distValue-distInterp(jStep)) + abs(angleValue-angleInterp(jStep)));
-%             
-%             plot3(tempCone(minInd,1), tempCone(minInd,2), tempCone(minInd,3),'x')
-%         end
-        
 %         % make interpolant - works quite well, but kind of misses top   
         interpRadius = scatteredInterpolant(tempCone(:,3), angleValue, radialValue, 'linear', 'nearest');
         
         tempRadius = interpRadius(distInterp, angleInterp);
-%         
-%         % get radius from nearest point to radial vector instead
-%             %%% could do IDW to include a few points near vector
-%             
-%         tempRadius = zeros(length(zInterp), 1);
-%         
-%         for jStep = 1:length(zInterp)
-%             
-%             % from: https://mathworld.wolfram.com/Point-LineDistance3-Dimensional.html
-%             point1 = [0, 0, zInterp(jStep)]; % vertical centre line
-%             point2 = [cos(angleInterp(jStep)), sin(angleInterp(jStep)), zInterp(jStep)];
-%             
-% %             line([point1(1) point2(1)]*20, [point1(2) point2(2)]*20, [point1(3) point2(3)])
-%             
-%             % Gent angle between line and point (shift to equal z)
-% %             pointDists = (tempCone(:,1).*cos(angleInterp(jStep)) + tempCone(:,2).*sin(angleInterp(jStep)))./...
-% %                 (sqrt(tempCone(:,1).^2 + tempCone(:,2).^2 + (tempCone(:,3) - zInterp(jStep)).^2)*...
-% %                 sqrt(cos(angleInterp(jStep))^2 + sin(angleInterp(jStep))^2));
-%             
-%             pointDists = ones(size(tempCone, 1), 1)*100;
-%             for kPoint = 1:size(tempCone, 1)
-%             
-%                 point0 = tempCone(kPoint,:);
-%                 
-%                 % Only take angle on points less than 90 degree back in plane
-%                     % Otherwise reverse point on opposite side of cone can be taken!
-%                 tempXY = point0(1:2)/norm(point0(1:2));
-%                 
-%                 if sqrt((point2(1) - tempXY(1))^2 + (point2(2) - tempXY(2))^2) < sqrt(2)
-%                     pointDists(kPoint) = norm(cross(point0-point1, point0-point2))/norm(point2-point1);
-%                 end
-%             end
-%             
-%             [~, tempRInd] = min(pointDists);
-%             
-%             plot3(tempCone(tempRInd,1), tempCone(tempRInd,2), tempCone(tempRInd,3),'bo')
-%             
-%             tempRadius(jStep) = radialValue(tempRInd);
-%         end
 
-%         plot3(tempCone(:,1)*voxSize, tempCone(:,2)*voxSize, tempCone(:,3)*voxSize,'b.')
+%       plot3(tempCone(:,1)*voxSize, tempCone(:,2)*voxSize, tempCone(:,3)*voxSize,'b.')
         hold on
         
-        plot3(tempRadius.*cos(angleInterp)*voxSize, tempRadius.*sin(angleInterp)*voxSize, distInterp*voxSize, 'ro')
-%         
+        plot3(tempRadius.*cos(angleInterp)*voxSize, tempRadius.*sin(angleInterp)*voxSize, distInterp*voxSize, 'ro') 
 
         interpolatedConeRadius(iTip,:) = tempRadius;
     else
@@ -409,7 +371,7 @@ for iTip = 1:numTips
 end
  
 interpolatedConeRadius(toRemove, :) = [];
-%% Plot modes
+%% Plot modes - 3D
 [radiusModes,~,~,~,explained] = pca(interpolatedConeRadius);
 
 meanRadius = mean(interpolatedConeRadius);
@@ -427,11 +389,13 @@ plot3(minusRadius'.*cos(angleInterp)*voxSize, minusRadius'.*sin(angleInterp)*vox
 plot3(plusRadius'.*cos(angleInterp)*voxSize, plusRadius'.*sin(angleInterp)*voxSize, distInterp*voxSize, '.r')
     
 title('Mean and SD')
+legend('Mean shape', 'Negative variation', 'Positive variation')
 
 subplot(4,2,2)
 plot(cumsum(explained), 'x')
 xlabel('Mode')
 ylabel('Total variance explained (%)')
+ylim([0 100])
 
 % 1st mode
 for iMode = 1:6
@@ -445,4 +409,137 @@ for iMode = 1:6
     plot3(plusRadius'.*cos(angleInterp)*voxSize, plusRadius'.*sin(angleInterp)*voxSize, distInterp*voxSize, '.r')
 
     title(sprintf('Mode %i', iMode))
+end
+
+%% Cone shape analysis - 2D
+
+% Rough approach. Round X and take all voxels zero, then rotate
+
+angleStep_2D = 30;
+% Check value gives clean steps
+angleInterp_2D = 0:angleStep_2D:(180-angleStep_2D)
+
+for iTip = 1:numTips
+    
+    %%% Try doing on surface image directly
+    if all(coneTipsCoords(iTip,:) > 0)
+        % set new bounds
+        minCoords = coneTipsCoords(iTip,:)-(extendLength+10);
+        minCoords(minCoords < 1) = 1;
+
+        maxCoords = coneTipsCoords(iTip,:)+(extendLength+10);
+        maxCoords(maxCoords > volumeSize) = volumeSize(maxCoords > volumeSize);
+
+        % Take subvolume
+        coneSubvolume = coneExteriorLabels(minCoords(1):maxCoords(1), minCoords(2):maxCoords(2), ...
+            minCoords(3):maxCoords(3));
+
+        % Remove other stuff
+        coneSubvolume(coneSubvolume ~= iTip) = 0;
+
+        coneSubvolume = logical(coneSubvolume);
+        
+        % Generally centered at tip 
+        if any(size(coneSubvolume) ~= (extendLength+10)*2+1)
+            % Catch if not
+            error('Adjust centre')
+        end
+        temp = zeros(4,4); temp(4,4) = 1;
+        
+        M2 = temp; M2(1:3,1:3) = vrrotvec2mat([0 0 1 coneTipsAngles(iTip,1)]);
+
+        M3 = temp; M3(1:3,1:3) = vrrotvec2mat([0 1 0 coneTipsAngles(iTip,2)]);
+        
+        coneSubvolume = logical( affine_transform_full(single(coneSubvolume), M2*M3, 5));
+
+        % Note small holes appear after affine transform, close fixes these. 
+        % Probably bug with nearest neighbour interp I added to affine transform c file
+            %%% Note close may not fix surface well
+            % could dilate twice, transform, close, then erode twice
+%         coneSubvolume = imclose(coneSubvolume, STREL_6_CONNECTED);
+        
+        baseCone = goodConeShapes{iTip};
+        
+        figure; 
+        
+        %plot3(baseCone(:,1), baseCone(:,2), baseCone(:,3), 'rx')
+        
+        for jAngle = 1:length(angleInterp_2D)
+           % rotate volume
+           M = temp; M(1:3,1:3) = vrrotvec2mat([0 0 1 angleInterp_2D(jAngle)/180*pi]);
+           
+           rotSubvolume = logical( affine_transform_full(single(coneSubvolume), M, 5));
+           
+           % Maybe best to do close now, otherwise it's done twice 
+           rotSubvolume = imclose(rotSubvolume, STREL_6_CONNECTED);
+           
+           % get coords
+           rotInds = find(rotSubvolume);
+           
+           rotCoords = zeros(length(rotInds), 3);
+           
+           [rotCoords(:,1), rotCoords(:,2), rotCoords(:,3)] = ...
+                ind2sub(size(coneSubvolume), rotInds);
+            
+           xAxisInds = find(rotCoords(:,2) == 26);
+           
+           %plot3(rotCoords(:,1)-26, rotCoords(:,2)-26, rotCoords(:,3)-26, '.') 
+           [~, sInds] = sort(rotCoords(xAxisInds,1));
+           
+           subplot(2,3,jAngle); 
+           imshow(permute(rotSubvolume(:,26,:), [1 3 2])); hold on
+           plot(26, 26, 'rx')
+           plot(rotCoords(xAxisInds(sInds),3), rotCoords(xAxisInds(sInds),1), '-')
+        end
+        %%% Take points on zero axis, then rotate and do again --- how does
+        %%% it compare?
+    end
+    
+    
+    %%% Rotated coordiantes
+%     baseCone = goodConeShapes{iTip};
+%     
+%     figure; 
+%     
+%     for jAngle = 1:length(angleInterp_2D)
+%         rotCone = baseCone*vrrotvec2mat([0 0 1 angleInterp_2D(jAngle)/180*pi]);
+%         
+%         % Round Y and get zero values (on X axis)     
+%         xAxisInds = find(round(rotCone(:, 2)) == 0);
+%         % Seems this leaves a lot of oversampling - try 1D interp
+%         
+%         subplot(1,3,1); hold on
+%         plot3(baseCone(xAxisInds,1), baseCone(xAxisInds,2), baseCone(xAxisInds,3), 'o');
+%         
+%         subplot(1,3,2); hold on
+%         [~, sInds] = sort(rotCone(xAxisInds,1));
+%         plot(rotCone(xAxisInds(sInds),1), rotCone(xAxisInds(sInds),3))
+%         
+%         % Test interpolate for smoother sampling
+%         % 1d can't have duplicate data points
+%             %%% Suffers from disc artifacts...
+% %         uniqueX = unique(rotCone(xAxisInds,1));
+% %         Zvals = zeros(length(uniqueX),1);
+% %         
+% %         for kX = 1:length(uniqueX)
+% %             vals2Use = rotCone(xAxisInds,1) == uniqueX(kX);
+% %             Zvals(kX) = mean( rotCone(xAxisInds(vals2Use),3));
+% %         end
+% %         
+% %         interpZ = interp1(uniqueX, Zvals, -5:5, 'linear');
+% 
+%         % Try scattered on 2D (w/ non rounded y vals - 1d Interp essentially uses all Y values at 0)
+%             %%% This is not better, probably worse...
+%         tempZInterp = scatteredInterpolant(rotCone(xAxisInds,1), rotCone(xAxisInds,2), rotCone(xAxisInds,3), 'linear', 'nearest');
+% 
+%         tempZValues = tempZInterp(-5:5, zeros(1,11));
+%         
+%         subplot(1,3,3); hold on
+%         plot(-5:5, tempZValues)
+% 
+%     end
+%     
+%     subplot(1,3,1); hold on
+%     plot3(baseCone(:,1), baseCone(:,2), baseCone(:,3), '.');
+        
 end
