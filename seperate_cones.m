@@ -6,7 +6,7 @@ voxSize = 6.17;
 
 % Load in ct data
 dataFolder = '/Users/gavintaylor/Documents/Shared VM Folder/CT labels for Gavin as tif/LP2_matlab/Labels';
-dataVolume = loadtiffstack(dataFolder, 1);
+dataVolume = logical(loadtiffstack(dataFolder, 1));
 
 volumeSize = size(dataVolume);
 
@@ -42,6 +42,7 @@ STREL_6_CONNECTED = strel('sphere', 1);
 temp = STREL_6_CONNECTED.Neighborhood; 
 temp(:,:,2) = 1; temp([1 3],2,:) = 1; temp(2,[1 3],:) = 1;
 STREL_18_CONNECTED = strel('arbitrary', temp); 
+STREL_DISK = strel('disk',1);
 
 coneExterior = imdilate(coneExterior, STREL_18_CONNECTED);
 
@@ -372,6 +373,7 @@ end
  
 interpolatedConeRadius(toRemove, :) = [];
 %% Plot modes - 3D
+
 [radiusModes,~,~,~,explained] = pca(interpolatedConeRadius);
 
 meanRadius = mean(interpolatedConeRadius);
@@ -430,116 +432,92 @@ for iTip = 1:numTips
         maxCoords = coneTipsCoords(iTip,:)+(extendLength+10);
         maxCoords(maxCoords > volumeSize) = volumeSize(maxCoords > volumeSize);
 
-        % Take subvolume
-        coneSubvolume = coneExteriorLabels(minCoords(1):maxCoords(1), minCoords(2):maxCoords(2), ...
-            minCoords(3):maxCoords(3));
+        % Take subvolume of full data set and labels
+        coneSubvolume = dataVolume(minCoords(1):maxCoords(1), minCoords(2):maxCoords(2), ...
+            minCoords(3):maxCoords(3)); % coneExteriorLabels dataVolume
 
-        % Remove other stuff
-        coneSubvolume(coneSubvolume ~= iTip) = 0;
-
-        coneSubvolume = logical(coneSubvolume);
+        labelSubvolume = coneExteriorLabels(minCoords(1):maxCoords(1), minCoords(2):maxCoords(2), ...
+            minCoords(3):maxCoords(3)); 
+        
+        subVolumeSize = size(coneSubvolume);
+        
+        voxelCentre = [26, 26, 26];
+        
+        % Remove other stuff from labels
+        labelSubvolume(labelSubvolume ~= iTip) = 0;
         
         % Generally centered at tip 
-        if any(size(coneSubvolume) ~= (extendLength+10)*2+1)
-            % Catch if not
+        if any(subVolumeSize ~= (extendLength+10)*2+1)
+            % Catch if not - need to pad volumes to correct size
             error('Adjust centre')
         end
         temp = zeros(4,4); temp(4,4) = 1;
+        
+        % Do transforms
+        % Still need to center, as strict volume center can be offset from voxel center
+            % Note - applied distance transforms in opposite direction on grain project
+        M1 = make_transformation_matrix(subVolumeSize/2 - voxelCentre);
         
         M2 = temp; M2(1:3,1:3) = vrrotvec2mat([0 0 1 coneTipsAngles(iTip,1)]);
 
         M3 = temp; M3(1:3,1:3) = vrrotvec2mat([0 1 0 coneTipsAngles(iTip,2)]);
         
-        coneSubvolume = logical( affine_transform_full(single(coneSubvolume), M2*M3, 5));
+        M4 = make_transformation_matrix(voxelCentre - subVolumeSize/2);
 
-        % Note small holes appear after affine transform, close fixes these. 
-        % Probably bug with nearest neighbour interp I added to affine transform c file
-            %%% Note close may not fix surface well
-            % could dilate twice, transform, close, then erode twice
-%         coneSubvolume = imclose(coneSubvolume, STREL_6_CONNECTED);
+        coneSubvolume = logical( affine_transform_full(single(coneSubvolume), M1*M2*M3*M4, 5));
         
-        baseCone = goodConeShapes{iTip};
-        
+        labelSubvolume = logical( affine_transform_full(single(labelSubvolume), M1*M2*M3*M4, 5));
+
         figure; 
-        
-        %plot3(baseCone(:,1), baseCone(:,2), baseCone(:,3), 'rx')
-        
+
         for jAngle = 1:length(angleInterp_2D)
-           % rotate volume
+           % rotate volumes
            M = temp; M(1:3,1:3) = vrrotvec2mat([0 0 1 angleInterp_2D(jAngle)/180*pi]);
            
-           rotSubvolume = logical( affine_transform_full(single(coneSubvolume), M, 5));
+           rotSubvolume = logical( affine_transform_full(single(coneSubvolume), M1*M*M4, 5));
            
-           % Maybe best to do close now, otherwise it's done twice 
+           rotLabelSubvolume = logical( affine_transform_full(single(labelSubvolume), M1*M*M4, 5));
+           
+           % Note small holes appear after affine transform, close fixes these. 
+           % Probably bug with nearest neighbour interp I added to affine transform c file
+                % Not sure if this will fix for surfaces..
+                % Best to do once after final rotation (?)
            rotSubvolume = imclose(rotSubvolume, STREL_6_CONNECTED);
            
-           % get coords
-           rotInds = find(rotSubvolume);
+           % Extracting slice in 2d is best
+           rotSubvolume = permute(rotSubvolume(:,voxelCentre(2),:), [1 3 2]);
            
-           rotCoords = zeros(length(rotInds), 3);
+           rotLabelSubvolume = permute(rotLabelSubvolume(:,voxelCentre(2),:), [1 3 2]);
            
-           [rotCoords(:,1), rotCoords(:,2), rotCoords(:,3)] = ...
-                ind2sub(size(coneSubvolume), rotInds);
+           % Get 2d profile - was doing in 3d previously
+           exteriorSubvolume = ~rotSubvolume;
+           
+           exteriorSubvolume = imdilate(exteriorSubvolume, STREL_DISK);
+
+           exteriorSubvolume = exteriorSubvolume & rotSubvolume;
+           
+           % Match to labels
+           exteriorSubvolume = exteriorSubvolume & imdilate(rotLabelSubvolume, STREL_DISK);
+           
+           % get coords of profile
+           rotInds = find(exteriorSubvolume);
+           
+           rotCoords = zeros(length(rotInds), 2);
+           
+           [rotCoords(:,1), rotCoords(:,2)] = ...
+                ind2sub(subVolumeSize([1 3]), rotInds);
             
-           xAxisInds = find(rotCoords(:,2) == 26);
+           %xAxisInds = find(rotCoords(:,2) == voxelCentre(2));
            
-           %plot3(rotCoords(:,1)-26, rotCoords(:,2)-26, rotCoords(:,3)-26, '.') 
-           [~, sInds] = sort(rotCoords(xAxisInds,1));
+           [~, sInds] = sort(rotCoords(:,1));
            
            subplot(2,3,jAngle); 
-           imshow(permute(rotSubvolume(:,26,:), [1 3 2])); hold on
-           plot(26, 26, 'rx')
-           plot(rotCoords(xAxisInds(sInds),3), rotCoords(xAxisInds(sInds),1), '-')
+           imshow(exteriorSubvolume); hold on
+           
+           plot(voxelCentre(1), voxelCentre(3), 'rx')
+           plot(rotCoords(sInds,2), rotCoords(sInds,1), '-')
         end
-        %%% Take points on zero axis, then rotate and do again --- how does
-        %%% it compare?
     end
     
-    
-    %%% Rotated coordiantes
-%     baseCone = goodConeShapes{iTip};
-%     
-%     figure; 
-%     
-%     for jAngle = 1:length(angleInterp_2D)
-%         rotCone = baseCone*vrrotvec2mat([0 0 1 angleInterp_2D(jAngle)/180*pi]);
-%         
-%         % Round Y and get zero values (on X axis)     
-%         xAxisInds = find(round(rotCone(:, 2)) == 0);
-%         % Seems this leaves a lot of oversampling - try 1D interp
-%         
-%         subplot(1,3,1); hold on
-%         plot3(baseCone(xAxisInds,1), baseCone(xAxisInds,2), baseCone(xAxisInds,3), 'o');
-%         
-%         subplot(1,3,2); hold on
-%         [~, sInds] = sort(rotCone(xAxisInds,1));
-%         plot(rotCone(xAxisInds(sInds),1), rotCone(xAxisInds(sInds),3))
-%         
-%         % Test interpolate for smoother sampling
-%         % 1d can't have duplicate data points
-%             %%% Suffers from disc artifacts...
-% %         uniqueX = unique(rotCone(xAxisInds,1));
-% %         Zvals = zeros(length(uniqueX),1);
-% %         
-% %         for kX = 1:length(uniqueX)
-% %             vals2Use = rotCone(xAxisInds,1) == uniqueX(kX);
-% %             Zvals(kX) = mean( rotCone(xAxisInds(vals2Use),3));
-% %         end
-% %         
-% %         interpZ = interp1(uniqueX, Zvals, -5:5, 'linear');
-% 
-%         % Try scattered on 2D (w/ non rounded y vals - 1d Interp essentially uses all Y values at 0)
-%             %%% This is not better, probably worse...
-%         tempZInterp = scatteredInterpolant(rotCone(xAxisInds,1), rotCone(xAxisInds,2), rotCone(xAxisInds,3), 'linear', 'nearest');
-% 
-%         tempZValues = tempZInterp(-5:5, zeros(1,11));
-%         
-%         subplot(1,3,3); hold on
-%         plot(-5:5, tempZValues)
-% 
-%     end
-%     
-%     subplot(1,3,1); hold on
-%     plot3(baseCone(:,1), baseCone(:,2), baseCone(:,3), '.');
         
 end
