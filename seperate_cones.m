@@ -415,13 +415,28 @@ end
 
 %% Cone shape analysis - 2D
 
-% Rough approach. Round X and take all voxels zero, then rotate
+% Rough approach by putting entire contour into map
+    % But then the extreme isolines do not represent any one cone, but extrem parts of several
+    % Also added pca approach
 
 angleStep_2D = 30;
 % Check value gives clean steps
-angleInterp_2D = 0:angleStep_2D:(180-angleStep_2D)
+angleInterp_2D = 0:angleStep_2D:(180-angleStep_2D);
 
-for iTip = 1:numTips
+newFig = figure;
+subplot(1,3,1); hold on
+
+profilesMap = zeros((extendLength+10)*2+1, (extendLength+10)*2+1);
+
+filledMap = zeros((extendLength+10)*2+1, (extendLength+10)*2+1);
+
+profileLengths = zeros(numTips*length(angleInterp_2D),1);
+
+profileCoords = zeros(numTips*length(angleInterp_2D),15,2,2);
+
+profileIterator = 1;
+
+for iTip = 1:numTips;
     
     %%% Try doing on surface image directly
     if all(coneTipsCoords(iTip,:) > 0)
@@ -468,7 +483,7 @@ for iTip = 1:numTips
         
         labelSubvolume = logical( affine_transform_full(single(labelSubvolume), M1*M2*M3*M4, 5));
 
-        figure; 
+%         figure; 
 
         for jAngle = 1:length(angleInterp_2D)
            % rotate volumes
@@ -507,17 +522,233 @@ for iTip = 1:numTips
            [rotCoords(:,1), rotCoords(:,2)] = ...
                 ind2sub(subVolumeSize([1 3]), rotInds);
             
-           %xAxisInds = find(rotCoords(:,2) == voxelCentre(2));
+           % Is fastest way to add by inds or full slice?
+           %profilesMap(rotInds) = profilesMap(rotInds) + 1;
+           profilesMap = profilesMap + exteriorSubvolume; 
            
-           [~, sInds] = sort(rotCoords(:,1));
+           % Sort by x cleans up a lot, but can still be jagged
+           %[~, sInds] = sort(rotCoords(:,1));
            
-           subplot(2,3,jAngle); 
-           imshow(exteriorSubvolume); hold on
+           % Sort by angle to center - ideal would be tsp soln, but slow..
+           profileCenter = mean(rotCoords);
            
-           plot(voxelCentre(1), voxelCentre(3), 'rx')
-           plot(rotCoords(sInds,2), rotCoords(sInds,1), '-')
+           profileAngles = atan2(rotCoords(:,1) - profileCenter(1), ...
+                    rotCoords(:,2) - profileCenter(2));
+                
+           [~, sInds] = sort(profileAngles);
+                
+           % fill a line to image base from both end of profile and close base
+           exteriorSubvolume(rotCoords(sInds(1),1), 1:rotCoords(sInds(1),2)) = 1;
+           exteriorSubvolume(rotCoords(sInds(end),1), 1:rotCoords(sInds(end),2)) = 1;
+           exteriorSubvolume(rotCoords(sInds(1),1):rotCoords(sInds(end),1), 1) = 1;
+           
+           % Fill holes and add to filled map
+           filledMap = filledMap + imfill(exteriorSubvolume, 'holes');
+           
+%            subplot(2,3,jAngle); 
+%            imshow(flipud(exteriorSubvolume)'); hold on
+%            plot(voxelCentre(1), voxelCentre(3), 'rx')
+%              plot(rotCoords(sInds,1), rotCoords(sInds,2), '-')
+             
+             % check profile passes through tip reference
+             if any(rotCoords(:,1) == voxelCentre(1) & rotCoords(:,2) == voxelCentre(3))
+             
+                 % Take cone on each side of tip ind
+                 tipInd = find(rotCoords(sInds,1) == voxelCentre(1) & rotCoords(sInds,2) == voxelCentre(3));
+                 
+                 topTipInds = sInds(1:tipInd-1);
+                 bottomTipInds = sInds(tipInd+1:end); 
+             
+                 % check each side is long enough
+                 if length(topTipInds) >= extendLength & length(bottomTipInds) >= extendLength
+                     % get distances to tip and take closest 15 from each side
+                     tipDistances = sqrt((rotCoords(:,1) - voxelCentre(1)).^2 + (rotCoords(:,2) - voxelCentre(3)).^2);
+                     [~, goodTips] = sort(tipDistances(topTipInds));
+                     topTipInds = topTipInds( goodTips(1:extendLength));
+
+                     profileCoords(profileIterator,:,1,1) = rotCoords(topTipInds,1);
+                     profileCoords(profileIterator,:,1,2) = rotCoords(topTipInds,2);
+                     
+                     plot(rotCoords(topTipInds,1), rotCoords(topTipInds,2), '-b')
+                     
+                     [~, goodTips] = sort(tipDistances(bottomTipInds));
+                     bottomTipInds = bottomTipInds( goodTips(1:extendLength));
+
+                     profileCoords(profileIterator,:,2,1) = rotCoords(bottomTipInds,1);
+                     profileCoords(profileIterator,:,2,2) = rotCoords(bottomTipInds,2);
+                     
+                     plot(rotCoords(bottomTipInds,1), rotCoords(bottomTipInds,2), '-r')
+                     
+                     profileLengths(profileIterator) = length(sInds);   
+                     profileIterator = profileIterator +1;
+                 end
+             end
         end
     end
-    
-        
 end
+
+% remove excess
+profileCoords(profileIterator:end, :, :, :) = [];
+
+%reshape into nxp array
+profileCoordsFlat = reshape(profileCoords, [profileIterator-1 extendLength*2*2]);
+
+plot(voxelCentre(1), voxelCentre(3), 'ko')
+
+subplot(1,3,2);
+
+imshow(fliplr(profilesMap)'/max(profilesMap(:)))
+
+profileInds = find(profilesMap);
+
+cols = jet(100);
+cols(1,:) = 0;
+colormap(cols)
+
+% Make bulk value max on image
+[nValues, xValues] = hist(filledMap(filledMap > 0),5000);
+
+[~, bulkValue] = max(nValues);
+bulkValue = xValues(bulkValue);
+
+filledMap(filledMap > bulkValue) = bulkValue;
+
+subplot(1,3,3);
+imshow(flipud(filledMap')/max(filledMap(:)))
+colormap(cols); hold on
+
+% Get isoline values - remove zero and max value of map
+[nValues, xValues] = hist(filledMap(filledMap > 0 & filledMap < max(filledMap(:))),5000);
+cumulativeDist = cumsum(nValues)/sum(nValues);
+
+bottomInd = find(cumulativeDist > 0.1); bottomInd = bottomInd(1);
+bottomVal = xValues(bottomInd);
+
+centreInd = find(cumulativeDist > 0.5); centreInd = centreInd(1);
+centreVal = xValues(centreInd);
+
+topInd = find(cumulativeDist > 0.9); topInd = topInd(1);
+topVal = xValues(topInd);
+
+tempF = figure; 
+contourBottom = contour(flipud(filledMap'), [bottomVal bottomVal]);
+
+contourCentre = contour(flipud(filledMap'), [centreVal centreVal]);
+
+contourTop = contour(flipud(filledMap'), [topVal topVal]);
+
+close(tempF);
+
+figure(newFig);
+subplot(1,3,3)
+plot(contourBottom(1,2:end), contourBottom(2,2:end), 'm')
+
+plot(contourCentre(1,2:end), contourCentre(2,2:end), 'm')
+
+plot(contourTop(1,2:end), contourTop(2,2:end), 'm')
+
+figure; hist(profileLengths(profileLengths > 0), 50)
+title('Profile lengths')
+
+%% Do 2d pca
+[profileModes,score,~,~,explained] = pca(profileCoordsFlat);
+
+meanProfile = mean(profileCoords);
+stdProfile = std(profileCoords);
+
+% meanProfile = reshape(meanProfile, [extendLength 2 2]);
+
+% shift formatting
+meanProfile = permute(meanProfile, [2 3 4 1]);
+stdProfile = permute(stdProfile, [2 3 4 1]);
+
+% note - transposed, so modes are now by rows
+profileModes = reshape(profileModes', [length(explained) extendLength 2 2]);
+
+figure;
+subplot(4,2,1); axis equal; hold on
+plot(voxelCentre(1), voxelCentre(3),'k.');
+
+plot(meanProfile(:,1,1), meanProfile(:,1,2), '-g')
+plot(meanProfile(:,2,1), meanProfile(:,2,2), '-g')
+
+plusRadius = meanProfile;
+% Adjust x seperatley depending on side
+plusRadius(:,1,1) = plusRadius(:,1,1) - stdProfile(:,1,1);
+plusRadius(:,2,1) = plusRadius(:,2,1) + stdProfile(:,2,1);
+
+plusRadius(:,:,2) = plusRadius(:,:,2) + stdProfile(:,:,2);
+
+plot(plusRadius(:,1,1), plusRadius(:,1,2), '-r')
+plot(plusRadius(:,2,1), plusRadius(:,2,2), '-r')
+
+minusRadius = meanProfile;
+% Adjust x seperatley depending on side
+minusRadius(:,1,1) = minusRadius(:,1,1) + stdProfile(:,1,1);
+minusRadius(:,2,1) = minusRadius(:,2,1) - stdProfile(:,2,1);
+
+minusRadius(:,:,2) = minusRadius(:,:,2) - stdProfile(:,:,2);
+    
+plot(minusRadius(:,1,1), minusRadius(:,1,2), '-b')
+plot(minusRadius(:,2,1), minusRadius(:,2,2), '-b')
+
+title('Mean and SD')
+legend('Mean shape', 'Negative variation', 'Positive variation')
+
+subplot(4,2,2)
+plot(cumsum(explained), 'x')
+xlabel('Mode')
+ylabel('Total variance explained (%)')
+ylim([0 100])
+
+%%% Need min and max movement on given mode...
+
+%plot first 6 modes
+for iMode = 1:6
+    % Plot modes
+    subplot(4,2,2 + iMode); axis equal; hold on
+
+    plot(voxelCentre(1), voxelCentre(3),'k.');
+
+    plot(meanProfile(:,1,1), meanProfile(:,1,2), '-g')
+    plot(meanProfile(:,2,1), meanProfile(:,2,2), '-g')
+    
+    % get max values and ids
+    [maxVal, maxProfileInd] = max(score(:,iMode));
+    [minVal, minProfileInd] = min(score(:,iMode));
+    
+    [iMode, maxVal, minVal]
+    
+    plusRadius = meanProfile; 
+    % Adjust x seperatley depending on side
+    plusRadius(:,1,1) = plusRadius(:,1,1) - profileModes(iMode,:,1,1)'*maxVal; 
+    plusRadius(:,2,1) = plusRadius(:,2,1) + profileModes(iMode,:,2,1)'*maxVal;
+
+    plusRadius(:,:,2) = plusRadius(:,:,2) + permute(profileModes(iMode,:,:,2), [2 3 1])*maxVal;
+
+    plot(plusRadius(:,1,1), plusRadius(:,1,2), '-r')
+    plot(plusRadius(:,2,1), plusRadius(:,2,2), '-r')
+
+    minusRadius = meanProfile;
+    % Adjust x seperatley depending on side
+    minusRadius(:,1,1) = minusRadius(:,1,1) + profileModes(iMode,:,1,1)'*-minVal;
+    minusRadius(:,2,1) = minusRadius(:,2,1) - profileModes(iMode,:,2,1)'*-minVal;
+
+    minusRadius(:,:,2) = minusRadius(:,:,2) - permute(profileModes(iMode,:,:,2), [2 3 1])*-minVal;
+
+    plot(minusRadius(:,1,1), minusRadius(:,1,2), '-b')
+    plot(minusRadius(:,2,1), minusRadius(:,2,2), '-b')
+    
+    title(sprintf('Mode %i', iMode))
+    
+    % plot max and min profiles - merge, as this must cross center
+        % They are often crazy...
+    
+    plot([fliplr(profileCoords(maxProfileInd,:,1,1)) voxelCentre(1) profileCoords(maxProfileInd,:,2,1)],...
+        [fliplr(profileCoords(maxProfileInd,:,1,2)) voxelCentre(3) profileCoords(maxProfileInd,:,2,2)], 'r-.', 'linewidth', 0.5)
+    
+    plot([fliplr(profileCoords(minProfileInd,:,1,1)) voxelCentre(1) profileCoords(minProfileInd,:,2,1)],...
+        [fliplr(profileCoords(minProfileInd,:,1,2)) voxelCentre(3) profileCoords(minProfileInd,:,2,2)], 'b-.', 'linewidth', 0.5)
+end
+
+% figure; plot3(score(:,1),score(:,2), score(:,3),'.')
