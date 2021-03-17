@@ -60,7 +60,7 @@ plot3(coneSurfaceCoords(:,1), coneSurfaceCoords(:,2), coneSurfaceCoords(:,3), '.
 
 %% Flood fill growth approach
 % Two volumes, one with labels, one with availible
-coneExteriorLabels = coneExterior*0;
+coneExteriorLabels = single(coneExterior)*0;
 coneExteriorAvailible = logical(coneExterior);
 
 figure; hold on; axis equal
@@ -104,6 +104,8 @@ for iStep = 1:extendLength
     coneExteriorAvailible(newSurfInds) = 0;
     toc
 end
+
+clear enlargedLabels
 
 labelIndexList = find(coneExteriorLabels);
 
@@ -421,7 +423,9 @@ end
 
 angleStep_2D = 30;
 % Check value gives clean steps
-angleInterp_2D = 0:angleStep_2D:(180-angleStep_2D);
+angleInterp_2D = [0 30 60 90 120 150]
+    % Doesn't seem to make a huge differen which direction 90 is rotated in
+%0:angleStep_2D:(180-angleStep_2D);
 
 newFig = figure;
 subplot(1,3,1); hold on
@@ -433,6 +437,10 @@ filledMap = zeros((extendLength+10)*2+1, (extendLength+10)*2+1);
 profileLengths = zeros(numTips*length(angleInterp_2D),1);
 
 profileCoords = zeros(numTips*length(angleInterp_2D),15,2,2);
+
+profileKey = zeros(numTips*length(angleInterp_2D), 2);
+
+profileImages = cell(numTips, length(angleInterp_2D));
 
 profileIterator = 1;
 
@@ -487,8 +495,14 @@ for iTip = 1:numTips;
 
         for jAngle = 1:length(angleInterp_2D)
            % rotate volumes
-           M = temp; M(1:3,1:3) = vrrotvec2mat([0 0 1 angleInterp_2D(jAngle)/180*pi]);
-           
+           M = temp; 
+           if angleInterp_2D(jAngle) <= 90 
+              M(1:3,1:3) = vrrotvec2mat([0 0 1 angleInterp_2D(jAngle)/180*pi]);
+           else
+              % If bigger than 90 rotate in other direction
+                % should rotate 90 in both directions? or skip completely
+               M(1:3,1:3) = vrrotvec2mat([0 0 1 -(pi-angleInterp_2D(jAngle)/180*pi)]);
+           end
            rotSubvolume = logical( affine_transform_full(single(coneSubvolume), M1*M*M4, 5));
            
            rotLabelSubvolume = logical( affine_transform_full(single(labelSubvolume), M1*M*M4, 5));
@@ -513,6 +527,9 @@ for iTip = 1:numTips;
            
            % Match to labels
            exteriorSubvolume = exteriorSubvolume & imdilate(rotLabelSubvolume, STREL_DISK);
+           
+           % store for later
+           profileImages{iTip, jAngle} = rotSubvolume;
            
            % get coords of profile
            rotInds = find(exteriorSubvolume);
@@ -579,7 +596,10 @@ for iTip = 1:numTips;
                      
                      plot(rotCoords(bottomTipInds,1), rotCoords(bottomTipInds,2), '-r')
                      
-                     profileLengths(profileIterator) = length(sInds);   
+                     profileLengths(profileIterator) = length(sInds);  
+                     
+                     profileKey(profileIterator, :) = [iTip, jAngle];
+                     
                      profileIterator = profileIterator +1;
                  end
              end
@@ -589,6 +609,7 @@ end
 
 % remove excess
 profileCoords(profileIterator:end, :, :, :) = [];
+profileKey(profileIterator:end, :) = [];
 
 %reshape into nxp array
 profileCoordsFlat = reshape(profileCoords, [profileIterator-1 extendLength*2*2]);
@@ -651,6 +672,9 @@ figure; hist(profileLengths(profileLengths > 0), 50)
 title('Profile lengths')
 
 %% Do 2d pca
+%%% Note that many replicates of cones are not independent as taken from
+%%% different angles - probably vioaltes some assumptions of PCA
+
 [profileModes,score,~,~,explained] = pca(profileCoordsFlat);
 
 meanProfile = mean(profileCoords);
@@ -713,9 +737,21 @@ for iMode = 1:6
     plot(meanProfile(:,1,1), meanProfile(:,1,2), '-g')
     plot(meanProfile(:,2,1), meanProfile(:,2,2), '-g')
     
-    % get max values and ids
-    [maxVal, maxProfileInd] = max(score(:,iMode));
-    [minVal, minProfileInd] = min(score(:,iMode));
+    % get max values and ids - to plot modes
+%     [maxVal, maxProfileInd] = max(score(:,iMode));
+%     [minVal, minProfileInd] = min(score(:,iMode));
+    
+    % Get exmplars for both 
+        % better profiles on higer modes - lower modes aren't as strong
+        % Take as current mode devided by rss of others.
+    
+    qualityScore = score(:,iMode) ./ sqrt(sum(score.^2,2));
+     
+    [~, maxProfileInd] = max(qualityScore);
+    [~, minProfileInd] = min(qualityScore);
+    
+    maxVal = score(maxProfileInd,iMode);
+    minVal = score(minProfileInd,iMode);
     
     [iMode, maxVal, minVal]
     
@@ -742,8 +778,9 @@ for iMode = 1:6
     title(sprintf('Mode %i', iMode))
     
     % plot max and min profiles - merge, as this must cross center
-        % They are often crazy...
-    
+        % simply looking and max and min from given mode often gives crazy curves
+        %presumably also strong influence from modes
+        
     plot([fliplr(profileCoords(maxProfileInd,:,1,1)) voxelCentre(1) profileCoords(maxProfileInd,:,2,1)],...
         [fliplr(profileCoords(maxProfileInd,:,1,2)) voxelCentre(3) profileCoords(maxProfileInd,:,2,2)], 'r-.', 'linewidth', 0.5)
     
@@ -752,3 +789,89 @@ for iMode = 1:6
 end
 
 % figure; plot3(score(:,1),score(:,2), score(:,3),'.')
+
+%% create profiles - actual ones - and simulated
+
+% Could probably resynthesize exemplars at high res.
+figure;
+
+% Adjust resolution - 1/factor should be rational, e.g. 2, 4, 8
+resAdj = 4;
+
+for iMode = 1:4
+    
+    % Stick to taking examplars to prevent crazy ones
+    otherModes = 1:length(explained); otherModes(iMode) = [];
+    
+    qualityScore = score(:,iMode) ./ sqrt(sum(score(:,otherModes).^2,2));
+     
+    [~, maxProfileInd] = max(qualityScore);
+    [~, minProfileInd] = min(qualityScore);
+    
+    subplot(4,4,(iMode-1)*4+1)
+    imshow(flipud(profileImages{profileKey(maxProfileInd,1), profileKey(maxProfileInd,2)}')); 
+    hold on;
+     plot([fliplr(profileCoords(maxProfileInd,:,1,1)) voxelCentre(1) profileCoords(maxProfileInd,:,2,1)],...
+        -([fliplr(profileCoords(maxProfileInd,:,1,2)) voxelCentre(3) profileCoords(maxProfileInd,:,2,2)]-26)+26, 'r-')
+    plot(26,26,'mo')
+    title(sprintf('Mode %i max', iMode))
+    
+    subplot(4,4,(iMode-1)*4+3)
+    imshow(flipud(profileImages{profileKey(minProfileInd,1), profileKey(minProfileInd,2)}'))
+    hold on
+    plot([fliplr(profileCoords(minProfileInd,:,1,1)) voxelCentre(1) profileCoords(minProfileInd,:,2,1)],...
+        -([fliplr(profileCoords(minProfileInd,:,1,2)) voxelCentre(3) profileCoords(minProfileInd,:,2,2)]-26)+26, 'b-')
+    plot(26,26,'mo')
+    title(sprintf('Mode %i min', iMode))
+    
+    % Now simulate
+    maxVal = score(maxProfileInd,iMode);
+    minVal = score(minProfileInd,iMode);
+    
+    % Create map
+    newD = ((extendLength+10)*2+1)*resAdj;
+    newCone = zeros(newD, newD);
+    
+    [xGrid, zGrid] = meshgrid(1:newD, 1:newD);
+    
+    plusRadius = meanProfile; 
+    % Adjust x seperatley depending on side
+    plusRadius(:,1,1) = plusRadius(:,1,1) - profileModes(iMode,:,1,1)'*maxVal; 
+    plusRadius(:,2,1) = plusRadius(:,2,1) + profileModes(iMode,:,2,1)'*maxVal;
+
+    plusRadius(:,:,2) = plusRadius(:,:,2) + permute(profileModes(iMode,:,:,2), [2 3 1])*maxVal;
+    
+    % Create closed polygon from path
+    plusX = [plusRadius(end,1,1) fliplr(plusRadius(:,1,1)') voxelCentre(1) plusRadius(:,2,1)' plusRadius(end,2,1) plusRadius(end,1,1)];
+    plusZ = [1 fliplr(plusRadius(:,1,2)') voxelCentre(3) plusRadius(:,2,2)' 1 1];
+    
+    % fml, image indexing is confusing here...
+    % Also unclear why shift required on zGrid to match curve...
+    newCone( inpolygon(xGrid(:)/resAdj, zGrid(:)/resAdj-1/resAdj+1, plusX, plusZ)) = 1;
+    
+    subplot(4,4,(iMode-1)*4+2)
+    imshow(flipud(newCone))
+    hold on
+    plot(plusX*resAdj, (-(plusZ-26)+26)*resAdj, 'r')
+    plot(26*resAdj,26*resAdj,'mo')
+    
+    minusRadius = meanProfile;
+    % Adjust x seperatley depending on side
+    minusRadius(:,1,1) = minusRadius(:,1,1) + profileModes(iMode,:,1,1)'*-minVal;
+    minusRadius(:,2,1) = minusRadius(:,2,1) - profileModes(iMode,:,2,1)'*-minVal;
+
+    minusRadius(:,:,2) = minusRadius(:,:,2) - permute(profileModes(iMode,:,:,2), [2 3 1])*-minVal;
+    
+    % Create closed polygon from path
+    minusX = [minusRadius(end,1,1) fliplr(minusRadius(:,1,1)') voxelCentre(1) minusRadius(:,2,1)' minusRadius(end,2,1) minusRadius(end,1,1)];
+    minusZ = [1 fliplr(minusRadius(:,1,2)') voxelCentre(3) minusRadius(:,2,2)' 1 1];
+    
+    newCone = newCone*0;
+    newCone( inpolygon(xGrid(:)/resAdj, zGrid(:)/resAdj-1/resAdj+1, minusX, minusZ)) = 1;
+    
+    subplot(4,4,(iMode-1)*4+4)
+    imshow(flipud(newCone))
+    hold on
+    plot(minusX*resAdj, (-(minusZ-26)+26)*resAdj, 'b')
+    plot(26*resAdj,26*resAdj,'mo')
+end
