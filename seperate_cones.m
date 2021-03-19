@@ -619,7 +619,7 @@ plot(voxelCentre(1), voxelCentre(3), 'ko')
 subplot(1,3,2);
 
 imshow(fliplr(profilesMap)'/max(profilesMap(:)))
-
+hold on
 profileInds = find(profilesMap);
 
 cols = jet(100);
@@ -662,11 +662,18 @@ close(tempF);
 
 figure(newFig);
 subplot(1,3,3)
-plot(contourBottom(1,2:end), contourBottom(2,2:end), 'm')
+plot(contourBottom(1,2:end), contourBottom(2,2:end), 'm', 'linewidth', 2)
 
-plot(contourCentre(1,2:end), contourCentre(2,2:end), 'm')
+plot(contourCentre(1,2:end), contourCentre(2,2:end), 'm', 'linewidth', 2)
 
-plot(contourTop(1,2:end), contourTop(2,2:end), 'm')
+plot(contourTop(1,2:end), contourTop(2,2:end), 'm', 'linewidth', 2)
+
+subplot(1,3,2)
+plot(contourBottom(1,2:end), contourBottom(2,2:end), 'm', 'linewidth', 2)
+
+plot(contourCentre(1,2:end), contourCentre(2,2:end), 'm', 'linewidth', 2)
+
+plot(contourTop(1,2:end), contourTop(2,2:end), 'm', 'linewidth', 2)
 
 figure; hist(profileLengths(profileLengths > 0), 50)
 title('Profile lengths')
@@ -693,7 +700,7 @@ figure;
 subplot(4,2,1); axis equal; hold on
 plot(voxelCentre(1), voxelCentre(3),'k.');
 
-plot(meanProfile(:,1,1), meanProfile(:,1,2), '-g')
+h1 = plot(meanProfile(:,1,1), meanProfile(:,1,2), '-g');
 plot(meanProfile(:,2,1), meanProfile(:,2,2), '-g')
 
 plusRadius = meanProfile;
@@ -703,7 +710,7 @@ plusRadius(:,2,1) = plusRadius(:,2,1) + stdProfile(:,2,1);
 
 plusRadius(:,:,2) = plusRadius(:,:,2) + stdProfile(:,:,2);
 
-plot(plusRadius(:,1,1), plusRadius(:,1,2), '-r')
+h2 = plot(plusRadius(:,1,1), plusRadius(:,1,2), '-r');
 plot(plusRadius(:,2,1), plusRadius(:,2,2), '-r')
 
 minusRadius = meanProfile;
@@ -713,11 +720,11 @@ minusRadius(:,2,1) = minusRadius(:,2,1) - stdProfile(:,2,1);
 
 minusRadius(:,:,2) = minusRadius(:,:,2) - stdProfile(:,:,2);
     
-plot(minusRadius(:,1,1), minusRadius(:,1,2), '-b')
+h3 = plot(minusRadius(:,1,1), minusRadius(:,1,2), '-b');
 plot(minusRadius(:,2,1), minusRadius(:,2,2), '-b')
 
 title('Mean and SD')
-legend('Mean shape', 'Negative variation', 'Positive variation')
+legend([h1 h2 h3], 'Mean profile', 'Positive variation', 'Negative variation')
 
 subplot(4,2,2)
 plot(cumsum(explained), 'x')
@@ -734,7 +741,7 @@ for iMode = 1:6
 
     plot(voxelCentre(1), voxelCentre(3),'k.');
 
-    plot(meanProfile(:,1,1), meanProfile(:,1,2), '-g')
+    h5 = plot(meanProfile(:,1,1), meanProfile(:,1,2), '-g')
     plot(meanProfile(:,2,1), meanProfile(:,2,2), '-g')
     
     % get max values and ids - to plot modes
@@ -762,7 +769,7 @@ for iMode = 1:6
 
     plusRadius(:,:,2) = plusRadius(:,:,2) + permute(profileModes(iMode,:,:,2), [2 3 1])*maxVal;
 
-    plot(plusRadius(:,1,1), plusRadius(:,1,2), '-r')
+    h1 = plot(plusRadius(:,1,1), plusRadius(:,1,2), '-r');
     plot(plusRadius(:,2,1), plusRadius(:,2,2), '-r')
 
     minusRadius = meanProfile;
@@ -772,7 +779,7 @@ for iMode = 1:6
 
     minusRadius(:,:,2) = minusRadius(:,:,2) - permute(profileModes(iMode,:,:,2), [2 3 1])*-minVal;
 
-    plot(minusRadius(:,1,1), minusRadius(:,1,2), '-b')
+    h2 = plot(minusRadius(:,1,1), minusRadius(:,1,2), '-b');
     plot(minusRadius(:,2,1), minusRadius(:,2,2), '-b')
     
     title(sprintf('Mode %i', iMode))
@@ -781,11 +788,15 @@ for iMode = 1:6
         % simply looking and max and min from given mode often gives crazy curves
         %presumably also strong influence from modes
         
-    plot([fliplr(profileCoords(maxProfileInd,:,1,1)) voxelCentre(1) profileCoords(maxProfileInd,:,2,1)],...
-        [fliplr(profileCoords(maxProfileInd,:,1,2)) voxelCentre(3) profileCoords(maxProfileInd,:,2,2)], 'r-.', 'linewidth', 0.5)
+    h3 = plot([fliplr(profileCoords(maxProfileInd,:,1,1)) voxelCentre(1) profileCoords(maxProfileInd,:,2,1)],...
+        [fliplr(profileCoords(maxProfileInd,:,1,2)) voxelCentre(3) profileCoords(maxProfileInd,:,2,2)], 'r-.', 'linewidth', 0.5);
     
-    plot([fliplr(profileCoords(minProfileInd,:,1,1)) voxelCentre(1) profileCoords(minProfileInd,:,2,1)],...
-        [fliplr(profileCoords(minProfileInd,:,1,2)) voxelCentre(3) profileCoords(minProfileInd,:,2,2)], 'b-.', 'linewidth', 0.5)
+    h4 = plot([fliplr(profileCoords(minProfileInd,:,1,1)) voxelCentre(1) profileCoords(minProfileInd,:,2,1)],...
+        [fliplr(profileCoords(minProfileInd,:,1,2)) voxelCentre(3) profileCoords(minProfileInd,:,2,2)], 'b-.', 'linewidth', 0.5);
+    
+    if iMode == 1
+        legend([h5 h1 h3 h2 h4], 'Mean profile', 'Positive variation', 'Exemplar positive profile', 'Negative variation', 'Exemplar negative profile')
+    end 
 end
 
 % figure; plot3(score(:,1),score(:,2), score(:,3),'.')
@@ -796,7 +807,7 @@ end
 figure;
 
 % Adjust resolution - 1/factor should be rational, e.g. 2, 4, 8
-resAdj = 4;
+resAdj = 8;
 
 for iMode = 1:4
     
@@ -808,21 +819,21 @@ for iMode = 1:4
     [~, maxProfileInd] = max(qualityScore);
     [~, minProfileInd] = min(qualityScore);
     
-    subplot(4,4,(iMode-1)*4+1)
+    subplot(4,4,(iMode-1)*4+2)
     imshow(flipud(profileImages{profileKey(maxProfileInd,1), profileKey(maxProfileInd,2)}')); 
     hold on;
      plot([fliplr(profileCoords(maxProfileInd,:,1,1)) voxelCentre(1) profileCoords(maxProfileInd,:,2,1)],...
-        -([fliplr(profileCoords(maxProfileInd,:,1,2)) voxelCentre(3) profileCoords(maxProfileInd,:,2,2)]-26)+26, 'r-')
+        -([fliplr(profileCoords(maxProfileInd,:,1,2)) voxelCentre(3) profileCoords(maxProfileInd,:,2,2)]-26)+26, 'r-.', 'linewidth', 2)
     plot(26,26,'mo')
-    title(sprintf('Mode %i max', iMode))
+    title('Examplar positive')
     
-    subplot(4,4,(iMode-1)*4+3)
+    subplot(4,4,(iMode-1)*4+4)
     imshow(flipud(profileImages{profileKey(minProfileInd,1), profileKey(minProfileInd,2)}'))
     hold on
     plot([fliplr(profileCoords(minProfileInd,:,1,1)) voxelCentre(1) profileCoords(minProfileInd,:,2,1)],...
-        -([fliplr(profileCoords(minProfileInd,:,1,2)) voxelCentre(3) profileCoords(minProfileInd,:,2,2)]-26)+26, 'b-')
+        -([fliplr(profileCoords(minProfileInd,:,1,2)) voxelCentre(3) profileCoords(minProfileInd,:,2,2)]-26)+26, 'b-.', 'linewidth', 2)
     plot(26,26,'mo')
-    title(sprintf('Mode %i min', iMode))
+    title('Exemplar negative')
     
     % Now simulate
     maxVal = score(maxProfileInd,iMode);
@@ -849,11 +860,12 @@ for iMode = 1:4
     % Also unclear why shift required on zGrid to match curve...
     newCone( inpolygon(xGrid(:)/resAdj, zGrid(:)/resAdj-1/resAdj+1, plusX, plusZ)) = 1;
     
-    subplot(4,4,(iMode-1)*4+2)
+    subplot(4,4,(iMode-1)*4+1)
     imshow(flipud(newCone))
     hold on
-    plot(plusX*resAdj, (-(plusZ-26)+26)*resAdj, 'r')
+    plot(plusX(2:end-2)*resAdj, (-(plusZ(2:end-2)-26)+26)*resAdj, 'r', 'linewidth', 2)
     plot(26*resAdj,26*resAdj,'mo')
+    title(sprintf('Mode %i: Positive variation', iMode))
     
     minusRadius = meanProfile;
     % Adjust x seperatley depending on side
@@ -869,9 +881,108 @@ for iMode = 1:4
     newCone = newCone*0;
     newCone( inpolygon(xGrid(:)/resAdj, zGrid(:)/resAdj-1/resAdj+1, minusX, minusZ)) = 1;
     
-    subplot(4,4,(iMode-1)*4+4)
+    subplot(4,4,(iMode-1)*4+3)
     imshow(flipud(newCone))
     hold on
-    plot(minusX*resAdj, (-(minusZ-26)+26)*resAdj, 'b')
+    plot(minusX(2:end-2)*resAdj, (-(minusZ(2:end-2)-26)+26)*resAdj, 'b', 'linewidth', 2)
     plot(26*resAdj,26*resAdj,'mo')
+    title(sprintf('Mode %i: Negative variation', iMode))
 end
+
+%% plot mean cone and standard deviations
+newD = ((extendLength+10)*2+1)*resAdj;
+
+voxSize/resAdj
+
+[xGrid, zGrid] = meshgrid(1:newD, 1:newD);
+
+meanCone = zeros(newD, newD);
+
+% Create closed polygon from path
+meanX = [meanProfile(end,1,1) fliplr(meanProfile(:,1,1)') voxelCentre(1) meanProfile(:,2,1)' meanProfile(end,2,1) meanProfile(end,1,1)];
+meanZ = [1 fliplr(meanProfile(:,1,2)') voxelCentre(3) meanProfile(:,2,2)' 1 1];
+
+% fml, image indexing is confusing here...
+% Also unclear why shift required on zGrid to match curve...
+meanCone( inpolygon(xGrid(:)/resAdj, zGrid(:)/resAdj-1/resAdj+1, meanX, meanZ)) = 1;
+
+figure;
+imshow(flipud(meanCone))
+hold on
+plot(meanX(2:end-2)*resAdj, (-(meanZ(2:end-2)-26)+26)*resAdj, 'g', 'linewidth', 2)
+plot(26*resAdj,26*resAdj,'mo')
+
+% Number of standards to extend, 68, 95, 99.7
+SDMult = 2;
+includeCenter = 0;
+
+plusCone = zeros(newD, newD);
+
+plusRadius = meanProfile;
+% Adjust x seperatley depending on side
+plusRadius(:,1,1) = plusRadius(:,1,1) - stdProfile(:,1,1)*SDMult;
+plusRadius(:,2,1) = plusRadius(:,2,1) + stdProfile(:,2,1)*SDMult;
+
+plusRadius(:,:,2) = plusRadius(:,:,2) + stdProfile(:,:,2)*SDMult;
+
+% Create closed polygon from path
+if includeCenter
+    plusX = [plusRadius(end,1,1) fliplr(plusRadius(:,1,1)') voxelCentre(1) plusRadius(:,2,1)' plusRadius(end,2,1) plusRadius(end,1,1)];
+    plusZ = [1 fliplr(plusRadius(:,1,2)') voxelCentre(3) plusRadius(:,2,2)' 1 1];
+else
+    plusX = [plusRadius(end,1,1) fliplr(plusRadius(:,1,1)') plusRadius(:,2,1)' plusRadius(end,2,1) plusRadius(end,1,1)];
+    plusZ = [1 fliplr(plusRadius(:,1,2)') plusRadius(:,2,2)' 1 1];
+end
+
+% fml, image indexing is confusing here...
+% Also unclear why shift required on zGrid to match curve...
+plusCone( inpolygon(xGrid(:)/resAdj, zGrid(:)/resAdj-1/resAdj+1, plusX, plusZ)) = 1;
+
+pause(0.1)
+figure;
+imshow(flipud(plusCone))
+hold on
+plot(plusX(2:end-2)*resAdj, (-(plusZ(2:end-2)-26)+26)*resAdj, 'r', 'linewidth', 2)
+plot(26*resAdj,26*resAdj,'mo')
+
+
+
+minusCone = zeros(newD, newD);
+
+minusRadius = meanProfile;
+% Adjust x seperatley depending on side
+minusRadius(:,1,1) = minusRadius(:,1,1) + stdProfile(:,1,1)*SDMult;
+minusRadius(:,2,1) = minusRadius(:,2,1) - stdProfile(:,2,1)*SDMult;
+
+minusRadius(:,:,2) = minusRadius(:,:,2) - stdProfile(:,:,2)*SDMult;
+
+% Create closed polygon from path
+if includeCenter
+    minusX = [minusRadius(end,1,1) fliplr(minusRadius(:,1,1)') voxelCentre(1) minusRadius(:,2,1)' minusRadius(end,2,1) minusRadius(end,1,1)];
+    minusZ = [1 fliplr(minusRadius(:,1,2)') voxelCentre(3) minusRadius(:,2,2)' 1 1];
+else
+    minusX = [minusRadius(end,1,1) fliplr(minusRadius(:,1,1)') minusRadius(:,2,1)' minusRadius(end,2,1) minusRadius(end,1,1)];
+    minusZ = [1 fliplr(minusRadius(:,1,2)') minusRadius(:,2,2)' 1 1];
+end
+% fml, image indexing is confusing here...
+% Also unclear why shift required on zGrid to match curve...
+minusCone( inpolygon(xGrid(:)/resAdj, zGrid(:)/resAdj-1/resAdj+1, minusX, minusZ)) = 1;
+
+pause(0.1)
+figure;
+imshow(flipud(minusCone))
+hold on
+plot(minusX(2:end-2)*resAdj, (-(minusZ(2:end-2)-26)+26)*resAdj, 'b', 'linewidth', 2)
+plot(26*resAdj,26*resAdj,'mo')
+
+figure; hold on
+plot(meanX(2:end-2), meanZ(2:end-2), 'g', 'linewidth', 2)
+plot(plusX(2:end-2), plusZ(2:end-2), 'r', 'linewidth', 2)
+plot(minusX(2:end-2), minusZ(2:end-2), 'b', 'linewidth', 2)
+legend('Mean', '+2SD', '-2SD')
+
+% save images
+cd('/Users/gavintaylor/Desktop')
+imwrite(flipud(meanCone), 'Cone_mean.png')
+imwrite(flipud(plusCone),'Cone_plus2D.png')
+imwrite(flipud(minusCone),'Cone_minus2D.png')
