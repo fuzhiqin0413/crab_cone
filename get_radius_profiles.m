@@ -362,6 +362,12 @@ for i = 1:7
     
 end
 
+corneaLength = zeros(7,1);
+
+for i = 1:7
+    corneaLength(i) = sum(~isnan(corneaAverage(i,:)));
+end
+
 [ringMean, ringStandard]
 
 clear tempVolume
