@@ -13,6 +13,7 @@ dataFolder = '/Users/gavintaylor/Documents/Shared VM Folder/ForProfiles_1_allCon
 
 coneData = loadtiffstack(dataFolder, 0);
 
+%%% Note, should add rescaling to all profiles on plots here
 
 %%
 
@@ -51,16 +52,16 @@ end
 
 %% check plots 
 
-cols = winter(7);
+cols = lines(7);
 
-figure; 
+fCone = figure; 
 
 % Plot to check match
 subplot(1,2,1); hold on; axis equal
 for i = 1:7
     
     tempVoxels = coneParam(i,:).VoxelList{1};
-    plot3(tempVoxels(:,2), tempVoxels(:,1), tempVoxels(:,3), '.') % , 'color', cols(i,:)
+    plot3(tempVoxels(:,2), tempVoxels(:,1), tempVoxels(:,3), '.', 'color', cols(i,:))
 
 %     tempVoxels = corneaParam(i,:).VoxelList{1};
 %     plot3(tempVoxels(:,2), tempVoxels(:,1), tempVoxels(:,3), 'x', 'color', cols(i,:))
@@ -96,7 +97,7 @@ for i = 1:7
     
     tempAxes = pca(tempVoxels(:,[2 1 3]));
     line([0 100]*tempAxes(1,3) + corneaCenter(i,1), [0 100]*tempAxes(2,3) + corneaCenter(i,2),...
-        [0 100]*tempAxes(3,3) + corneaCenter(i,3), 'color', cols(i,:), 'linestyle',':')
+        [0 100]*tempAxes(3,3) + corneaCenter(i,3), 'linestyle', ':', 'color', cols(i,:))
     corneaAxes(i,:) = tempAxes(:,3);
     
     angleDiff(i) = acos(dot(coneAxes(i,:), corneaAxes(i,:))/(norm(corneaAxes(i,:)) * norm(coneAxes(i,:))) )/pi*180;
@@ -106,6 +107,7 @@ angleDiff
 
 
 %% get tip and rotate for cones
+
 grid3D.nx = volumeSize(1);
 grid3D.ny = volumeSize(2);
 grid3D.nz = volumeSize(3);
@@ -117,11 +119,20 @@ depth0Ind = find(depthTests == 0);
 
 coneAverage = zeros(7,length(depthTests))*NaN;
 coneStandard = zeros(7,length(depthTests))*NaN;
-coneNumber = zeros(7,length(depthTests))*NaN;
+interconeRatio = zeros(7,length(depthTests))*NaN;
 
-coneLength = zeros(7,1);
+coneRingMean = zeros(7,1);
+coneRingStandard = zeros(7,1);
 
-figure; hold on; 
+coneRingHeightMean = zeros(7,1);
+coneRingHeightStandard = zeros(7,1);
+
+coneToCICLength = zeros(7,1);
+
+fSummary = figure; hold on; 
+
+fTemp = figure;
+
 for i = 1:7
     % Get intersect for cone
     % Create vectors
@@ -163,7 +174,7 @@ for i = 1:7
     interConePoints = zeros(length(tempInds),1);
     interConePoints(interConeInds) = 1;
     
-    coneLength(i) = sqrt((tempVoxels(tipIndex,1) - corneaX)^2 + (tempVoxels(tipIndex,2) - corneaY)^2 + ...
+    coneToCICLength(i) = sqrt((tempVoxels(tipIndex,1) - corneaX)^2 + (tempVoxels(tipIndex,2) - corneaY)^2 + ...
         (tempVoxels(tipIndex,3) - corneaZ)^2);
     
     % Get rotation vector
@@ -174,14 +185,17 @@ for i = 1:7
     rotatedVoxels = (tempVoxels-coneCenter(i,:))*rotVec;
     
     % Offset Tip to zero
-    rotatedVoxels = rotatedVoxels - rotatedVoxels(tipIndex,:);
+    tipOffset = rotatedVoxels(tipIndex,:);
+    rotatedVoxels = rotatedVoxels - tipOffset;
     
     rotatedVoxels(:,3) = round(rotatedVoxels(:,3));
 
 %     figure; hold on; axis equal
 %     plot3(rotatedVoxels(:,1), rotatedVoxels(:,2), rotatedVoxels(:,3), '.', 'color', cols(i,:))
 %     plot3(rotatedVoxels(interConeInds,1), rotatedVoxels(interConeInds,2), rotatedVoxels(interConeInds,3), 'x', 'color', 'm')
-    
+
+    coneFullNumber = zeros(length(depthTests),1);
+
     % Get profile along cone
     for j = depthTests
         tempInds = find(rotatedVoxels(:,3) == j);
@@ -193,9 +207,18 @@ for i = 1:7
             
             coneStandard(i, j-min(depthTests)+1) = std(tempDists);
             
-            coneNumber(i, j-min(depthTests)+1) = sum(interConePoints(tempInds))/length(tempInds)*100;
+            interconeRatio(i, j-min(depthTests)+1) = sum(interConePoints(tempInds))/length(tempInds)*100;
+            
+            coneFullNumber(j-min(depthTests)+1) = sum(interConePoints(tempInds));
         end
     end
+    
+    figure(fTemp);
+    subplot(1,2,1); hold on
+    plot(coneFullNumber, 'color', cols(i,:));
+    
+    [~, maxI] = max(coneFullNumber);
+    plot(maxI, coneFullNumber(maxI), 'x', 'color', cols(i,:));
     
     % Adjust offset to narrow point
     [narrowVal] = min(coneAverage(i,1:depth0Ind));
@@ -207,18 +230,57 @@ for i = 1:7
     % Shift back to make start point 
     coneAverage(i, depth0Ind:end) = coneAverage(i, narrowInd:end-(depth0Ind-narrowInd));
     coneStandard(i, depth0Ind:end) = coneStandard(i, narrowInd:end-(depth0Ind-narrowInd));
-    coneNumber(i, depth0Ind:end) = coneNumber(i, narrowInd:end-(depth0Ind-narrowInd));
+    interconeRatio(i, depth0Ind:end) = interconeRatio(i, narrowInd:end-(depth0Ind-narrowInd));
     
     % Remove part above narrow point
     coneAverage(i, 1:depth0Ind-1) = NaN;
     coneStandard(i, 1:depth0Ind-1) = NaN;
-    coneNumber(i, 1:depth0Ind-1) = NaN;
+    interconeRatio(i, 1:depth0Ind-1) = NaN;
+    
+    figure(fCone)
+    
+    subplot(1,2,2)
+    
+    plot3(corneaX, corneaY, corneaZ, 'o', 'color', cols(i,:))
+    
+    
+    
+    figure(fSummary)
     
     subplot(1,3,1); hold on;
     plot(depthTests, coneAverage(i,:))
     
     subplot(1,3,3); hold on
-    plot(depthTests, coneNumber(i,:))
+    plot(depthTests, interconeRatio(i,:))
+    
+    % Get ring points associated to this cone
+    tempVolume = zeros(size(coneData), 'logical');
+    tempVolume(coneParam(i,:).VoxelIdxList{1}) = 1;
+    tempVolume = imdilate(tempVolume, strel('sphere',1));
+    
+    ringInds = find(ringVolume & tempVolume);
+    ringVoxels = zeros(length(ringInds),3);
+    [ringVoxels(:,1), ringVoxels(:,2), ringVoxels(:,3)] = ind2sub(volumeSize, ringInds);
+    
+    % Transform
+    rotatedRing = (ringVoxels-coneCenter(i,:))*rotVec;
+    
+    % Note, narrow ind used in shift here
+    rotatedRing = rotatedRing - tipOffset - depthTests(narrowInd);
+    
+    ringRadius = sqrt(rotatedRing(:,1).^2 + rotatedRing(:,2).^2);
+    
+    coneRingMean(i) = mean(ringRadius);
+    coneRingStandard(i) = std(ringRadius);
+
+    coneRingHeightMean(i) = mean(rotatedRing(:,3));
+    coneRingHeightStandard(i) = std(rotatedRing(:,3));
+    
+    figure(fTemp); hold on
+
+    meanRingInd = round(mean(rotatedRing(:,3))) -min(depthTests)+1;
+    
+    plot(meanRingInd, coneFullNumber(meanRingInd), 'o', 'color', cols(i,:));
 end
 
 averageCone = nanmean(coneAverage);
@@ -226,10 +288,12 @@ averageConeStd = nanstd(coneAverage);
 
 aaExportCone = [depthTests', coneAverage', averageCone', averageConeStd'];
 
-averageConeNumber = nanmean(coneNumber);
-averageConeNumberStd = nanstd(coneNumber);
+averageinterconeRatio = nanmean(interconeRatio);
+averageinterconeRatioStd = nanstd(interconeRatio);
 
-aaExportNumber = [depthTests', coneNumber', averageConeNumber', averageConeNumberStd'];
+aaExportNumber = [depthTests', interconeRatio', averageinterconeRatio', averageinterconeRatioStd'];
+
+figure(fSummary)
 
 subplot(1,3,1);
 plot(depthTests, averageCone, 'r-', 'linewidth', 2)
@@ -242,17 +306,15 @@ xlabel('Distance from tip')
 ylabel('Radius')
 
 subplot(1,3,3);
-plot(depthTests, averageConeNumber, 'r-', 'linewidth', 2)
+plot(depthTests, averageinterconeRatio, 'r-', 'linewidth', 2)
 
-plot(depthTests, averageConeNumber+averageConeNumberStd, 'r:', 'linewidth', 2)
-plot(depthTests, averageConeNumber-averageConeNumberStd, 'r:', 'linewidth', 2)
+plot(depthTests, averageinterconeRatio+averageinterconeRatioStd, 'r:', 'linewidth', 2)
+plot(depthTests, averageinterconeRatio-averageinterconeRatioStd, 'r:', 'linewidth', 2)
 ylim([0 100])
 
 title('Intercone embedded')
 xlabel('Distance from tip')
 ylabel('% Embedded')
-
-coneLength
 
 %% Now do for cornea
 
@@ -262,8 +324,11 @@ depth0Ind = find(depthTests == 0);
 corneaAverage = zeros(7,length(depthTests))*NaN;
 corneaStandard = zeros(7,length(depthTests))*NaN;
 
-ringMean = zeros(7,1);
-ringStandard = zeros(7,1);
+corneaRingMean = zeros(7,1);
+corneaRingStandard = zeros(7,1);
+
+corneaRingHeightMean = zeros(7,1);
+corneaRingHeightStandard = zeros(7,1);
 
 for i = 1:7
     % Get intersect for cornea
@@ -300,14 +365,19 @@ for i = 1:7
     rotatedVoxels = (tempVoxels-corneaCenter(i,:))*rotVec;
     
     % Offset Tip to zero
-    rotatedVoxels = rotatedVoxels - rotatedVoxels(tipIndex,:);
+    tipOffset = rotatedVoxels(tipIndex,:);
+    rotatedVoxels = rotatedVoxels - tipOffset;
     
 %     plot3(rotatedVoxels(:,1), rotatedVoxels(:,2), rotatedVoxels(:,3), 'x', 'color', cols(i,:))
     rotatedVoxels(:,3) = round(rotatedVoxels(:,3));
 
+    corneaNum = zeros(length(depthTests),1);
+    
     % Get profile along cornea
     for j = depthTests
         tempInds = find(rotatedVoxels(:,3) == j);
+        
+        corneaNum(j-min(depthTests)+1) = length(tempInds);
         
         if ~isempty(tempInds)
             tempDists = sqrt(rotatedVoxels(tempInds,1).^2 + rotatedVoxels(tempInds,2).^2);
@@ -317,6 +387,13 @@ for i = 1:7
             corneaStandard(i, j-min(depthTests)+1) = std(tempDists);
         end
     end
+    
+    figure(fTemp); 
+    subplot(1,2,2); hold on
+    plot(corneaNum, 'color', cols(i,:));
+    
+    [~, maxI] = max(corneaNum);
+    plot(maxI, corneaNum(maxI), 'x', 'color', cols(i,:));
     
     % Adjust offset to narrow point
     [narrowVal] = min(corneaAverage(i,1:depth0Ind));
@@ -332,6 +409,9 @@ for i = 1:7
     % Remove part above narrow point
     corneaAverage(i, 1:depth0Ind-1) = NaN;
     corneaStandard(i, 1:depth0Ind-1) = NaN;
+
+    
+    figure(fSummary)
     
     subplot(1,3,2); hold on;
     plot(depthTests, corneaAverage(i,:))
@@ -348,13 +428,32 @@ for i = 1:7
     ringVoxels = zeros(length(ringInds),3);
     [ringVoxels(:,1), ringVoxels(:,2), ringVoxels(:,3)] = ind2sub(volumeSize, ringInds);
     
+    figure(fCone)
+    
+    subplot(1,2,2)
+    
+    plot3(tempVoxels(tipIndex,1), tempVoxels(tipIndex,2), tempVoxels(tipIndex,3), 'x', 'color', cols(i,:))
+    
+    plot3(ringVoxels(:,1), ringVoxels(:,2), ringVoxels(:,3), 'x', 'color', cols(i,:))
+    
     % Transform
     rotatedRing = (ringVoxels-corneaCenter(i,:))*rotVec;
     
+    rotatedRing = rotatedRing - tipOffset - depthTests(narrowInd);
+    
     ringRadius = sqrt(rotatedRing(:,1).^2 + rotatedRing(:,2).^2);
     
-    ringMean(i) = mean(ringRadius);
-    ringStandard(i) = std(ringRadius);
+    corneaRingMean(i) = mean(ringRadius);
+    corneaRingStandard(i) = std(ringRadius);
+
+    corneaRingHeightMean(i) = mean(rotatedRing(:,3));
+    corneaRingHeightStandard(i) = std(rotatedRing(:,3));
+    
+    figure(fTemp); hold on
+
+    meanRingInd = round(mean(rotatedRing(:,3))) -min(depthTests)+1;
+    
+    plot(meanRingInd, corneaNum(meanRingInd), 'o', 'color', cols(i,:));
     
 %     figure; hold on
 %     plot3(rotatedVoxels(:,1), rotatedVoxels(:,2), rotatedVoxels(:,3), 'r.')
@@ -362,20 +461,14 @@ for i = 1:7
     
 end
 
-corneaLength = zeros(7,1);
-
-for i = 1:7
-    corneaLength(i) = sum(~isnan(corneaAverage(i,:)));
-end
-
-[ringMean, ringStandard]
-
 clear tempVolume
 
 averageCornea = nanmean(corneaAverage);
 averageCorneaStd = nanstd(corneaAverage);
 
 aaExportCornea = [depthTests', corneaAverage', averageCornea', averageCorneaStd'];
+
+figure(fSummary)
 
 plot(depthTests, averageCornea, 'r-', 'linewidth', 2)
 
