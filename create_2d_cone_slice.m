@@ -3,15 +3,15 @@ get_radius_profiles
 %% 
 %  close all
 % Parameters from oliver
-interCone = 356.79;
-interConeSD = 24.31;
+interCone = 356.79/voxSize;
+interConeSD = 24.31/voxSize;
 use3Dintercone = 1;
 
-outerCornea = 104.84;
-outerCorneaSD = 6.59;
+outerCornea = 104.84/voxSize;
+outerCorneaSD = 6.59/voxSize;
 
-epiCornea = 32.68;
-epiCorneaSD = 2.21;
+epiCornea = 32.68/voxSize;
+epiCorneaSD = 2.21/voxSize;
 
 sliceSize = round([3*max(coneAverage(:)) max(coneRingHeightMean)*1.5]);
 
@@ -20,17 +20,26 @@ slice = zeros(sliceSize(1), sliceSize(2));
 nPlot = 2;
 tText = 'Mean'; %'-2 SD'; 'Mean'; 
 SDMult = 0;
-% figure
+figure
 
 tipOffset = 10; % Number of Nans at start of array
 
 % Set up parameters
-outerValue = 0;
-innerValue = 1;
-coneValue = 5;
-outerCorneaValue = 4;
-epiCorneaValue = 3;
-interconeValue = 2;
+% Labels
+% outerValue = 0;
+% innerValue = 1;
+% coneValue = 5;
+% outerCorneaValue = 4;
+% epiCorneaValue = 3;
+% interconeValue = 2;
+
+% RI values
+outerValue = 1.33;
+innerValue = 1.34;
+coneValue = NaN;
+outerCorneaValue = 1.5;
+epiCorneaValue = 1.53;
+interconeValue = 1.47;
 
 % Change to ring height for cone length
 coneLengthToUse = mean(coneRingHeightMean) + std(coneRingHeightMean)*SDMult;
@@ -126,7 +135,16 @@ for i = 1:round(coneLengthToUse)
     xPosBottom = round(sliceSize(1)/2 - coneProfileToUse(i));
 
     % Fill between top and bottom
-    slice(xPosBottom:xPosTop, yPos) = coneValue;
+    if ~isnan(coneValue)
+        slice(xPosBottom:xPosTop, yPos) = coneValue;
+    else
+        % From oliver
+        % rescale relative diameter to be 80
+        tempX = ((xPosBottom:xPosTop)-sliceSize(1)/2)/coneProfileToUse(i)*80;
+        
+        slice(xPosBottom:xPosTop, yPos) = 1.52-0.000004914*tempX.^2;
+    end
+    
     
     % Fill intercone
     if i >= interConeCover
@@ -177,5 +195,9 @@ topEpiCornea = tipOffset + round(coneLengthToUse) + round(outerCorneaToUse) + ro
 slice(:, bottomEpiCornea:topEpiCornea) = epiCorneaValue;
 
 subplot(1,3,nPlot)
-imshow(slice'/(max(slice(:))+1))
-title(tText);
+if ~isnan(coneValue)
+    imshow(slice'/(max(slice(:))+1))
+else
+    imshow((slice'-1.45)/(1.54-1.45))
+end
+    title(tText);
