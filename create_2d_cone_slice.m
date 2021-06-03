@@ -2,6 +2,10 @@ get_radius_profiles
 
 %% 
 %  close all
+
+voxScale = 4; % 4 goes from 2 micron to 500 nm voxels
+writeLarge = 0;
+
 % Parameters from oliver
 interCone = 356.79/voxSize;
 interConeSD = 24.31/voxSize;
@@ -106,6 +110,16 @@ coneProfileToUse =  meanStretchedCone + stdStretchedCone*SDMult;
 
 innerConeProfileToUse =  meanStrechedCornea + stdStrechedCornea*SDMult;
 
+% Tweaking profiles - set for 0 SD
+% Cut first three points from top of cone and lengthen end
+coneProfileToUse(1:3) = [];
+coneProfileToUse(end:end+3) = coneProfileToUse(end);
+
+% adjust radius on first three points of intercone
+innerConeProfileToUse(1:3) = innerConeProfileToUse(1:3)./[3 1.25 1.1];
+
+display('Tweaking')
+
 % Take from full cover of center cone
 if use3Dintercone
     coveringProfileToUse = interconeRatio(4,:);
@@ -201,3 +215,18 @@ else
     imshow((slice'-1.45)/(1.54-1.45))
 end
     title(tText);
+    
+largerImg = imresize(slice, voxScale,'nearest'); 
+
+if writeLarge 
+    currentDirectory = pwd; 
+    cd('/Users/gavintaylor/Desktop')
+
+    warning('check names are correct')
+
+    writematrix(largerImg,'500_average_cone_0_sd.csv') 
+    cd(pwd)
+
+    figure;
+    imshow((largerImg'-1.45)/(1.54-1.45))
+end
