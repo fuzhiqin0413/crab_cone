@@ -1,11 +1,6 @@
 % Set up to do both tracing on data and have testing mode on either
 % lundaberg lens or graded fibre, as in nishdate 2011 papers
     
-    % Need to determine correct exterior point treatment for boundary condition
-        % Could be none, or pad with air or equal
-        % Given Ray close to boarder of Fibre, seems to be fine for none.
-        % Would be interesting to include air for Lundberg, could draw in slightly?
- 
     %%% Add refreaction on entry    
         
     % Also need to add interface refraction - not required for test cases but
@@ -37,26 +32,24 @@ useRealData = 0;
 
 useTestData = 1;
 
+exteriorRI = 1;
+
 radius = 1; %mm - used for both lens and fiber
 
     createLunebergLens = 1;
         
-    createCreateGradedFiber = 0;
+    createGradedFiber = 0;
         fiberLength = 10;
         n0 = sqrt(2.5);
         alpha = 1/(2.5); sqrt(2.5);
         
-% 0 will search all voxels        
-limitToLens = 1;
-    %Only used if above is zero
-    exteriorRI = 1;
-
 % Options, 1, 4(S, RKN), 5RKN, 45RKN       
-interpType = '45RKN';        
-    tolerance = 10^-8;
+interpType = '45RKN';
+    % This has a big increase on run time
+    tolerance = 10^-10; % Nishidate uses 10^-12, tested on 10^-8
     
-    % Should be on order of final deltaS
-    initialDeltaS = 10^-3;
+    % Should be on order of min deltaS for given tolerance
+    initialDeltaS = 10^-6;
     
 % For fiber - 0.25 is border, 0.375 is 25% and 0.5 is center.    
 startPos = 0.375;    
@@ -78,7 +71,7 @@ if useRealData
     %%% If not doing direction updating, calcualte RI for all
     
 elseif useTestData
-    if ~xor(createLunebergLens, createCreateGradedFiber)
+    if ~xor(createLunebergLens, createGradedFiber)
         error('Either or neither lens/fiber flags set. Check.')
     end
     
@@ -87,16 +80,16 @@ elseif useTestData
         
         lensRIVolume = createluneberglens(radius/voxelSize, volumeSize);
     
-    elseif createCreateGradedFiber
+    elseif createGradedFiber
         volumeSize = ceil([radius*2 radius*2 fiberLength]*1.5/voxelSize);
         
         lensRIVolume = createGradedFiber(radius/voxelSize, fiberLength/voxelSize, volumeSize, ...
             n0, alpha, voxelSize);
     end
     
-    goodVolume = ~isnan(lensRIVolume);
+    goodVolume = int8(~isnan(lensRIVolume));
     
-    goodInds = find(goodVolume);
+
     
     lensRIVolume(isnan(lensRIVolume)) = exteriorRI;
 
@@ -127,7 +120,7 @@ elseif useTestData
         (round(volumeSize(2)/2) - volumeSize(2)/2)^2 );
     
     % Nishidate eqn
-    if createCreateGradedFiber
+    if createGradedFiber
         plot(centreLine, sqrt(2.5-(tempRadius*voxelSize/radius).^2), 'rx');
 
         plot(centreLine, sqrt(n0^2*(1-alpha^2*(tempRadius*voxelSize).^2)), 'g');
@@ -135,16 +128,9 @@ elseif useTestData
 end
 
 %% Do general set up
+
 % Search is limited to good in points
-if limitToLens
-    goodInds = find(goodVolume);
-else
-    goodInds = find(~isnan(lensRIVolume));
-    
-    if any(isnan(lensRIVolume(:)))
-        error('NaNs in lensRIVolume?')
-    end
-end
+goodInds = find(goodVolume);
 
 plotInds = 1:length(surfaceX);
 
@@ -158,7 +144,7 @@ volCoords = ([tempX(:), tempY(:), tempZ(:)])*voxelSize;
 zSteps = (1:volumeSize(3))*voxelSize;
 
 %%% Replace with meshgrid later on
-xStartPoints = volumeSize(1)*startPos; %1:5:volumeSize(1);
+xStartPoints = 1:5:volumeSize(1); volumeSize(1)*startPos; %
 
 rayOrigins = [xStartPoints(:), ones(numel(xStartPoints),1)*volumeSize(2)/2,  ...
     ones(numel(xStartPoints),1)]*voxelSize; 
@@ -170,6 +156,28 @@ startRayT = [0, 0, 1];
 rayCols = lines(nOrigins);
 
 %% Run ray tracer
+
+% Get border test value
+if useRealData
+
+elseif useTestData
+    if createLunebergLens
+        % Get sphere intersection
+
+       intersectionFn = @(x1)(sqrt(sum((x1 - volumeSize/2*voxelSize).^2)) > ...
+           radius);
+
+       lambdaFn = @(x1, x0)((sqrt(sum((x1 - volumeSize/2*voxelSize).^2))-radius)/...
+           (sqrt(sum((x1 - volumeSize/2*voxelSize).^2))-sqrt(sum((x0 - volumeSize/2*voxelSize).^2))));
+
+    elseif createGradedFiber
+       referenceDistance = zSteps(topZ+1);
+
+       intersectionFn = @(x1)(x1(3) > referenceDistance);
+
+       lambdaFn = @(x1, x0)((x1(3)-referenceDistance)/(x1(3)-x0(3)));
+    end
+end
 
 rayPathArray = zeros(3, volumeSize(3), nOrigins)*NaN;
 
@@ -183,7 +191,10 @@ end
 % Turn of warning on singular matrix, otherwise backslash will slow down a lot
 warning('off', 'MATLAB:nearlySingularMatrix')
 
-for iOrigin = 1% 1:nOrigins
+minDeltaS = ones(nOrigins, 1);
+rayExit = zeros(nOrigins, 3);
+
+for iOrigin = 1:nOrigins
     %%% Could set up to do for series of ray angles
     rayT = startRayT; %3x1 : ray will move from bottom to top
 
@@ -194,10 +205,11 @@ for iOrigin = 1% 1:nOrigins
     inGraded = 0;
     
     %%% Was ray x in phyiscial coordinates
-        % Using floor so that doesn't step until voxel has been left behind
-    voxelX = floor(rayOrigins(iOrigin,:)/voxelSize);
+    [voxelX, roundDirection] = roundCont(rayOrigins(iOrigin,:)/voxelSize, []);
     
     lastNearbyX = [rayX(1), rayX(2), -1];
+    
+    oldVoxelX = voxelX;
     
     go = 1;
 
@@ -228,7 +240,8 @@ for iOrigin = 1% 1:nOrigins
                     % Steps ray back to intersection
                     rayX = rayX + rayT*deltaTemp; %3x1 coordinates
 
-                elseif createCreateGradedFiber
+                    voxOrig = voxelX;
+                elseif createGradedFiber
                     % Get z distance past bottom of gradient section
                     deltaTemp = (zSteps(bottomZ) - rayX(3))/rayT(3);
                     
@@ -236,9 +249,6 @@ for iOrigin = 1% 1:nOrigins
                     rayX = rayX + rayT*deltaTemp;
                    
                 end
-              
-                error('Possible that shift back to radius place points on exterior voxel');
-                
             end
             
             % Get surface normal at exit point
@@ -251,12 +261,28 @@ for iOrigin = 1% 1:nOrigins
                     
                     surfaceNormal = surfaceNormal/norm(surfaceNormal);
                     
-                elseif createCreateGradedFiber
+                elseif createGradedFiber
                     % Just points backwards
                     surfaceNormal = [0 0 -1];
                 end
             end
-            voxelX = floor(rayX/voxelSize);
+ 
+            [tempX] = roundCont(rayX/voxelSize, []);
+            
+            if norm(tempX-oldVoxelX)
+                  % has moved
+                  oldVoxelX = voxelX;
+
+                  [voxelX, roundDirection] = roundCont(rayX/voxelSize, []);
+            else
+                  % hasn't moved
+                  voxelX = tempX;
+            end
+            
+            % If volume not flagged, change for this ray
+            if goodVolume(voxelX(1), voxelX(2), voxelX(3)) == 0
+               goodVolume(voxelX(1), voxelX(2), voxelX(3)) = 2;            
+            end
             
             %%% Need to calculate refraction
             
@@ -292,7 +318,7 @@ for iOrigin = 1% 1:nOrigins
             
             %%% If doing direction updating, calculate RI for current direction
             
-            [rayX rayT deltaS*10^3]
+            [rayX rayT deltaS*10^6]
         end
         
         %propogate ray
@@ -312,50 +338,45 @@ for iOrigin = 1% 1:nOrigins
             rayX = x';
             
             rayT = t';
+            
+            if deltaS < minDeltaS(iOrigin)
+                minDeltaS(iOrigin) = deltaS;
+            end
+            
         end 
         
-        voxelX = floor(rayX/voxelSize);
+%         voxelX = floor(rayX/voxelSize);
+        [tempX] = roundCont(rayX/voxelSize, roundDirection);
         
-        % Test if leaving a graded volume
-        if goodVolume(voxelX(1), voxelX(2), voxelX(3)) == 0 & inGraded
-            
-            % Get border test value
-            if useRealData
-                
-            elseif useTestData
-                if createLunebergLens
-                    % Get sphere intersection
-                    
-                   intersectionFn = @(x1)(sqrt(sum((x1 - volumeSize/2*voxelSize).^2)) > ...
-                       radius);
-                   
-                   lambdaFn = @(x1, x0)((sqrt(sum((x1 - volumeSize/2*voxelSize).^2))-radius)/...
-                       (sqrt(sum((x1 - volumeSize/2*voxelSize).^2))-sqrt(sum((x0 - volumeSize/2*voxelSize).^2))));
-                    
-                elseif createCreateGradedFiber
-                   referenceDistance = zSteps(topZ+1);
-                   
-                   intersectionFn = @(x1)(x1(3) > referenceDistance);
-                   
-                   lambdaFn = @(x1, x0)((x1(3)-referenceDistance)/(x1(3)-x0(3)));
-                end
-            end
+        if norm(tempX-oldVoxelX)
+              % has moved
+              oldVoxelX = voxelX;
+              
+              [voxelX, roundDirection] = roundCont(rayX/voxelSize, []);
+        else
+              % hasn't moved
+              voxelX = tempX;
+        end
+        
+        % Test if leaving a GRIN area
+        if intersectionFn(rayX) & inGraded
 
+            % Test intersection, leaving could just be a rounding point           
             deltaS0_final = deltaS;
             lambda0 = lambdaFn(rayX, x0);
 
             %error term, sqrt of machine precision, from Nishidate paper sqrt(1.49e-8)
                 % Take geometric mean of single and double precision, double takes ages to evaluate
             epsilon = sqrt(geomean([1.19e-7 2.22e-16])); 
-            
+
             its = 1;
-            
+
             if createLunebergLens 
                 difference_init = (radius - sqrt(sum((x0 - volumeSize/2*voxelSize).^2)))*10^6;
-            elseif createCreateGradedFiber
+            elseif createGradedFiber
                 difference_init = (referenceDistance - x0(3))*10^6;
             end
-            
+
             while deltaS0_final*norm(t0) > epsilon && abs(lambda0-1) > 10^-5 
                 %%% using 10^-3 as test for zero in tests above and below
 
@@ -377,7 +398,7 @@ for iOrigin = 1% 1:nOrigins
 
                     deltaS_final = SF*lambda0*deltaS0_final;
 
-                    %%% step ray forward with RK5 with fixed step
+                    %%% step ray backward with RK5 with fixed step
                     [x, t] = ray_interpolation('5RKN', 'iso', x0', t0', deltaS_final, testCoords*voxelSize, ...
                         testInds, lensRIVolume, tolerance);
 
@@ -405,64 +426,85 @@ for iOrigin = 1% 1:nOrigins
                 its = its + 1;
             end
 
+            rayExit(iOrigin,:) = rayX;
+            
             if createLunebergLens 
                 difference_end = (radius - sqrt(sum((x0 - volumeSize/2*voxelSize).^2)))*10^6;
-            elseif createCreateGradedFiber
+            elseif createGradedFiber
                 difference_end = (referenceDistance - x0(3))*10^6;
             end
-             
+
             if useTestData
                 [its-1 difference_init difference_end]
             end
-            
+
             % Get surface normal at exit point
             if useRealData
-                
+
             elseif useTestData
                 if createLunebergLens
                     % Not really important, no refraction
                     surfaceNormal = -(rayX - volumeSize/2*voxelSize);
-                    
+
                     surfaceNormal = surfaceNormal/norm(surfaceNormal);
-                    
-                elseif createCreateGradedFiber
-                    
+
+                elseif createGradedFiber
+
                     % Just points backwards
                     surfaceNormal = [0 0 -1];
                 end
             end
-            voxelX = floor(rayX/voxelSize);
-            
-            % Do refraction at border
-            nExterior = lensRIVolume(voxelX(1), voxelX(2), voxelX(3));
-            % Final RI (x0 will be effectively equal x, but use first...)
-            [~, nInterior] = numerical_dT_dt(x0, testCoords*voxelSize, testInds, lensRIVolume);
-            
-            % Calculate refraction (normalize first)
-                % Note surface normal should point into GRIN region
-            rayT = rayT/norm(rayT);
-            
-            nRatio = (nInterior/nExterior);
-            cosI = -dot(surfaceNormal, rayT);
-            sinT2 = nRatio^2*(1-cosI^2);
-            cosT = sqrt(1-sinT2);
-            
-            if sinT2 < 1
-                % normal refraction
-                rayT = nRatio*rayT + (nRatio*cosI-cosT)*surfaceNormal;
+%             voxelX = floor(rayX/voxelSize);
+            [tempX] = roundCont(rayX/voxelSize, roundDirection);
+
+            if norm(tempX-oldVoxelX)
+                  % has moved
+                  oldVoxelX = voxelX;
+
+                  [voxelX, roundDirection] = roundCont(rayX/voxelSize, []);
             else
-               % total internal reflection
-               
-               % haven't really delt decide how to deal with this yet
-               asin(nExterior/nInterior)/pi*180 %critical angle
-               error('TIR')
-               
-               % reflection
-               rayT = rayT-2*dot(surfaceNormal,rayT)*surfaceNormal;
+                  % hasn't moved
+                  voxelX = tempX;
             end
-            rayT - t0/norm(t0)
+
+            % If volume flagged, change for this ray
+            if goodVolume(voxelX(1), voxelX(2), voxelX(3)) == 1
+               goodVolume(voxelX(1), voxelX(2), voxelX(3)) = -1;            
+            end
+
+            % Do refraction at border
+            %%% What case is this for
             
+%             nExterior = lensRIVolume(voxelX(1), voxelX(2), voxelX(3));
+%             % Final RI (x0 will be effectively equal x, but use first...)
+%             [~, nInterior] = numerical_dT_dt(x0, testCoords*voxelSize, testInds, lensRIVolume);
+% 
+%             % Calculate refraction (normalize first)
+%                 % Note surface normal should point into GRIN region
+%             rayT = rayT/norm(rayT);
+% 
+%             nRatio = (nInterior/nExterior);
+%             cosI = -dot(surfaceNormal, rayT);
+%             sinT2 = nRatio^2*(1-cosI^2);
+%             cosT = sqrt(1-sinT2);
+% 
+%             if sinT2 < 1
+%                 % normal refraction
+%                 rayT = nRatio*rayT + (nRatio*cosI-cosT)*surfaceNormal;
+%             else
+%                % total internal reflection
+% 
+%                % haven't really delt decide how to deal with this yet
+%                asin(nExterior/nInterior)/pi*180 %critical angle
+%                error('TIR')
+% 
+%                % reflection
+%                rayT = rayT-2*dot(surfaceNormal,rayT)*surfaceNormal;
+%             end
+%             rayT - t0/norm(t0)
+
             inGraded = 0;
+            
         end
         
         % At each voxel step, record path for plotting later 
@@ -489,10 +531,12 @@ for iOrigin = 1% 1:nOrigins
         end
     end
 
+    % Reset good volume
+    goodVolume(goodVolume == -1) = 1;
+    goodVolume(goodVolume == 2) = 0;
+    
     pause(0.01)
 end
-
-deltaS
 
 warning('on', 'MATLAB:nearlySingularMatrix')
 
@@ -500,6 +544,11 @@ if ~isempty(testResults)
     testResults{iRayTest} = rayPathArray;
     testTypes{iRayTest} = interpType
 end
+
+tolerance
+minDeltaS(minDeltaS < 1)*10^6
+mean(minDeltaS(minDeltaS < 1))*10^6
+
 %% Plot results
 % close all
 
@@ -595,27 +644,32 @@ else
         % Plot X error along Z
         subplot(2,2,3); hold on;
         for iOrigin = 1:nOrigins
-            rayPath = permute(rayPathArray(:, :, iOrigin), [2 1]);
-            
-            tempRayPath = permute(trueRayPathArray(:, :, iOrigin), [2 1]);
-            
-            plot((rayPath(:,1) - tempRayPath(:,1))*10^3, zSteps, 'color', rayCols(iOrigin,:))
+            if minDeltaS(iOrigin) < 1
+                rayPath = permute(rayPathArray(:, :, iOrigin), [2 1]);
+
+                tempRayPath = permute(trueRayPathArray(:, :, iOrigin), [2 1]);
+
+                plot((rayPath(:,1) - tempRayPath(:,1))*10^3, zSteps, 'color', rayCols(iOrigin,:))
+            end
         end
         line([-20 20], [1 1]*zSteps(bottomZ), 'color', 'b')
         
         line([-20 20], [1 1]*zSteps(topZ), 'color', 'b')
         
         
-        xlabel('Error in micron')
+        xlabel('Path error in micron')
         title('Ray error')
         
         % plot spot diagram
         subplot(2,2,4); hold on; axis equal;
+        centerRef = volumeSize(2)/2*voxelSize;
         for iOrigin = 1:nOrigins
-%             rayPath = permute(rayPathArray(:, :, iOrigin), [2 1]);
-% 
-%             plot3(rayPath(:,1), rayPath(:,2), rayPath(:,3), 'color', rayCols(iOrigin,:));
+            if rayExit(iOrigin,3) ~= 0
+                plot((rayExit(iOrigin,1)-centerRef)*10^9, (rayExit(iOrigin,2)-centerRef)*10^9, 'x',  'color', rayCols(iOrigin,:));
+            end
         end
+
+        xlabel('Spot error in nm')
         title('Spot diagram')
     else
         % Plot ray path in object
