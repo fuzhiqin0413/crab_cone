@@ -17,15 +17,15 @@ function [dT_dt, n_of_X, dn_partial_dX] = numerical_dT_dt(X, vol_coords, vol_ind
         W_of_X(i,i) = 1-6*d^2+8*d^3-3*d^4;
     end
 
-    % As eqn 7
+    % As eqn 7   
     % A bit faster if done with single vectorized calc rather than per coord.
-    P_of_X = calculatetricubicbasis_vec(sampling_coords(:,1), sampling_coords(:,2), sampling_coords(:,3)); %nx20 : basis vector per sampling point
+    P_of_X = calculatetricubicbasis_vec(sampling_coords(:,1), sampling_coords(:,2), sampling_coords(:,3)); %20xn : basis vector per sampling point
 
     % As eqn 5
-    M_of_X = P_of_X'*W_of_X*P_of_X; %20x20
+    M_of_X = P_of_X*W_of_X*P_of_X'; %20x20
 
     % As eqn 6
-    N_of_X = P_of_X'*W_of_X; %20xn
+    N_of_X = P_of_X*W_of_X; %20xn
         
     % Solve eqn 4
     % Supress warnings from forwardsslash in calling function as they delay a lot

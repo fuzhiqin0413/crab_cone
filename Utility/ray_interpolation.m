@@ -93,7 +93,7 @@ function [X, T, new_delta] = ray_interpolation(type, RIType, X0, T0, delta, vol_
             error('Interpolation type not coded')
     end
     
-    % Seems like ray should be normalized, but adds lots of error.
+    % Seems like ray should be normalized here, but causes huge error.
 %     T = T/norm(T);
 end    
 
