@@ -271,7 +271,7 @@ for iOrigin = 1:nOrigins
             
             voxelX = round(rayX/voxelSize); 
             
-            % Get surface normal at entry point
+            % Get surface normal and RI at entry point
             if useRealData
                 
             elseif useTestData
@@ -281,22 +281,23 @@ for iOrigin = 1:nOrigins
 
                     surfaceNormal = surfaceNormal/norm(surfaceNormal);
  
-                    rIn = 1;
+                    rOut = 1;
                     
                     setRIForFirst = 1;
                     
-                    fixedRI = rIn;
+                    fixedRI = rOut;
                     
                 elseif createGradedFiber
                     % Just points backwards
                     surfaceNormal = [0 0 -1];
                     
-                    [~, rIn] = numerical_dT_dt(rayX, volCoords(goodInds,:), goodInds, lensRIVolume, []);   
+                    [~, rOut] = numerical_dT_dt(rayX, volCoords(goodInds,:), goodInds, lensRIVolume, []);   
                 end
             end
             
-            rOut = exteriorRI;
+            rIn = exteriorRI;
             
+            % Calculate entry refraction
             nRatio = rIn/rOut;
             cosI = -dot(surfaceNormal, rayT);
             sinT2 = nRatio^2*(1-cosI^2);
@@ -304,6 +305,7 @@ for iOrigin = 1:nOrigins
             
             % Assuming all refracted, non reflected
             rayT = nRatio*rayT + (nRatio*cosI-cosT)*surfaceNormal;
+            rayT = rayT/norm(rayT);
             
             inGraded = 1;
         end
@@ -509,23 +511,6 @@ for iOrigin = 1:nOrigins
                     [its-1 difference_init difference_end]
                 end
 
-                % Get surface normal at exit point
-                if useRealData
-
-                elseif useTestData
-                    if createLunebergLens
-                        % Not really important, no refraction
-                        surfaceNormal = -(rayX - volumeSize/2*voxelSize);
-
-                        surfaceNormal = surfaceNormal/norm(surfaceNormal);
-
-                    elseif createGradedFiber
-
-                        % Just points backwards
-                        surfaceNormal = [0 0 -1];
-                    end
-                end
-
             else
                lambda0 = lambdaFn(rayX, x0);
                
@@ -543,44 +528,42 @@ for iOrigin = 1:nOrigins
 
             finalPathLength(iOrigin,:) = pathLength;
             
-            exitedFlag = 1;
-            
             % Do refraction at border
-            %%% What case is this for
-            
-%             nExterior = lensRIVolume(voxelX(1), voxelX(2), voxelX(3));
-%             % Final RI (x0 will be effectively equal x, but use first...)
-%             [~, nInterior] = numerical_dT_dt(x0, testCoords*voxelSize, testInds, lensRIVolume);
-% 
-%             % Calculate refraction (normalize first)
-%                 % Note surface normal should point into GRIN region
-%             rayT = rayT/norm(rayT);
-% 
-%             nRatio = (nInterior/nExterior);
-%             cosI = -dot(surfaceNormal, rayT);
-%             sinT2 = nRatio^2*(1-cosI^2);
-%             cosT = sqrt(1-sinT2);
-% 
-%             if sinT2 < 1
-%                 % normal refraction
-%                 rayT = nRatio*rayT + (nRatio*cosI-cosT)*surfaceNormal;
-%             else
-%                % total internal reflection
-% 
-%                % haven't really delt decide how to deal with this yet
-%                asin(nExterior/nInterior)/pi*180 %critical angle
-%                error('TIR')
-% 
-%                % reflection
-%                rayT = rayT-2*dot(surfaceNormal,rayT)*surfaceNormal;
-%             end
-%             rayT - t0/norm(t0)
 
-            % Normalize ray trajectory 
+             % Get surface normal and RI at exit point
+            if useRealData
+
+            elseif useTestData
+                if createLunebergLens
+                    % Not really important, no refraction
+                    surfaceNormal = -(rayX - volumeSize/2*voxelSize);
+
+                    surfaceNormal = surfaceNormal/norm(surfaceNormal);
+                    
+                    rIn = 1;
+
+                elseif createGradedFiber
+                    % Just points backwards
+                    surfaceNormal = [0 0 -1];
+                    
+                    [~, rin] = numerical_dT_dt(rayX, volCoords(goodInds,:), goodInds, lensRIVolume, []);   
+                end
+            end
+            
+            rOut = exteriorRI;
+            
+            % Calculate exit refraction
+            nRatio = rIn/rOut;
+            cosI = -dot(surfaceNormal, rayT);
+            sinT2 = nRatio^2*(1-cosI^2);
+            cosT = sqrt(1-sinT2);
+            
+            % Assuming all refracted, non reflected
+            rayT = nRatio*rayT + (nRatio*cosI-cosT)*surfaceNormal;
             rayT = rayT/norm(rayT);
 
+            exitedFlag = 1;
             inGraded = 0;
-            
         end
         
         voxelX = round(rayX/voxelSize);
