@@ -1,4 +1,4 @@
-function [X, T, new_delta] = ray_interpolation(type, RIType, X0, T0, delta, vol_coords, vol_inds, lens_volume, tolerance)
+function [X, T, new_delta] = ray_interpolation(type, RIType, X0, T0, delta, vol_coords, vol_inds, lens_volume, tolerance, fixedRI)
     %%% Select interpolation and grin type with flags.
 
     new_delta = delta;
@@ -6,26 +6,27 @@ function [X, T, new_delta] = ray_interpolation(type, RIType, X0, T0, delta, vol_
     % Calc function values for each interp type
     switch RIType
         case 'iso'
-            f0 = numerical_dT_dt(X0, vol_coords, vol_inds, lens_volume);
+            % RI can only be fixed at X0, as other points start after that
+            f0 = numerical_dT_dt(X0, vol_coords, vol_inds, lens_volume, fixedRI);
 
             if strcmp(type, '4S')
                     % Sharma's 4th order - keep standard sytnax
                     %%% Weird note - slight numerical difference appears on T if terms not bracketed
                     A = delta*f0;
-                    B = delta*numerical_dT_dt(X0+delta*(T0/2+A/8), vol_coords, vol_inds, lens_volume);
-                    C = delta*numerical_dT_dt(X0+delta*(T0+B/2), vol_coords, vol_inds, lens_volume);
+                    B = delta*numerical_dT_dt(X0+delta*(T0/2+A/8), vol_coords, vol_inds, lens_volume, []);
+                    C = delta*numerical_dT_dt(X0+delta*(T0+B/2), vol_coords, vol_inds, lens_volume, []);
                     
             elseif strcmp(type, '4RKN') | strcmp(type, '5RKN') | strcmp(type, '45RKN')
                 % Get 4th order fns - From Bettis 1973 RKN(4)5
-                f1 = numerical_dT_dt(X0 + delta*(T0/8 + delta*(f0/128)), vol_coords, vol_inds, lens_volume); 
-                f2 = numerical_dT_dt(X0 + delta*(T0/4 + delta*(f0/96 + f1/48)), vol_coords, vol_inds, lens_volume); 
-                f3 = numerical_dT_dt(X0 + delta*(T0/2 + delta*(f0/24 + f2/12)), vol_coords, vol_inds, lens_volume); 
-                f4 = numerical_dT_dt(X0 + delta*(T0*3/4 + delta*(f0*9/128 + f2*9/64 + f3*9/128)), vol_coords, vol_inds, lens_volume); 
+                f1 = numerical_dT_dt(X0 + delta*(T0/8 + delta*(f0/128)), vol_coords, vol_inds, lens_volume, []); 
+                f2 = numerical_dT_dt(X0 + delta*(T0/4 + delta*(f0/96 + f1/48)), vol_coords, vol_inds, lens_volume, []); 
+                f3 = numerical_dT_dt(X0 + delta*(T0/2 + delta*(f0/24 + f2/12)), vol_coords, vol_inds, lens_volume, []); 
+                f4 = numerical_dT_dt(X0 + delta*(T0*3/4 + delta*(f0*9/128 + f2*9/64 + f3*9/128)), vol_coords, vol_inds, lens_volume, []); 
             end
             
             if strcmp(type, '5RKN') | strcmp(type, '45RKN')
                 %Also get 5th fns - Can apparently use this term as k0B in next step
-                f5 = numerical_dT_dt(X0 + delta*(T0 + delta*(f0*7/90 + f2*4/15 + f3/15 + f4*4/45)), vol_coords, vol_inds, lens_volume); 
+                f5 = numerical_dT_dt(X0 + delta*(T0 + delta*(f0*7/90 + f2*4/15 + f3/15 + f4*4/45)), vol_coords, vol_inds, lens_volume, []); 
 
             end
         case 'aniso'

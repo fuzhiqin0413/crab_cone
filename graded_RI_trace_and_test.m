@@ -54,13 +54,6 @@ interpType = '45RKN';
         % (I guess it ends up stepping further at loose tolerance...)
     iterativeFinal = 1;
 
-% Includes extra points around GRIN region in gradient calc for entry and exit points
-    % on entry effects inital notch and error along whole path, doesn't effect end much with or without iterative
-    % This is probably wrong as increases border RI
-    %%% should remove!!!
-growGoodInds = 0;    
-    growOnFinal = 0;
-
 % For fiber - 0.25 is border, 0.375 is 25% and 0.5 is center.    
 startPos = 0.375;    
     
@@ -80,11 +73,6 @@ if useRealData
     
     %%% If not doing direction updating, calcualte RI for all
     
-    if growGoodInds
-        growGoodInds = 0;
-        warning('Turned of growing good inds - not handled for real data')
-    end
-    
 elseif useTestData
     if ~xor(createLunebergLens, createGradedFiber)
         error('Both or neither lens/fiber flags set. Check.')
@@ -95,21 +83,11 @@ elseif useTestData
         
         lensRIVolume = createluneberglens(radius/voxelSize, volumeSize);
     
-        if growGoodInds & exteriorRI ~= 1
-           error('Growing good inds will create error when RI not equal to one') 
-        end
-        
     elseif createGradedFiber
         volumeSize = ceil([radius*2 radius*2 fiberLength]*1.5/voxelSize);
         
         lensRIVolume = createGradedFiber(radius/voxelSize, fiberLength/voxelSize, volumeSize, ...
             n0, alpha, voxelSize);
-        
-        if growGoodInds
-            growGoodInds = 0;
-            warning('Turned of growing good inds - not handled for fiber')
-            %%% Probably also need to grow RI of GRIN region
-        end
     end
     
     goodVolume = ~isnan(lensRIVolume);
@@ -153,10 +131,6 @@ end
 %% Do general set up
 
 % Search is limited to good in points
-tempVolume = imdilate(goodVolume, strel('sphere',1));
-
-extraInds = find(tempVolume);
-
 goodInds = find(goodVolume);
 
 
@@ -258,9 +232,8 @@ for iOrigin = 1:nOrigins
     pathLength = 0; % in grin area
     
     exitedFlag = 0;
-    extraIndsUsed = 0;
     
-    useExtraInds = 0;
+    fixedRI = [];
     
     while go
 
@@ -309,11 +282,16 @@ for iOrigin = 1:nOrigins
                     surfaceNormal = surfaceNormal/norm(surfaceNormal);
  
                     rIn = 1;
+                    
+                    setRIForFirst = 1;
+                    
+                    fixedRI = rIn;
+                    
                 elseif createGradedFiber
                     % Just points backwards
                     surfaceNormal = [0 0 -1];
                     
-                    [~, rIn] = numerical_dT_dt(rayX, volCoords(goodInds,:), goodInds, lensRIVolume);   
+                    [~, rIn] = numerical_dT_dt(rayX, volCoords(goodInds,:), goodInds, lensRIVolume, []);   
                 end
             end
             
@@ -367,9 +345,6 @@ for iOrigin = 1:nOrigins
             
             testCoords = testCoords(nearInds,:);
             
-%             figure; plot3(testCoords(:,1), testCoords(:,2), testCoords(:,3), '.')
-%             hold on; plot3(voxelX(1), voxelX(2), voxelX(3), 'rx')
-            
             %%% If doing direction updating, calculate RI for current direction
             
             [rayX rayT deltaS*10^6 length(testInds)]
@@ -386,16 +361,11 @@ for iOrigin = 1:nOrigins
             t0 = rayT;
 
             % Calc is fixed to isotropic RI
-            if ~useExtraInds
-                [x, t, deltaS] = ray_interpolation(interpType, 'iso', x0', t0', deltaS, testCoords, ...
-                    testInds, lensRIVolume, tolerance);
-            else
-                [x, t, deltaS] = ray_interpolation(interpType, 'iso', x0', t0', deltaS, volCoords(extraInds,:), ...
-                    extraInds, lensRIVolume, tolerance);
-                
-                extraIndsUsed = 1;
-                
-                useExtraInds = 0;
+            [x, t, deltaS] = ray_interpolation(interpType, 'iso', x0', t0', deltaS, testCoords, ...
+                testInds, lensRIVolume, tolerance, fixedRI);
+            
+            if setRIForFirst
+               fixedRI = []; 
             end
             
             rayX = x';
@@ -434,15 +404,11 @@ for iOrigin = 1:nOrigins
             testInds = sub2ind(volumeSize, testCoords(:,1), testCoords(:,2), testCoords(:,3));
             
             % check for intersect with good volume
-            if growOnFinal & growGoodInds
-                [testInds, tempInds] = intersect(testInds, extraInds);
-            else
-                [testInds, tempInds] = intersect(testInds, goodInds);
-            end
+            [testInds, tempInds] = intersect(testInds, goodInds);
             
             testCoords = testCoords(tempInds,:)*voxelSize;
             
-            % only nearest 128 used, but seems to need some extra
+            % Sort forwards for closest 128
             [~, nearInds] = sort(sqrt((testCoords(:,1)-x0(1)).^2+(testCoords(:,2)-x0(2)).^2+...
                 (testCoords(:,3)-x0(3)).^2));
             
@@ -463,10 +429,6 @@ for iOrigin = 1:nOrigins
             
             testInds_backwards = testInds(nearInds);
             testCoords_backwards = testCoords(nearInds,:);
-            
-            if any(goodVolume(testInds) == 0)
-                extraIndsUsed = 1;
-            end
             
             if iterativeFinal
                 % Test intersection, leaving could just be a rounding point           
@@ -509,7 +471,7 @@ for iOrigin = 1:nOrigins
 
                         %%% step ray backward with RK5 with fixed step
                         [x, t] = ray_interpolation('5RKN', 'iso', x0', t0', deltaS_final, testCoords_backwards, ...
-                            testInds_backwards, lensRIVolume, tolerance);
+                            testInds_backwards, lensRIVolume, tolerance, []);
 
                         rayX = x'; rayT = t';
                     end
@@ -522,7 +484,7 @@ for iOrigin = 1:nOrigins
                         t0 = rayT;
 
                         [x, t] = ray_interpolation('5RKN', 'iso', x0', t0', deltaS_final, testCoords_forwards, ...
-                            testInds_forwards, lensRIVolume, tolerance);
+                            testInds_forwards, lensRIVolume, tolerance, []);
 
                         rayX = x'; rayT = t';
                         
@@ -568,7 +530,7 @@ for iOrigin = 1:nOrigins
                lambda0 = lambdaFn(rayX, x0);
                
                 [x, t] = ray_interpolation(interpType, 'iso', x0', t0', deltaS*lambda0, testCoords_forwards, ...
-                    testInds_forwards, lensRIVolume, tolerance);
+                    testInds_forwards, lensRIVolume, tolerance, []);
             
                rayX = x';
 
@@ -639,14 +601,7 @@ for iOrigin = 1:nOrigins
             
             if testPlot
                 plot3(rayX(1), rayX(2), rayX(3), '.', 'color', rayCols(iOrigin,:));
-                
-                if extraIndsUsed
-                    plot3(rayX(1), rayX(2), rayX(3), 'rx');
-                end
-                
             end
-            
-            extraIndsUsed = 0;
         end
         
         % Check ray has exitied volume

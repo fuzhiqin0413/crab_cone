@@ -1,4 +1,4 @@
-function [dT_dt, n_of_X, dn_partial_dX] = numerical_dT_dt(X, vol_coords, vol_inds, lens_volume)
+function [dT_dt, n_of_X, dn_partial_dX] = numerical_dT_dt(X, vol_coords, vol_inds, lens_volume, fixedRI)
     % get change in ray vector based on change in refractive index and derivative as in nishidate 2011 paper
         
     % take sampling points first
@@ -38,9 +38,13 @@ function [dT_dt, n_of_X, dn_partial_dX] = numerical_dT_dt(X, vol_coords, vol_ind
 
     [p_of_X, dp_partial_dX] = calculatetricubicbasis(X(1), X(2), X(3), 1); %20x1 and 20x3
 
-    % As eqn 3
-    n_of_X = p_of_X*a_of_X; %1x1 : refractive index 
-
+    if isempty(fixedRI)
+        % As eqn 3
+        n_of_X = p_of_X*a_of_X; %1x1 : refractive index 
+    else
+       n_of_X = fixedRI; 
+    end
+        
     % As eqn 9
     dn_partial_dX = dp_partial_dX*a_of_X; %3x1 : spatial gradient of refractive index
 
