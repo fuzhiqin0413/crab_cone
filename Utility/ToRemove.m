@@ -1,4 +1,4 @@
-function [lensRIVolume]  = createGradedFiber(radiusPixels, fiberLengthPixels, volumeSize, n0, alpha, voxelSize)
+function [lensRIVolume]  = creategradedfiber(radiusPixels, fiberLengthPixels, volumeSize, n0, alpha, voxelSize)
     % As described in Nishidate 2011 eqn. 30
 
     lensRIVolume = zeros(volumeSize)*NaN;
