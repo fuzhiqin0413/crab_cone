@@ -1,8 +1,6 @@
 % Set up to do both tracing on data and have testing mode on either
 % lundaberg lens or graded fibre, as in nishdate 2011 papers
     
-    %%% Add refreaction on entry    
-        
     % Also need to add interface refraction - not required for test cases but
     % for normal tracing. Should also do accuracy test for my patch method.
     
@@ -43,7 +41,7 @@ radius = 1; %mm - used for both lens and fiber
         
 % Options, 1, 4S, 4RKN, 5RKN, 45RKN 
 % Difference 4 to 5 is quite small
-interpType = '4S';
+interpType = '45RKN';
     %This doesn't have big effect on error < 10^-9, ok even at 10^-6 but then collapses
         % May effect peripheral rays more
     tolerance = 10^-9; % Nishidate uses 10^-12, seems a bit too tight
@@ -58,7 +56,9 @@ interpType = '4S';
 
 % Includes extra points around GRIN region in gradient calc for entry and exit points
     % on entry effects inital notch and error along whole path, doesn't effect end much with or without iterative
-growGoodInds = 1;    
+    % This is probably wrong as increases border RI
+    %%% should remove!!!
+growGoodInds = 0;    
     growOnFinal = 0;
 
 % For fiber - 0.25 is border, 0.375 is 25% and 0.5 is center.    
@@ -80,9 +80,14 @@ if useRealData
     
     %%% If not doing direction updating, calcualte RI for all
     
+    if growGoodInds
+        growGoodInds = 0;
+        warning('Turned of growing good inds - not handled for real data')
+    end
+    
 elseif useTestData
     if ~xor(createLunebergLens, createGradedFiber)
-        error('Either or neither lens/fiber flags set. Check.')
+        error('Both or neither lens/fiber flags set. Check.')
     end
     
     if createLunebergLens
@@ -90,11 +95,21 @@ elseif useTestData
         
         lensRIVolume = createluneberglens(radius/voxelSize, volumeSize);
     
+        if growGoodInds & exteriorRI ~= 1
+           error('Growing good inds will create error when RI not equal to one') 
+        end
+        
     elseif createGradedFiber
         volumeSize = ceil([radius*2 radius*2 fiberLength]*1.5/voxelSize);
         
         lensRIVolume = createGradedFiber(radius/voxelSize, fiberLength/voxelSize, volumeSize, ...
             n0, alpha, voxelSize);
+        
+        if growGoodInds
+            growGoodInds = 0;
+            warning('Turned of growing good inds - not handled for fiber')
+            %%% Probably also need to grow RI of GRIN region
+        end
     end
     
     goodVolume = ~isnan(lensRIVolume);
@@ -141,7 +156,6 @@ end
 tempVolume = imdilate(goodVolume, strel('sphere',1));
 
 extraInds = find(tempVolume);
-warning('Also need to grow GRIN if border isnt air') 
 
 goodInds = find(goodVolume);
 
@@ -257,9 +271,7 @@ for iOrigin = 1:nOrigins
             if useRealData
                 
             elseif useTestData
-                if createLunebergLens
-                    %%% Could use lambda fns here?
-                    
+                if createLunebergLens                 
                     % Get sphere intersection
                     origin = rayX - volumeSize/2*voxelSize;
                     centre = 0;
@@ -279,38 +291,43 @@ for iOrigin = 1:nOrigins
                     
                     % Step back to algin exactly
                     rayX = rayX + rayT*deltaTemp;
-                   
                 end
             end
             
             firstIntersect(iOrigin,:) = rayX;
             
-            % Get surface normal at exit point
+            voxelX = round(rayX/voxelSize); 
+            
+            % Get surface normal at entry point
             if useRealData
                 
             elseif useTestData
                 if createLunebergLens
-                    % Not really important, no refraction
+                    % Not really important, shouldn't have refraction in air
                     surfaceNormal = rayX - volumeSize/2*voxelSize;
-                    
+
                     surfaceNormal = surfaceNormal/norm(surfaceNormal);
-                    
+ 
+                    rIn = 1;
                 elseif createGradedFiber
                     % Just points backwards
                     surfaceNormal = [0 0 -1];
+                    
+                    [~, rIn] = numerical_dT_dt(rayX, volCoords(goodInds,:), goodInds, lensRIVolume);   
                 end
             end
- 
-            voxelX = round(rayX/voxelSize);    
             
-            %%% Need to calculate refraction
+            rOut = exteriorRI;
             
-            warning('Add refraction calculation')
+            nRatio = rIn/rOut;
+            cosI = -dot(surfaceNormal, rayT);
+            sinT2 = nRatio^2*(1-cosI^2);
+            cosT = sqrt(1-sinT2);
+            
+            % Assuming all refracted, non reflected
+            rayT = nRatio*rayT + (nRatio*cosI-cosT)*surfaceNormal;
             
             inGraded = 1;
-            if growGoodInds
-                useExtraInds = 1;
-            end
         end
         
         %check if x has moved to include new voxels
@@ -362,7 +379,7 @@ for iOrigin = 1:nOrigins
         if ~inGraded
             rayX = rayX + rayT*voxelSize/3;
             
-            %%% Could also draw line as until intersect reached, as in original surface ray-tracer
+            %%% Could also draw line until intersect reached, as in original surface ray-tracer
         else
 
             x0 = rayX;
@@ -417,10 +434,10 @@ for iOrigin = 1:nOrigins
             testInds = sub2ind(volumeSize, testCoords(:,1), testCoords(:,2), testCoords(:,3));
             
             % check for intersect with good volume
-            if ~growOnFinal
-                [testInds, tempInds] = intersect(testInds, goodInds);
-            else
+            if growOnFinal & growGoodInds
                 [testInds, tempInds] = intersect(testInds, extraInds);
+            else
+                [testInds, tempInds] = intersect(testInds, goodInds);
             end
             
             testCoords = testCoords(tempInds,:)*voxelSize;
@@ -433,9 +450,19 @@ for iOrigin = 1:nOrigins
                 nearInds = nearInds(1:200);
             end
             
-            testInds = testInds(nearInds);
+            testInds_forwards = testInds(nearInds);
+            testCoords_forwards = testCoords(nearInds,:);
             
-            testCoords = testCoords(nearInds,:);
+            % Get backwards sorted as well
+            [~, nearInds] = sort(sqrt((testCoords(:,1)-rayX(1)).^2+(testCoords(:,2)-rayX(2)).^2+...
+                (testCoords(:,3)-rayX(3)).^2));
+            
+            if length(nearInds) > 200
+                nearInds = nearInds(1:200);
+            end
+            
+            testInds_backwards = testInds(nearInds);
+            testCoords_backwards = testCoords(nearInds,:);
             
             if any(goodVolume(testInds) == 0)
                 extraIndsUsed = 1;
@@ -481,8 +508,8 @@ for iOrigin = 1:nOrigins
                         deltaS_final = SF*lambda0*deltaS0_final;
 
                         %%% step ray backward with RK5 with fixed step
-                        [x, t] = ray_interpolation('5RKN', 'iso', x0', t0', deltaS_final, testCoords, ...
-                            testInds, lensRIVolume, tolerance);
+                        [x, t] = ray_interpolation('5RKN', 'iso', x0', t0', deltaS_final, testCoords_backwards, ...
+                            testInds_backwards, lensRIVolume, tolerance);
 
                         rayX = x'; rayT = t';
                     end
@@ -494,8 +521,8 @@ for iOrigin = 1:nOrigins
                         x0 = rayX; %think this is the case, we are stepping forward
                         t0 = rayT;
 
-                        [x, t] = ray_interpolation('5RKN', 'iso', x0', t0', deltaS_final, testCoords, ...
-                            testInds, lensRIVolume, tolerance);
+                        [x, t] = ray_interpolation('5RKN', 'iso', x0', t0', deltaS_final, testCoords_forwards, ...
+                            testInds_forwards, lensRIVolume, tolerance);
 
                         rayX = x'; rayT = t';
                         
@@ -540,15 +567,8 @@ for iOrigin = 1:nOrigins
             else
                lambda0 = lambdaFn(rayX, x0);
                
-               if ~growOnFinal
-                   [x, t] = ray_interpolation(interpType, 'iso', x0', t0', deltaS*lambda0, testCoords, ...
-                        testInds, lensRIVolume, tolerance);
-               else
-                   [x, t] = ray_interpolation(interpType, 'iso', x0', t0', deltaS*lambda0, volCoords(extraInds,:), ...
-                        extraInds, lensRIVolume, tolerance);
-                    
-                    extraIndsUsed = 1;
-               end
+                [x, t] = ray_interpolation(interpType, 'iso', x0', t0', deltaS*lambda0, testCoords_forwards, ...
+                    testInds_forwards, lensRIVolume, tolerance);
             
                rayX = x';
 
