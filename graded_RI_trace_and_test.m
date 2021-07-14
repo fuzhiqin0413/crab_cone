@@ -37,7 +37,9 @@ radius = 1; %mm - used for both lens and fiber
     createGradedFiber = 1;
         fiberLength = 10;
         n0 = sqrt(2.5);
-        alpha = 1/(2.5); sqrt(2.5);
+        %%% 1/sqrt(2.5) matches refractive index profile described, 1/(2.5) gives curve similar to result shown
+        alpha = 1/sqrt(2.5); 
+        plotReferenceFiber = 1; % will plot data from Nishidate and only trace 0.5
         
 % Options, 1, 4S, 4RKN, 5RKN, 45RKN 
 % Difference 4 to 5 is quite small
@@ -52,10 +54,7 @@ interpType = '4S';
     
     % This keeps spot size surpsingly small, even on loose tolerance
         % (I guess it ends up stepping further at loose tolerance...)
-    iterativeFinal = 1;
-
-% For fiber - 0.25 is border, 0.375 is 25% and 0.5 is center.    
-startPos = 0.375;    
+    iterativeFinal = 1;  
     
 testPlot = 1;
 %% Load or create test data     
@@ -144,10 +143,13 @@ volCoords = ([tempX(:), tempY(:), tempZ(:)])*voxelSize;
 
 zSteps = (1:volumeSize(3))*voxelSize;
 
-%%% Replace with meshgrid later on
-xStartPoints = 1:5:volumeSize(1); volumeSize(1)*startPos; %
+if ~plotReferenceFiber
+    %%% Replace with meshgrid later on
+    xStartPoints = 1:5:volumeSize(1); 
 
-% xStartPoints = xStartPoints(3:5);
+else
+    xStartPoints = volumeSize(1)/2+radius/voxelSize*0.5;
+end
 
 rayOrigins = [xStartPoints(:), ones(numel(xStartPoints),1)*volumeSize(2)/2,  ...
     ones(numel(xStartPoints),1)]*voxelSize; 
@@ -209,6 +211,7 @@ firstIntersect = zeros(nOrigins, 3);
 finalIntersect = zeros(nOrigins, 3);
 
 finalPathLength = zeros(nOrigins, 1);
+finalRayT = zeros(nOrigins, 3);
 
 for iOrigin = 1:nOrigins
     %%% Could set up to do for series of ray angles
@@ -266,9 +269,8 @@ for iOrigin = 1:nOrigins
                     
                 elseif createGradedFiber
                     % Get z distance past bottom of gradient section
-                    deltaTemp = (zSteps(bottomZ) - rayX(3))/rayT(3);
+                    deltaTemp = ((volumeCenter(3) - fiberLength/2) - rayX(3))/rayT(3);
                     
-                    % Step back to algin exactly
                     rayX = rayX + rayT*deltaTemp;
                 end
             end
@@ -536,6 +538,8 @@ for iOrigin = 1:nOrigins
 
             finalPathLength(iOrigin,:) = pathLength;
             
+            finalRayT(iOrigin,:) = rayT;
+            
             % Do refraction at border
 
              % Get surface normal and RI at exit point
@@ -748,6 +752,18 @@ else
         xlabel('Spot error in nm')
         title('Spot diagram')
     else
+        if plotReferenceFiber
+            cd('/Users/gavintaylor/Documents/Matlab/Git_versioned_April_27/Crab_cone_git/Data')
+            
+            % These are for x start 0.5, given sqrt(2.5-(r/R)^2) RI profile 
+            
+            % For iterative solution
+            nishidatError = readmatrix('Iterative.csv');
+            
+            % vDash is supposed to be refracted ray, but I think v is.
+            nishidatPath = readmatrix('v.csv');
+        end
+        
         % Plot ray path in object
         figure; subplot(2,2,1); hold on; axis equal;
         view(0, 0)
@@ -756,6 +772,23 @@ else
             rayPath = permute(rayPathArray(:, :, iOrigin), [2 1]);
 
             plot3(rayPath(:,1), rayPath(:,2), rayPath(:,3), 'color', rayCols(iOrigin,:));
+        end
+        
+        if plotReferenceFiber
+            
+            % Align bottom inds in X
+            zPoints = nishidatPath(:,1)+volumeSize(3)/2*voxelSize-fiberLength/2;
+            xPoints = nishidatPath(:,2)+volumeSize(1)/2*voxelSize;
+            
+            zInds = find(zPoints < volumeSize(3)/2*voxelSize-fiberLength/2);
+            
+            xPoints = xPoints - mean(xPoints(zInds)) + rayOrigins(1);
+            
+            nishidatPath(:,1) = xPoints;
+            nishidatPath(:,2) = zPoints;
+            
+            plot3(nishidatPath(:,1), ones(size(nishidatPath,1),1)*volumeSize(2)/2*voxelSize,...
+                nishidatPath(:,2), 'r')
         end
         
         title('Plot ray path')
@@ -802,34 +835,37 @@ else
                 tempRayPath(3,bottomZ) = firstIntersect(iOrigin,3) - (fiberCentre(3) - fiberLength/2);
                 tempRayPath(3,topZ) = finalIntersect(iOrigin,3) - (fiberCentre(3) - fiberLength/2);
                 
-                % Get initial RI
-%                 [~, initalRI] = numerical_dT_dt(firstIntersect(iOrigin,:), volCoords(goodInds,:), goodInds, lensRIVolume, []);  
-%                 initalRI = lensRIVolume(round(rayOrigins(iOrigin,1)/voxelSize), ...
-%                     round(rayOrigins(iOrigin,2)/voxelSize), bottomZ);
-                
-                %%% Would be good to have solution as function of optical path length
-                
-                % Ray path in fiber - Nishidate 2011, eqn 31 !!! Seems incorrect, or not general
-%                 tempRayPath(1, bottomZ:topZ) = tempRayPath(1,bottomZ-1)*cos((tempRayPath(3,bottomZ:topZ) - ...
-%                     zSteps(bottomZ))/1.5);
-                
-%                 tempRayPath(1, bottomZ:topZ) = tempRayPath(1,bottomZ-1)*cos((tempRayPath(3,bottomZ:topZ) - ...
-%                     zSteps(bottomZ))/initalRI);
+                % Ray path in fiber - Nishidate 2011, eqn 31 
+                    %%% Seems incorrect, or not general
+                if plotReferenceFiber
+                    nishidateSolution = tempRayPath(1, :);
+                    nIn = sqrt(2.5-0.5^2);
+                    nishidateSolution(bottomZ:topZ) = 0.5*cos(tempRayPath(3,bottomZ:topZ)/nIn);
+                    
+                    yc = 0.5*cos(fiberLength/nIn);
+                    qc = -0.5*sin(fiberLength/nIn);
+                    nEnd = sqrt(2.5-yc^2);
+                    
+                    % This solutions seems correct, but is more like v than v' in figure 8
+                    nishidateSolution(topZ+1:end) = nEnd*qc/sqrt(nIn^2+(1-nEnd^2)*qc^2)*(tempRayPath(3, topZ+1:end)-fiberLength) + yc;
 
+                end
+                
                 % Gives correct result From Merchland 5.41 and other refs, 
-                    % swapped *alpha*n0 for sqrt(alpha)
-                tempRayPath(1, bottomZ:topZ) = tempRayPath(1,bottomZ)*cos(tempRayPath(3,bottomZ:topZ)*sqrt(alpha));
+                % I think this should be sqrt(alpha) from book, but only works if alpha = 1/n0^2
+                beta = alpha*n0;
+                tempRayPath(1, bottomZ:topZ) = tempRayPath(1,bottomZ)*cos(tempRayPath(3,bottomZ:topZ)*beta);
                 
                 % Analytic expresion for ray after exit
                 % Get final Coord and RI
-                finalX = tempRayPath(1,bottomZ)*cos(fiberLength*sqrt(alpha));
+                finalX = tempRayPath(1,bottomZ)*cos(fiberLength*beta);
                 finalCoord = [finalX + fiberCentre(1), fiberCentre(2), fiberCentre(3) + fiberLength/2];
+                
                 [~, rIn] = numerical_dT_dt(finalCoord, volCoords(goodInds,:), goodInds, lensRIVolume, []);  
 
                 % Get final vector and normalize
-                finalP = -sqrt(alpha)*tempRayPath(1,bottomZ)*sin(fiberLength*sqrt(alpha));
+                finalP = -beta*tempRayPath(1,bottomZ)*sin(fiberLength*beta);
                 finalT = [finalP, 0, 1];
-                finalT = finalT/norm(finalT);
                 
                 surfaceNormal = [0 0 -1];
                 rOut = exteriorRI;
@@ -842,13 +878,13 @@ else
 
                 % Assuming all refracted, non reflected
                 refractT = nRatio*finalT + (nRatio*cosI-cosT)*surfaceNormal;
-                
+              
                 refractT = refractT/refractT(3);
                 
                 % Propogate ray
                 tempRayPath(1, topZ+1:end) = (tempRayPath(3, topZ+1:end)-fiberLength)*refractT(1) + finalX;
                 
-%                  % Add fiber centre back for X
+%                % Add fiber centre back for X
                  tempRayPath(1,:) = tempRayPath(1,:) + fiberCentre(1);
                  tempRayPath(2,:) = tempRayPath(2,:) + fiberCentre(2);
                  tempRayPath(3,:) = tempRayPath(3,:) + (fiberCentre(3) - fiberLength/2);
@@ -864,7 +900,12 @@ else
             plot3(tempRayPath(1,:), tempRayPath(2,:), tempRayPath(3,:), 'color', rayCols(iOrigin,:)); 
             
             trueRayPathArray(:,:,iOrigin) = tempRayPath;
+        end   
+        
+        if plotReferenceFiber
+            plot3(nishidateSolution+fiberCentre(1), tempRayPath(2,:), tempRayPath(3,:), 'r--')
         end
+        
         
         warning('on', 'MATLAB:nearlySingularMatrix')
         
@@ -891,9 +932,24 @@ else
 
                 plot((rayPath(:,1) - tempRayPath(:,1))*10^6, zSteps, 'color', rayCols(iOrigin,:))
             end
+        end
+       
+       if plotReferenceFiber
+          plot(nishidatError(:,2), nishidatError(:,1)+volumeSize(3)/2*voxelSize-fiberLength/2, 'r') 
+          
+          % Recalcualte error for traced vs calculated
+          % First interp to same zsteps
+          interpNishidatPath = interp1(nishidatPath(:,2), nishidatPath(:,1), tempRayPath(:,3), 'linear', 0);
+          
+          interpNishidatPath(interpNishidatPath == 0) = NaN;
+          
+          interpNishidatPath = interpNishidatPath - volumeSize(1)/2*voxelSize;
+          
+          plot((interpNishidatPath - nishidateSolution')*100, zSteps, 'r--')
+
        end
        
-%         xlim([-1 1]*10^-5)
+        xlim([-1 1]*100)
         title('Ray error')
         
         subplot(2,2,4); hold on;
