@@ -32,14 +32,14 @@ exteriorRI = 1;
 
 radius = 1; %mm - used for both lens and fiber
 
-    createLunebergLens = 0;
+    createLunebergLens = 1;
         
-    createGradedFiber = 1;
+    createGradedFiber = 0;
         fiberLength = 10;
         n0 = sqrt(2.5);
         %%% 1/sqrt(2.5) matches refractive index profile described, 1/(2.5) gives curve similar to result shown
-        alpha = 1/sqrt(2.5); 
-        plotReferenceFiber = 1; % will plot data from Nishidate and only trace 0.5
+        alpha = 1/(2.5); 
+        plotReferenceFiber = 0; % will plot data from Nishidate and only trace 0.5
         
 % Options, 1, 4S, 4RKN, 5RKN, 45RKN 
 % Difference 4 to 5 is quite small
@@ -213,6 +213,16 @@ finalIntersect = zeros(nOrigins, 3);
 finalPathLength = zeros(nOrigins, 1);
 finalRayT = zeros(nOrigins, 3);
 
+if createGradedFiber
+   % Change to half period as focus points are actually at 1/4 and 3/4 points
+   halfPeriodInFiber = 2*pi/(n0*alpha)*0.5;   
+   
+   numPeriods = floor(fiberLength/halfPeriodInFiber);
+   
+   periodSpotsArray = zeros(3, numPeriods, nOrigins);
+   
+end
+
 for iOrigin = 1:nOrigins
     %%% Could set up to do for series of ray angles
     rayT = startRayT; %3x1 : ray will move from bottom to top
@@ -243,6 +253,10 @@ for iOrigin = 1:nOrigins
     exitedFlag = 0;
     
     fixedRI = [];
+    
+    if createGradedFiber
+       currentPeriod = 1; 
+    end
     
     while go
 
@@ -284,12 +298,14 @@ for iOrigin = 1:nOrigins
                 
             elseif useTestData
                 if createLunebergLens
-                    % Not really important, shouldn't have refraction in air
                     surfaceNormal = rayX - volumeSize/2*voxelSize;
 
                     surfaceNormal = surfaceNormal/norm(surfaceNormal);
  
-                    rOut = 1;
+                    % Should be very close to 1, but allowing this removes notch in error profile
+                        % However, it does increase error spot slightly
+                    %rOut = 1;
+                    [~, rOut] = numerical_dT_dt(rayX, volCoords(goodInds,:), goodInds, lensRIVolume, []);
                     
                     setRIForFirst = 1;
                     
@@ -388,6 +404,22 @@ for iOrigin = 1:nOrigins
             
             if deltaS < minDeltaS(iOrigin)
                 minDeltaS(iOrigin) = deltaS;
+            end
+            
+            
+            if createGradedFiber
+                % test if focal point is passed and capture if so
+                if rayX(3)-(volumeSize(3)/2*voxelSize - fiberLength/2) > halfPeriodInFiber*(currentPeriod-0.5)
+                    
+                    % Step back
+                    deltaTemp = (halfPeriodInFiber*(currentPeriod-0.5) - (rayX(3)-(volumeSize(3)/2*voxelSize - fiberLength/2)))/rayT(3);
+   
+                    periodSpotsArray(:,currentPeriod,iOrigin) = rayX + deltaTemp*rayT; 
+                    
+                    plot3(periodSpotsArray(1,currentPeriod,iOrigin), periodSpotsArray(2,currentPeriod,iOrigin), periodSpotsArray(3,currentPeriod,iOrigin), 'xr');
+                    
+                    currentPeriod = currentPeriod + 1;
+                end
             end
             
         end 
@@ -528,11 +560,13 @@ for iOrigin = 1:nOrigins
                     testInds_forwards, lensRIVolume, tolerance, []);
             
                rayX = x';
-
                rayT = t';
                
                pathLength = pathLength + sqrt((x0(1) - rayX(1))^2 + (x0(2) - rayX(2))^2 + (x0(3) - rayX(3))^2);
             end
+            
+            % Normalize no before refraction
+            rayT = rayT/norm(rayT);
             
             finalIntersect(iOrigin,:) = rayX;
 
@@ -547,12 +581,13 @@ for iOrigin = 1:nOrigins
 
             elseif useTestData
                 if createLunebergLens
-                    % Not really important, no refraction
                     surfaceNormal = -(rayX - volumeSize/2*voxelSize);
 
                     surfaceNormal = surfaceNormal/norm(surfaceNormal);
                     
-                    rIn = 1;
+                    % Usually not exactly 1, this allows refraction but actually decreases error on exit trajectory
+%                     rIn = 1;
+                    [~, rIn] = numerical_dT_dt(rayX, volCoords(goodInds,:), goodInds, lensRIVolume, []);   
 
                 elseif createGradedFiber
                     % Just points backwards
@@ -574,6 +609,9 @@ for iOrigin = 1:nOrigins
             rayT = nRatio*rayT + (nRatio*cosI-cosT)*surfaceNormal;
             rayT = rayT/norm(rayT);
 
+%             finalRayT(iOrigin,:)
+%             rayT
+            
             exitedFlag = 1;
             inGraded = 0;
         end
@@ -653,15 +691,11 @@ else
             
             if rayOrigins(iOrigin,2) ~= lensCentre(2) | ... 
                     any(startRayT - [0, 0, 1])
-                %%% Can gernalize to X component and off-axis rays from
-                %%% Eq 2 in Babayigit ... Turduev 2019
+                %%% Can gernalize to X component and off-axis rays from Eq 2 in Babayigit ... Turduev 2019
                 
                 error('Analytic solution only set up for Y on midline and parallel rays')
             end
-            
-            % Should be able to reduce to 
-            warning('Get final trajectory and propogate from eqn 4 in clocking')
-            
+                       
             % Check it's within fiber radius
             if abs(rayOrigins(iOrigin,1)-lensCentre(1)) < radius
 
@@ -690,11 +724,27 @@ else
                     radius*sqrt(radius^2 + tempRayPath(3,startZ)^2 - tempRayPath(3,startZ:topZ).^2))/...
                     (tempRayPath(3,startZ)^2 + radius^2);
 
-                %%% Add in ray propogation along final directio
-
-                tempRayPath(:, topZ+1:end) = NaN;
+                finalR = radius;
+                finalX = tempRayPath(1,startZ)*(tempRayPath(3,startZ)*finalR + ...
+                    radius*sqrt(radius^2 + tempRayPath(3,startZ)^2 - finalR.^2))/...
+                    (tempRayPath(3,startZ)^2 + radius^2);
                 
-                % Add fiber centre back for X
+                % From eqn 4 in Turdev, note simplified given theta is 0
+                    % Note error in differentiation, final part of sqrt in denominator should be +2*x0^2
+                finalP = 2*tempRayPath(1,startZ)*tempRayPath(3,startZ)/(2*tempRayPath(3,startZ)^2+2*radius^2) + ...
+                    2*sqrt(2)*radius*finalR*tempRayPath(1,startZ)*-1/ ...
+                    ((2*tempRayPath(3,startZ)^2+2*radius^2)*sqrt(2*radius^2-2*finalR^2 + 2*tempRayPath(3,startZ)^2));
+                finalT = [finalP, 0, 1];
+
+%                 finalRayT(iOrigin,:)/finalRayT(iOrigin,3)
+                
+                % Propogate ray
+                tempRayPath(1, topZ+1:end) = (tempRayPath(3, topZ+1:end)-finalR)*finalT(1) + finalX;
+                
+%                                 tempRayPath(1, topZ+1:end) = NaN;
+                
+                
+                % Add sphere centre back
                 tempRayPath(1,:) = tempRayPath(1,:) + lensCentre(1);
                 tempRayPath(2,:) = tempRayPath(2,:) + lensCentre(2);
                 tempRayPath(3,:) = tempRayPath(3,:) + lensCentre(3);   
@@ -728,8 +778,6 @@ else
                 rayPath(topZ,:) = finalIntersect(iOrigin,:);
                 
                 plot((rayPath(:,1) - tempRayPath(:,1))*10^6, zSteps, 'color', rayCols(iOrigin,:))
-                
-                plot((rayPath(topZ,1) - tempRayPath(topZ,1))*10^6, zSteps(topZ), 'o', 'color', rayCols(iOrigin,:))
             end
         end
         ylim([0 3])
@@ -816,8 +864,7 @@ else
             
             if rayOrigins(iOrigin,2) ~= fiberCentre(2) | ... 
                     any(startRayT - [0, 0, 1])
-                %%% Can gernalize to X component and off-axis rays from
-                %%% Section 5.3 in Merchland 1978
+                %%% Can gernalize to X component and off-axis/helical rays from Section 5.3 in Merchland 1978
                 
                 error('Analytic solution only set up for Y on midline and parallel rays')
             end
@@ -866,6 +913,7 @@ else
                 % Get final vector and normalize
                 finalP = -beta*tempRayPath(1,bottomZ)*sin(fiberLength*beta);
                 finalT = [finalP, 0, 1];
+                finalT = finalT/norm(finalT);
                 
                 surfaceNormal = [0 0 -1];
                 rOut = exteriorRI;
@@ -878,7 +926,8 @@ else
 
                 % Assuming all refracted, non reflected
                 refractT = nRatio*finalT + (nRatio*cosI-cosT)*surfaceNormal;
-              
+                
+                % No need to normalize as rescaled
                 refractT = refractT/refractT(3);
                 
                 % Propogate ray
@@ -954,6 +1003,16 @@ else
         
         subplot(2,2,4); hold on;
         
+        colsPeriod = winter(numPeriods);
+        
+        for iOrigin = 1:nOrigins
+            for jPeriod = 1:numPeriods
+                if minDeltaS(iOrigin) < 1
+                    plot((periodSpotsArray(1, jPeriod, iOrigin)-fiberCentre(1))*10^6, periodSpotsArray(3, jPeriod, iOrigin),...
+                        'o', 'color', rayCols(iOrigin,:));
+                end
+            end
+        end
         title('Spot diagram')
     end
 end
