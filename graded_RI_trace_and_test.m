@@ -22,7 +22,7 @@ clc; close all
 
 %% Set parameters
 
-useRealData = 0;
+useRealData = 1;
 if useRealData
     dataFile = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/Data/Matlab RI Volumes/Test1_SD0_vox2.mat';
     voxelSize = 2*10^-3; % mm
@@ -31,6 +31,8 @@ if useRealData
     createLunebergLens = 0;
     plotReferenceFiber = 0;
     useTestData = 0;
+    
+    exteriorRI = 1.33;
 else
     useTestData = 1;
     
@@ -62,7 +64,7 @@ interpType = '4S';
     
     % This keeps spot size surpsingly small, even on loose tolerance
         % (I guess it ends up stepping further at loose tolerance...)
-    iterativeFinal = 1;  
+    iterativeFinal = 0;  
     
 testPlot = 1;
 %% Load or create test data     
@@ -70,6 +72,11 @@ if useRealData
     temp = load(dataFile);
     lensRIVolume = temp.volume;
     clear temp
+    
+    warning('Flip volume to correct axis in original data (then image will show upside down)')
+    
+    % Flip to change z direction
+    lensRIVolume = permute(flipud(permute(lensRIVolume,[3 1 2])), [2 3 1]);
     
     volumeSize = size(lensRIVolume);
     
@@ -102,15 +109,23 @@ end
 %% Do general set up
 
 % Get surface voxels
-tempVolume = imdilate(~goodVolume, strel('Sphere',1)) & goodVolume;
+borderVolume = imdilate(~goodVolume, strel('Sphere',1)) & goodVolume;
 
-surfaceInds = find(tempVolume);
+surfaceInds = find(borderVolume);
 
 [surfaceX, surfaceY, surfaceZ] = ind2sub(volumeSize, surfaceInds);
 
 bottomZ = min(surfaceZ);
 
 topZ = max(surfaceZ);
+
+% Get border volume to test against
+borderVolume = imdilate(borderVolume, strel('Sphere',1));
+
+% Compute trigulation
+%%% Move to other file later - replace surface points with exact values...
+grinSurface = isosurface(goodVolume, 0.5);
+grinSurface.vertices = grinSurface.vertices*voxelSize;
 
 if useTestData
     figure;
@@ -163,7 +178,7 @@ zSteps = (1:volumeSize(3))*voxelSize;
 
 if useRealData
     %%% Replace with meshgrid later on
-    xStartPoints = 1:5:volumeSize(1); 
+    xStartPoints = 1:20:volumeSize(1); 
 else
     if ~plotReferenceFiber
         xStartPoints = 1:5:volumeSize(1); 
@@ -187,17 +202,18 @@ rayCols = lines(nOrigins);
 
 volumeCenter = volumeSize/2*voxelSize;
 
-% Get border test value
+% Get border test values
+
+%%% Note intersection functions are 1 when outside of GRIN, 0 inside
 if useRealData
-    %%% Just test on good volume for now, add test vs volume limits later
-    intersectionFn = @(x1)(~goodVolume(x1(1), x1(2), x1(3)))
+    % Calculating inpolyhedron is very slow, so test on volume first
+    intersectionFn = @(x1)(~surfaceIntersectFunction(borderVolume, x1,voxelSize, grinSurface));
        
-    lambdaFn = [];
+    lambdaFn = @(x1, x0)(0.5);
     
     warning('Improve this and add lambda')
     
 elseif useTestData
-    %%% Note intersection functions are 1 when outside of GRIN, 0 inside
     if createLunebergLens
         % Get sphere intersection
        intersectionFn = @(x1)(sqrt(sum((x1 - volumeCenter).^2)) > ...
@@ -226,6 +242,11 @@ if testPlot
     view(0, 0)
     plot3(surfaceX(plotInds)*voxelSize, surfaceY(plotInds)*voxelSize,...
         surfaceZ(plotInds)*voxelSize, '.')
+    
+    pH = patch(grinSurface);
+    
+    pH.FaceColor = 'g';
+    pH.EdgeColor = 'none';
 end
 
 % Turn of warning on singular matrix, otherwise backslash will slow down a lot
@@ -291,7 +312,18 @@ for iOrigin = 1:nOrigins
             if useRealData
                 warning('Need to find correct enterance intersect')
                 
-%                 rayX = rayX + rayT*deltaTemp;
+                % X and T combined on input, T needs to point back
+                lineDef = [rayX -rayT];
+                
+                [intersect, position] = intersectLineMesh3d(lineDef, grinSurface.vertices, grinSurface.faces);
+                
+                if length(positions) > 1
+                    error('Multiple intersects - not treated')
+                end
+                
+                error('Check from here')
+                
+                rayX = intersect;
                 
             elseif useTestData
                 if createLunebergLens                 
@@ -324,7 +356,11 @@ for iOrigin = 1:nOrigins
             [~, rOut] = numerical_dT_dt(rayX, volCoords(goodInds,:), goodInds, lensRIVolume, []);
             
             if useRealData
-                warning('Need to find correct enterance intersect')
+                warning('Need to find correct enterance normal and rIn')
+                
+                surfaceNormal = [0 0 -1];
+                
+                rIn = exteriorRI;
                 
             elseif useTestData
                 if createLunebergLens
@@ -341,9 +377,9 @@ for iOrigin = 1:nOrigins
                     surfaceNormal = [0 0 -1];
                     
                 end
+                
+                rIn = exteriorRI;
             end
-            
-            rIn = exteriorRI;
             
             % Calculate entry refraction
             nRatio = rIn/rOut;
@@ -483,18 +519,18 @@ for iOrigin = 1:nOrigins
             testInds_forwards = testInds(nearInds);
             testCoords_forwards = testCoords(nearInds,:);
             
-            % Get backwards sorted as well
-            [~, nearInds] = sort(sqrt((testCoords(:,1)-rayX(1)).^2+(testCoords(:,2)-rayX(2)).^2+...
-                (testCoords(:,3)-rayX(3)).^2));
-            
-            if length(nearInds) > 200
-                nearInds = nearInds(1:200);
-            end
-            
-            testInds_backwards = testInds(nearInds);
-            testCoords_backwards = testCoords(nearInds,:);
-            
             if iterativeFinal
+                % Get backwards sorted as well
+                [~, nearInds] = sort(sqrt((testCoords(:,1)-rayX(1)).^2+(testCoords(:,2)-rayX(2)).^2+...
+                    (testCoords(:,3)-rayX(3)).^2));
+
+                if length(nearInds) > 200
+                    nearInds = nearInds(1:200);
+                end
+
+                testInds_backwards = testInds(nearInds);
+                testCoords_backwards = testCoords(nearInds,:);
+                
                 % Test intersection, leaving could just be a rounding point           
                 deltaS0_final = deltaS;
                 lambda0 = lambdaFn(rayX, x0);
@@ -578,9 +614,16 @@ for iOrigin = 1:nOrigins
             
             % Do refraction at border
 
-             % Get surface normal and RI at exit point
+            % Get surface normal and RI at exit point
+            [~, rIn] = numerical_dT_dt(rayX, volCoords(goodInds,:), goodInds, lensRIVolume, []); 
+                                 
             if useRealData
-
+                warning('Need to calculate normal correctly and rOut')
+                
+                surfaceNormal = [0 0 -1]; 
+                
+                rOut = exteriorRI;
+                            
             elseif useTestData
                 if createLunebergLens
                     surfaceNormal = -(rayX - volumeSize/2*voxelSize);
@@ -589,17 +632,14 @@ for iOrigin = 1:nOrigins
                     
                     % Usually not exactly 1, this allows refraction but actually decreases error on exit trajectory
 %                     rIn = 1;
-                    [~, rIn] = numerical_dT_dt(rayX, volCoords(goodInds,:), goodInds, lensRIVolume, []);   
-
+  
                 elseif createGradedFiber
                     % Just points backwards
-                    surfaceNormal = [0 0 -1];
-                    
-                    [~, rIn] = numerical_dT_dt(rayX, volCoords(goodInds,:), goodInds, lensRIVolume, []);   
+                    surfaceNormal = [0 0 -1];   
                 end
+                
+                rOut = exteriorRI;
             end
-            
-            rOut = exteriorRI;
             
             % Calculate exit refraction
             nRatio = rIn/rOut;
@@ -657,9 +697,9 @@ mean(minDeltaS(minDeltaS < 1))*10^6
 %% Plot results
 % close all
 
-if ~useTestData
+if useRealData
 
-else
+elseif useTestData
     
     if createLunebergLens
         % Plot ray path in object
@@ -1016,5 +1056,14 @@ else
             end
         end
         title('Spot diagram')
+    end
+end
+
+function  intersect = surfaceIntersectFunction(volume, x, scale, surface) 
+    
+    if volume(round(x(1)/scale),round(x(2)/scale),round(x(3)/scale)) 
+        intersect = inpolyhedron(surface, x);
+    else
+        intersect = 0;
     end
 end
