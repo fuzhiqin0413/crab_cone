@@ -21,16 +21,23 @@ clear;
 clc; close all
 
 %% Set parameters
-voxelSize = 0.065; % mm
 
 useRealData = 0;
-%%% Add parameters here
+if useRealData
+    dataFile = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/Data/Matlab RI Volumes/Test1_SD0_vox2.mat';
+    voxelSize = 2*10^-3; % mm
 
-useTestData = 1;
+    createGradedFiber = 0;
+    createLunebergLens = 0;
+    plotReferenceFiber = 0;
+    useTestData = 0;
+else
+    useTestData = 1;
+    
+    radius = 1; %mm - used for both lens and fiber
+    voxelSize = 0.065; % mm
 
-exteriorRI = 1;
-
-radius = 1; %mm - used for both lens and fiber
+    exteriorRI = 1;
 
     createLunebergLens = 1;
         
@@ -40,7 +47,8 @@ radius = 1; %mm - used for both lens and fiber
         %%% 1/sqrt(2.5) matches refractive index profile described, 1/(2.5) gives curve similar to result shown
         alpha = 1/(2.5); 
         plotReferenceFiber = 0; % will plot data from Nishidate and only trace 0.5
-        
+end
+
 % Options, 1, 4S, 4RKN, 5RKN, 45RKN 
 % Difference 4 to 5 is quite small
 interpType = '4S';
@@ -59,8 +67,16 @@ interpType = '4S';
 testPlot = 1;
 %% Load or create test data     
 if useRealData
+    temp = load(dataFile);
+    lensRIVolume = temp.volume;
+    clear temp
     
-    %%% If not doing direction updating, calcualte RI for all
+    volumeSize = size(lensRIVolume);
+    
+    % Using negative coding for GRIN
+    goodVolume = lensRIVolume < 0;
+    
+    lensRIVolume(goodVolume) = -lensRIVolume(goodVolume);
     
 elseif useTestData
     if ~xor(createLunebergLens, createGradedFiber)
@@ -71,7 +87,6 @@ elseif useTestData
         volumeSize = ceil(radius*2*1.5/voxelSize*[1 1 1]);
         
         lensRIVolume = createluneberglens(radius/voxelSize, volumeSize);
-    
     elseif createGradedFiber
         volumeSize = ceil([radius*2 radius*2 fiberLength]*1.5/voxelSize);
         
@@ -82,18 +97,22 @@ elseif useTestData
     goodVolume = ~isnan(lensRIVolume);
 
     lensRIVolume(isnan(lensRIVolume)) = exteriorRI;
+end
 
-    % Get surface voxels
-    tempVolume = imdilate(~goodVolume, strel('Sphere',1)) & goodVolume;
+%% Do general set up
 
-    surfaceInds = find(tempVolume);
+% Get surface voxels
+tempVolume = imdilate(~goodVolume, strel('Sphere',1)) & goodVolume;
 
-    [surfaceX, surfaceY, surfaceZ] = ind2sub(volumeSize, surfaceInds);
+surfaceInds = find(tempVolume);
 
-    bottomZ = min(surfaceZ);
+[surfaceX, surfaceY, surfaceZ] = ind2sub(volumeSize, surfaceInds);
 
-    topZ = max(surfaceZ);
+bottomZ = min(surfaceZ);
 
+topZ = max(surfaceZ);
+
+if useTestData
     figure;
     subplot(1,3,1);
     imshow((lensRIVolume(:,:,round(volumeSize(3)/2)))/(max(lensRIVolume(:))))
@@ -117,13 +136,12 @@ elseif useTestData
     end
 end
 
-%% Do general set up
-
 % Search is limited to good in points
 goodInds = find(goodVolume);
 
 if useRealData
-
+    plotInds = 1:50:length(surfaceX);
+    
 elseif useTestData
     if createLunebergLens
         plotInds = 1:length(surfaceX);
@@ -143,12 +161,17 @@ volCoords = ([tempX(:), tempY(:), tempZ(:)])*voxelSize;
 
 zSteps = (1:volumeSize(3))*voxelSize;
 
-if ~plotReferenceFiber
+if useRealData
     %%% Replace with meshgrid later on
     xStartPoints = 1:5:volumeSize(1); 
-
 else
-    xStartPoints = volumeSize(1)/2+radius/voxelSize*0.5;
+    if ~plotReferenceFiber
+        xStartPoints = 1:5:volumeSize(1); 
+
+    else
+        xStartPoints = volumeSize(1)/2+radius/voxelSize*0.5;
+    end
+
 end
 
 rayOrigins = [xStartPoints(:), ones(numel(xStartPoints),1)*volumeSize(2)/2,  ...
@@ -162,16 +185,21 @@ rayCols = lines(nOrigins);
 
 %% Run ray tracer
 
+volumeCenter = volumeSize/2*voxelSize;
+
 % Get border test value
 if useRealData
-
+    %%% Just test on good volume for now, add test vs volume limits later
+    intersectionFn = @(x1)(~goodVolume(x1(1), x1(2), x1(3)))
+       
+    lambdaFn = [];
+    
+    warning('Improve this and add lambda')
+    
 elseif useTestData
     %%% Note intersection functions are 1 when outside of GRIN, 0 inside
     if createLunebergLens
         % Get sphere intersection
-
-       volumeCenter = volumeSize/2*voxelSize;
-        
        intersectionFn = @(x1)(sqrt(sum((x1 - volumeCenter).^2)) > ...
            radius);
 
@@ -180,8 +208,6 @@ elseif useTestData
            (sqrt(sum((x1 - volumeCenter).^2))-sqrt(sum((x0 - volumeCenter).^2))));
 
     elseif createGradedFiber
-       volumeCenter = volumeSize/2*voxelSize;
-       
        % Just checks X position, not Y
        intersectionFn = @(x1)(~(x1(3) < volumeCenter(3) + fiberLength/2 & ...
             x1(3) > volumeCenter(3) - fiberLength/2  & ...
@@ -252,11 +278,9 @@ for iOrigin = 1:nOrigins
     
     exitedFlag = 0;
     
-    fixedRI = [];
+    currentPeriod = 1; % only used for graded fiber
     
-    if createGradedFiber
-       currentPeriod = 1; 
-    end
+    warning('Need to calculate refraction between layers')
     
     while go
 
@@ -265,6 +289,9 @@ for iOrigin = 1:nOrigins
 
             % entering, need to find intersect to graded volume
             if useRealData
+                warning('Need to find correct enterance intersect')
+                
+%                 rayX = rayX + rayT*deltaTemp;
                 
             elseif useTestData
                 if createLunebergLens                 
@@ -294,7 +321,10 @@ for iOrigin = 1:nOrigins
             voxelX = round(rayX/voxelSize); 
             
             % Get surface normal and RI at entry point
+            [~, rOut] = numerical_dT_dt(rayX, volCoords(goodInds,:), goodInds, lensRIVolume, []);
+            
             if useRealData
+                warning('Need to find correct enterance intersect')
                 
             elseif useTestData
                 if createLunebergLens
@@ -305,19 +335,11 @@ for iOrigin = 1:nOrigins
                     % Should be very close to 1, but allowing this removes notch in error profile
                         % However, it does increase error spot slightly
                     %rOut = 1;
-                    [~, rOut] = numerical_dT_dt(rayX, volCoords(goodInds,:), goodInds, lensRIVolume, []);
-                    
-                    setRIForFirst = 1;
-                    
-                    fixedRI = rOut;
                     
                 elseif createGradedFiber
                     % Just points backwards
                     surfaceNormal = [0 0 -1];
                     
-                    [~, rOut] = numerical_dT_dt(rayX, volCoords(goodInds,:), goodInds, lensRIVolume, []); 
-                    
-                    setRIForFirst = 0;
                 end
             end
             
@@ -339,7 +361,6 @@ for iOrigin = 1:nOrigins
         %check if x has moved to include new voxels
         if (norm(rayX-lastNearbyX) > voxelSize) & inGraded
             %if so, reselect nearby points
-
             lastNearbyX = rayX;
 
             % Get array of voxels around current
@@ -360,6 +381,8 @@ for iOrigin = 1:nOrigins
             [testInds, tempInds] = intersect(testInds, goodInds);
             
             testCoords = testCoords(tempInds,:)*voxelSize;
+            
+            %%% If all voxels equal in patch can flag to skip calc and maintain rayT
             
             % only nearest 128 used, but seems to need some extra
             [~, nearInds] = sort(sqrt((testCoords(:,1)-rayX(1)).^2+(testCoords(:,2)-rayX(2)).^2+...
@@ -390,11 +413,7 @@ for iOrigin = 1:nOrigins
 
             % Calc is fixed to isotropic RI
             [x, t, deltaS] = ray_interpolation(interpType, 'iso', x0', t0', deltaS, testCoords, ...
-                testInds, lensRIVolume, tolerance, fixedRI);
-            
-            if setRIForFirst
-               fixedRI = []; 
-            end
+                testInds, lensRIVolume, tolerance, []);
             
             rayX = x';
             
@@ -406,18 +425,17 @@ for iOrigin = 1:nOrigins
                 minDeltaS(iOrigin) = deltaS;
             end
             
-            
             if createGradedFiber
                 % test if focal point is passed and capture if so
                 if rayX(3)-(volumeSize(3)/2*voxelSize - fiberLength/2) > halfPeriodInFiber*(currentPeriod-0.5)
-                    
+
                     % Step back
                     deltaTemp = (halfPeriodInFiber*(currentPeriod-0.5) - (rayX(3)-(volumeSize(3)/2*voxelSize - fiberLength/2)))/rayT(3);
-   
+
                     periodSpotsArray(:,currentPeriod,iOrigin) = rayX + deltaTemp*rayT; 
-                    
+
                     plot3(periodSpotsArray(1,currentPeriod,iOrigin), periodSpotsArray(2,currentPeriod,iOrigin), periodSpotsArray(3,currentPeriod,iOrigin), 'xr');
-                    
+
                     currentPeriod = currentPeriod + 1;
                 end
             end
@@ -452,6 +470,8 @@ for iOrigin = 1:nOrigins
             
             testCoords = testCoords(tempInds,:)*voxelSize;
             
+            %%% If all voxels equal in patch can flag to skip calc and maintain rayT
+            
             % Sort forwards for closest 128
             [~, nearInds] = sort(sqrt((testCoords(:,1)-x0(1)).^2+(testCoords(:,2)-x0(2)).^2+...
                 (testCoords(:,3)-x0(3)).^2));
@@ -484,12 +504,6 @@ for iOrigin = 1:nOrigins
                 epsilon = sqrt(geomean([1.19e-7 2.22e-16])); 
 
                 its = 1;
-
-                if createLunebergLens 
-                    difference_init = (radius - sqrt(sum((x0 - volumeSize/2*voxelSize).^2)))*10^6;
-                elseif createGradedFiber
-                    difference_init = (volumeSize(3)/2*voxelSize + + fiberLength/2 - x0(3))*10^6;
-                end
 
                 while deltaS0_final*norm(t0) > epsilon && abs(lambda0-1) > 10^-5 
                     %%% using 10^-3 as test for zero in tests above and below
@@ -539,18 +553,6 @@ for iOrigin = 1:nOrigins
                     lambda0 = lambdaFn(rayX, x0);
 
                     deltaS0_final = deltaS_final;
-
-                    its = its + 1;
-                end
-
-                if createLunebergLens 
-                    difference_end = (radius - sqrt(sum((x0 - volumeSize/2*voxelSize).^2)))*10^6;
-                elseif createGradedFiber
-                    difference_end = (volumeSize(3)/2*voxelSize + fiberLength/2 - x0(3))*10^6;
-                end
-
-                if useTestData
-                    [its-1 difference_init difference_end]
                 end
 
             else

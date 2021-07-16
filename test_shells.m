@@ -3,9 +3,9 @@ clc
 close all
 
 % Load in angle data
-dataFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/Data/liquid angle csv/400nm';
+dataFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/Data/liquid angle csv/400nm_thick';
 
-convertAngleConvention = 1;
+convertAngleConvention = 0;
 
 % Convert to mm
 voxelSize = 800/10^6;

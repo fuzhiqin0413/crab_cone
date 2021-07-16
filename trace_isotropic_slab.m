@@ -3,7 +3,7 @@ clc
 close all
 
 % Load in angle data
-dataFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/Data/liquid angle csv/800nm_thick';
+dataFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/Data/liquid angle csv/200nm_thick';
 
 convertAngleConvention = 0;
 

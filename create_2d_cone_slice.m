@@ -17,16 +17,12 @@ outerCorneaSD = 6.59/voxSize;
 epiCornea = 32.68/voxSize;
 epiCorneaSD = 2.21/voxSize;
 
-sliceSize = round([3*max(coneAverage(:)) max(coneRingHeightMean)*1.5]);
-
-slice = zeros(sliceSize(1), sliceSize(2));
-
 nPlot = 2;
 tText = 'Mean'; %'-2 SD'; 'Mean'; 
 SDMult = 0;
 figure
 
-tipOffset = 10; % Number of Nans at start of array
+tipOffset = 30; 
 
 % Set up parameters
 % Labels
@@ -111,14 +107,14 @@ coneProfileToUse =  meanStretchedCone + stdStretchedCone*SDMult;
 innerConeProfileToUse =  meanStrechedCornea + stdStrechedCornea*SDMult;
 
 % Tweaking profiles - set for 0 SD
-% Cut first three points from top of cone and lengthen end
-coneProfileToUse(1:3) = [];
-coneProfileToUse(end:end+3) = coneProfileToUse(end);
+    display('Tweaking')
 
-% adjust radius on first three points of intercone
-innerConeProfileToUse(1:3) = innerConeProfileToUse(1:3)./[3 1.25 1.1];
+    % Cut first three points from top of cone and lengthen end
+    coneProfileToUse(1:3) = [];
+    coneProfileToUse(end:end+3) = coneProfileToUse(end);
 
-display('Tweaking')
+    % adjust radius on first three points of intercone
+    innerConeProfileToUse(1:3) = innerConeProfileToUse(1:3)./[3 1.25 1.1];
 
 % Take from full cover of center cone
 if use3Dintercone
@@ -131,6 +127,15 @@ if use3Dintercone
 end
 
 interConeCover = round(coneLengthToUse) - round(interConeLengthToUse);
+
+
+% Make slice to fit dimensions
+topEpiCornea = tipOffset + round(coneLengthToUse) + round(outerCorneaToUse) + round(epiCorneaToUse);
+
+sliceSize = round([3*max(coneProfileToUse), topEpiCornea + tipOffset]);
+
+slice = zeros(sliceSize(1), sliceSize(2));
+
 
 slice(:) = outerValue;
 
