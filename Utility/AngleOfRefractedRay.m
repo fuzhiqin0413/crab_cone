@@ -165,7 +165,7 @@ function [interceptPoint, outRay, transmission ] = AngleOfRefractedRay(coarseInt
             end
             
             % Squaring should really be done above...
-            %check if transmission dominates
+            % check if transmission dominates
             if (r0rth*r0rth+rPar*rPar)/2 < 0.5
                 % If not, do refraction
                 outRay =  nRatio*rotOriginRay + (nRatio*cosI-cosT)*N;

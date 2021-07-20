@@ -66,6 +66,12 @@ interpType = '4S';
         % (I guess it ends up stepping further at loose tolerance...)
     iterativeFinal = 0;  
     
+% Should be on, but can switch off to test    
+interfaceRefraction = 1;  
+
+% bit of a hack to prevent ray reentering due to pixel jitter 
+blockMultipleExits = 1;
+    
 testPlot = 1;
 %% Load or create test data     
 if useRealData
@@ -84,6 +90,10 @@ if useRealData
     goodVolume = lensRIVolume < 0;
     
     lensRIVolume(goodVolume) = -lensRIVolume(goodVolume);
+    
+    figure;
+    imshow(flipud(permute(lensRIVolume(round(volumeSize(1)/2),:,:), [2 3 1])'-1.45)/(1.54-1.45))
+
     
 elseif useTestData
     if ~xor(createLunebergLens, createGradedFiber)
@@ -119,13 +129,18 @@ bottomZ = min(surfaceZ);
 
 topZ = max(surfaceZ);
 
-% Get border volume to test against
-borderVolume = imdilate(borderVolume, strel('Sphere',1));
 
 % Compute trigulation
 %%% Move to other file later - replace surface points with exact values...
 grinSurface = isosurface(goodVolume, 0.5);
 grinSurface.vertices = grinSurface.vertices*voxelSize;
+
+%%% Can I get externally directed faces? Could be faster...
+    % Normals for interior and exterior faces point in the same direction...
+
+grinNormals = meshFaceNormals(grinSurface.vertices, grinSurface.faces);
+
+%%% should get all voxels that meshes passes through for intersection test
 
 if useTestData
     figure;
@@ -207,7 +222,8 @@ volumeCenter = volumeSize/2*voxelSize;
 %%% Note intersection functions are 1 when outside of GRIN, 0 inside
 if useRealData
     % Calculating inpolyhedron is very slow, so test on volume first
-    intersectionFn = @(x1)(~surfaceIntersectFunction(borderVolume, x1,voxelSize, grinSurface));
+    % Note inverted, zero if inside volume
+    intersectionFn = @(x1)(~surfaceIntersectFunction(goodVolume, borderVolume, x1, voxelSize, grinSurface));
        
     lambdaFn = @(x1, x0)(0.5);
     
@@ -243,10 +259,10 @@ if testPlot
     plot3(surfaceX(plotInds)*voxelSize, surfaceY(plotInds)*voxelSize,...
         surfaceZ(plotInds)*voxelSize, '.')
     
-    pH = patch(grinSurface);
-    
-    pH.FaceColor = 'g';
-    pH.EdgeColor = 'none';
+%     pH = patch(grinSurface);
+%     
+%     pH.FaceColor = 'g';
+%     pH.EdgeColor = 'none';
 end
 
 % Turn of warning on singular matrix, otherwise backslash will slow down a lot
@@ -310,20 +326,43 @@ for iOrigin = 1:nOrigins
 
             % entering, need to find intersect to graded volume
             if useRealData
-                warning('Need to find correct enterance intersect')
                 
                 % X and T combined on input, T needs to point back
-                lineDef = [rayX -rayT];
+                lineDef = [rayX rayT];
                 
-                [intersect, position] = intersectLineMesh3d(lineDef, grinSurface.vertices, grinSurface.faces);
+                [intersectPoints, intersectDistance, intersectFaces] = intersectLineMesh3d(lineDef, grinSurface.vertices, grinSurface.faces);
                 
-                if length(positions) > 1
-                    error('Multiple intersects - not treated')
+                % Sort out intersections
+                if length(intersectDistance) > 1
+                    backInds = find(intersectDistance < 0);
+                    frontInds = find(intersectDistance > 0);
+
+                    [~, closestBackInd] = min(abs(intersectDistance(backInds)));
+                    [~, closestFrontInd] = min(intersectDistance(frontInds));
+
+                    if isempty(backInds) | isempty(frontInds)
+                        %%% Have a treatment for ray exit
+                        error('Check treatment - all inds either in front or behind')
+                    end
+                    
+                    % Expect back ind to be closer
+                    if abs(intersectDistance(backInds(closestBackInd))) < intersectDistance(frontInds(closestFrontInd))
+                        nearestInd = backInds(closestBackInd);
+                        
+                    else
+                       error('Check treatment - front ind closer') 
+                    end
+                
+                elseif length(intersectDistance) == 1
+                        nearestInd = 1;
+                        
+                elseif isempty(intersectDistance)
+                        error('No intersect')
                 end
-                
-                error('Check from here')
-                
-                rayX = intersect;
+                      
+                rayX = intersectPoints(nearestInd, :);
+
+                faceIndex = intersectFaces(nearestInd);
                 
             elseif useTestData
                 if createLunebergLens                 
@@ -348,48 +387,64 @@ for iOrigin = 1:nOrigins
                 end
             end
             
+            plot3(rayX(1), rayX(2), rayX(3), 'go')
+            
             firstIntersect(iOrigin,:) = rayX;
             
             voxelX = round(rayX/voxelSize); 
             
-            % Get surface normal and RI at entry point
-            [~, rOut] = numerical_dT_dt(rayX, volCoords(goodInds,:), goodInds, lensRIVolume, []);
-            
-            if useRealData
-                warning('Need to find correct enterance normal and rIn')
-                
-                surfaceNormal = [0 0 -1];
-                
-                rIn = exteriorRI;
-                
-            elseif useTestData
-                if createLunebergLens
-                    surfaceNormal = rayX - volumeSize/2*voxelSize;
+            if interfaceRefraction
+                % Get surface normal and RI at entry point
+                [~, rOut] = numerical_dT_dt(rayX, volCoords(goodInds,:), goodInds, lensRIVolume, []);
 
-                    surfaceNormal = surfaceNormal/norm(surfaceNormal);
- 
-                    % Should be very close to 1, but allowing this removes notch in error profile
-                        % However, it does increase error spot slightly
-                    %rOut = 1;
-                    
-                elseif createGradedFiber
-                    % Just points backwards
-                    surfaceNormal = [0 0 -1];
-                    
+                if useRealData
+                    warning('Need to find correct enterance rIn')
+
+                    % Test from surface tracer
+    %                 sqrt((grinNormals(faceIndex(1),1)-rayT(1))^2+(grinNormals(faceIndex(1),2)-rayT(2))^2+...
+    %                         (grinNormals(faceIndex(1),3)-rayT(3))^2) < sqrt(2)
+                    % Normals point in, so need to flip as ray is coming from exterior
+
+                    %%% Test direction before deciding on flip
+                    surfaceNormal = -grinNormals(faceIndex,:);
+
+                    rIn = exteriorRI;
+
+                elseif useTestData
+                    if createLunebergLens
+                        surfaceNormal = rayX - volumeSize/2*voxelSize;
+
+                        surfaceNormal = surfaceNormal/norm(surfaceNormal);
+
+                        % Should be very close to 1, but allowing this removes notch in error profile
+                            % However, it does increase error spot slightly
+                        %rOut = 1;
+
+                    elseif createGradedFiber
+                        % Just points backwards
+                        surfaceNormal = [0 0 -1];
+
+                    end
+
+                    rIn = exteriorRI;
+                end
+
+                % Calculate entry refraction
+                nRatio = rIn/rOut;
+                cosI = -dot(surfaceNormal, rayT);
+                sinT2 = nRatio^2*(1-cosI^2);
+                cosT = sqrt(1-sinT2);
+
+                if sinT2 < 1
+                    % Assuming all refracted, none reflected
+                    rayT = nRatio*rayT + (nRatio*cosI-cosT)*surfaceNormal;
+                else
+                    % TIR
+                    rayT = rayT-2*dot(surfaceNormal,rayT)*surfaceNormal;
                 end
                 
-                rIn = exteriorRI;
+                rayT = rayT/norm(rayT);
             end
-            
-            % Calculate entry refraction
-            nRatio = rIn/rOut;
-            cosI = -dot(surfaceNormal, rayT);
-            sinT2 = nRatio^2*(1-cosI^2);
-            cosT = sqrt(1-sinT2);
-            
-            % Assuming all refracted, non reflected
-            rayT = nRatio*rayT + (nRatio*cosI-cosT)*surfaceNormal;
-            rayT = rayT/norm(rayT);
             
             inGraded = 1;
         end
@@ -441,7 +496,8 @@ for iOrigin = 1:nOrigins
         if ~inGraded
             rayX = rayX + rayT*voxelSize/3;
             
-            %%% Could also draw line until intersect reached, as in original surface ray-tracer
+            %%% Could also draw voxelaized line until intersect reached, as in original surface ray-tracer
+                %%% Or check for mesh intersection using intersectLineMesh3d
         else
 
             x0 = rayX;
@@ -592,8 +648,8 @@ for iOrigin = 1:nOrigins
                 end
 
             else
-               lambda0 = lambdaFn(rayX, x0);
-               
+               lambda0 = lambdaFn(rayX, x0);               
+
                 [x, t] = ray_interpolation(interpType, 'iso', x0', t0', deltaS*lambda0, testCoords_forwards, ...
                     testInds_forwards, lensRIVolume, tolerance, []);
             
@@ -612,49 +668,102 @@ for iOrigin = 1:nOrigins
             
             finalRayT(iOrigin,:) = rayT;
             
+            plot3(rayX(1), rayX(2), rayX(3), 'mo')
+
+            % Recheck in case it was side jitter...
+            intersectResult = intersectionFn(rayX);
+            
             % Do refraction at border
+            if interfaceRefraction
+                % Get surface normal and RI at exit point
+                [~, rIn] = numerical_dT_dt(rayX, volCoords(goodInds,:), goodInds, lensRIVolume, []); 
 
-            % Get surface normal and RI at exit point
-            [~, rIn] = numerical_dT_dt(rayX, volCoords(goodInds,:), goodInds, lensRIVolume, []); 
-                                 
-            if useRealData
-                warning('Need to calculate normal correctly and rOut')
+                if useRealData
+                    lineDef = [rayX rayT];
                 
-                surfaceNormal = [0 0 -1]; 
-                
-                rOut = exteriorRI;
+                    [intersectPoints, intersectDistance, intersectFaces] = intersectLineMesh3d(lineDef, grinSurface.vertices, grinSurface.faces);
+ 
+                    if length(intersectDistance) > 1
+                        % Sort out intersections
+                        backInds = find(intersectDistance < 0);
+                        frontInds = find(intersectDistance > 0);
+
+                        if isempty(backInds) | isempty(frontInds)
+                            % Inds just on one side
+                            [~, sortInds] = sort(abs(intersectDistance));
                             
-            elseif useTestData
-                if createLunebergLens
-                    surfaceNormal = -(rayX - volumeSize/2*voxelSize);
+                            nearestInd = sortInds(1);
+                            furtherInd = sortInds(2);
+                            
+                        elseif ~isempty(backInds) & ~isempty(frontInds)
+                            % Inds front and back
+                            [~, closestBackInd] = min(abs(intersectDistance(backInds)));
+                            [~, closestFrontInd] = min(intersectDistance(frontInds));
+                        
+                            % swap to nearest and furthest
+                            if abs(intersectDistance(backInds(closestBackInd))) < intersectDistance(frontInds(closestFrontInd))
+                                nearestInd = backInds(closestBackInd);
+                                furtherInd = frontInds(closestFrontInd);
+                            else
+                                furtherInd = backInds(closestBackInd);
+                                nearestInd = frontInds(closestFrontInd);
+                            end
+                        end
 
-                    surfaceNormal = surfaceNormal/norm(surfaceNormal);
+                        if abs(intersectDistance(nearestInd))*10 > abs(intersectDistance(furtherInd))
+                            error('Check treatment - both inds are very close')
+                        end
+                    elseif length(intersectDistance) == 1
+                        nearestInd = 1;
+                        
+                    elseif isempty(intersectDistance)
+                            error('No intersect')
+                    end
                     
-                    % Usually not exactly 1, this allows refraction but actually decreases error on exit trajectory
-%                     rIn = 1;
-  
-                elseif createGradedFiber
-                    % Just points backwards
-                    surfaceNormal = [0 0 -1];   
+                    faceIndex = intersectFaces(nearestInd);
+                    
+                    %%% Test direction before deciding on flip
+                    
+                    surfaceNormal = grinNormals(faceIndex,:);
+
+                    rOut = exteriorRI;
+
+                elseif useTestData
+                    if createLunebergLens
+                        surfaceNormal = -(rayX - volumeSize/2*voxelSize);
+
+                        surfaceNormal = surfaceNormal/norm(surfaceNormal);
+
+                        % Usually not exactly 1, this allows refraction but actually decreases error on exit trajectory
+    %                   rIn = 1;
+
+                    elseif createGradedFiber
+                        % Just points backwards
+                        surfaceNormal = [0 0 -1];   
+                    end
+
+                    rOut = exteriorRI;
                 end
-                
-                rOut = exteriorRI;
+
+                % Calculate exit refraction
+                nRatio = rIn/rOut;
+                cosI = -dot(surfaceNormal, rayT);
+                sinT2 = nRatio^2*(1-cosI^2);
+                cosT = sqrt(1-sinT2);
+
+                if sinT2 < 1
+                    % Assuming all refracted, none reflected
+                    rayT = nRatio*rayT + (nRatio*cosI-cosT)*surfaceNormal;
+                else
+                    % TIR
+                    rayT = rayT-2*dot(surfaceNormal,rayT)*surfaceNormal;
+                end
+                rayT = rayT/norm(rayT);
             end
             
-            % Calculate exit refraction
-            nRatio = rIn/rOut;
-            cosI = -dot(surfaceNormal, rayT);
-            sinT2 = nRatio^2*(1-cosI^2);
-            cosT = sqrt(1-sinT2);
-            
-            % Assuming all refracted, non reflected
-            rayT = nRatio*rayT + (nRatio*cosI-cosT)*surfaceNormal;
-            rayT = rayT/norm(rayT);
-
-%             finalRayT(iOrigin,:)
-%             rayT
-            
-            exitedFlag = 1;
+            if blockMultipleExits
+                exitedFlag = 1;
+            end
             inGraded = 0;
         end
         
@@ -699,6 +808,17 @@ mean(minDeltaS(minDeltaS < 1))*10^6
 
 if useRealData
 
+    figure; hold on; axis equal;
+    view(0, 0)
+    for iOrigin = 1:nOrigins
+        rayPath = permute(rayPathArray(:, :, iOrigin), [2 1]);
+
+        plot3(rayPath(:,1), rayPath(:,2), rayPath(:,3), 'color', rayCols(iOrigin,:));
+        
+        plot3(firstIntersect(iOrigin,1), firstIntersect(iOrigin,2), firstIntersect(iOrigin,3), 'o', 'color', rayCols(iOrigin,:))
+        plot3(finalIntersect(iOrigin,1), finalIntersect(iOrigin,2), finalIntersect(iOrigin,3), 'o', 'color', rayCols(iOrigin,:))
+    end
+    
 elseif useTestData
     
     if createLunebergLens
@@ -778,13 +898,8 @@ elseif useTestData
                     ((2*tempRayPath(3,startZ)^2+2*radius^2)*sqrt(2*radius^2-2*finalR^2 + 2*tempRayPath(3,startZ)^2));
                 finalT = [finalP, 0, 1];
 
-%                 finalRayT(iOrigin,:)/finalRayT(iOrigin,3)
-                
                 % Propogate ray
                 tempRayPath(1, topZ+1:end) = (tempRayPath(3, topZ+1:end)-finalR)*finalT(1) + finalX;
-                
-%                                 tempRayPath(1, topZ+1:end) = NaN;
-                
                 
                 % Add sphere centre back
                 tempRayPath(1,:) = tempRayPath(1,:) + lensCentre(1);
@@ -966,8 +1081,13 @@ elseif useTestData
                 sinT2 = nRatio^2*(1-cosI^2);
                 cosT = sqrt(1-sinT2);
 
-                % Assuming all refracted, non reflected
-                refractT = nRatio*finalT + (nRatio*cosI-cosT)*surfaceNormal;
+                if sinT2 < 1
+                    % Assuming all refracted, none reflected
+                    refractT = nRatio*finalT + (nRatio*cosI-cosT)*surfaceNormal;
+                else
+                    % TIR
+                    refractT = finalT-2*dot(surfaceNormal,finalT)*surfaceNormal;
+                end
                 
                 % No need to normalize as rescaled
                 refractT = refractT/refractT(3);
@@ -1059,10 +1179,17 @@ elseif useTestData
     end
 end
 
-function  intersect = surfaceIntersectFunction(volume, x, scale, surface) 
-    
-    if volume(round(x(1)/scale),round(x(2)/scale),round(x(3)/scale)) 
-        intersect = inpolyhedron(surface, x);
+%% 
+function  intersect = surfaceIntersectFunction(volumeFull, volumeBorder, x, scale, surface) 
+    % Return 1 if inside
+
+%     if volumeBorder(round(x(1)/scale),round(x(2)/scale),round(x(3)/scale))
+%             % This is really slow!
+% This also causes problems as intersectLineMesh3d tends to shift backwards...
+%             intersect = inpolyhedron(surface, x);
+
+    if volumeFull(round(x(1)/scale),round(x(2)/scale),round(x(3)/scale))
+        intersect = 1; 
     else
         intersect = 0;
     end
