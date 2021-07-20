@@ -22,7 +22,7 @@ clc; close all
 
 %% Set parameters
 
-useRealData = 1;
+useRealData = 0;
 if useRealData
     dataFile = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/Data/Matlab RI Volumes/Test1_SD0_vox2.mat';
     voxelSize = 2*10^-3; % mm
@@ -41,9 +41,9 @@ else
 
     exteriorRI = 1;
 
-    createLunebergLens = 1;
+    createLunebergLens = 0;
         
-    createGradedFiber = 0;
+    createGradedFiber = 1;
         fiberLength = 10;
         n0 = sqrt(2.5);
         %%% 1/sqrt(2.5) matches refractive index profile described, 1/(2.5) gives curve similar to result shown
@@ -64,7 +64,7 @@ interpType = '4S';
     
     % This keeps spot size surpsingly small, even on loose tolerance
         % (I guess it ends up stepping further at loose tolerance...)
-    iterativeFinal = 0;  
+    iterativeFinal = 1;  
     
 % Should be on, but can switch off to test    
 interfaceRefraction = 1;  
@@ -135,10 +135,9 @@ topZ = max(surfaceZ);
 grinSurface = isosurface(goodVolume, 0.5);
 grinSurface.vertices = grinSurface.vertices*voxelSize;
 
-%%% Can I get externally directed faces? Could be faster...
-    % Normals for interior and exterior faces point in the same direction...
-
+%%% Can I get only externally directed faces? Could be faster...
 grinNormals = meshFaceNormals(grinSurface.vertices, grinSurface.faces);
+
 
 %%% should get all voxels that meshes passes through for intersection test
 
@@ -225,10 +224,9 @@ if useRealData
     % Note inverted, zero if inside volume
     intersectionFn = @(x1)(~surfaceIntersectFunction(goodVolume, borderVolume, x1, voxelSize, grinSurface));
        
-    lambdaFn = @(x1, x0)(0.5);
-    
-    warning('Improve this and add lambda')
-    
+    %%% Correctly calculated as ray distance
+    lambdaFn = @(x1, x0)surfaceLambdaFunction(x1, x0, grinSurface);
+
 elseif useTestData
     if createLunebergLens
         % Get sphere intersection
@@ -236,7 +234,8 @@ elseif useTestData
            radius);
 
        % Calculate as radius of ratios.
-       lambdaFn = @(x1, x0)((sqrt(sum((x1 - volumeCenter).^2))-radius)/...
+            %%% Error as below, radial dist instead of z dist
+       lambdaFn = @(x1, x0)((radius-sqrt(sum((x0 - volumeCenter).^2)))/...
            (sqrt(sum((x1 - volumeCenter).^2))-sqrt(sum((x0 - volumeCenter).^2))));
 
     elseif createGradedFiber
@@ -244,8 +243,10 @@ elseif useTestData
        intersectionFn = @(x1)(~(x1(3) < volumeCenter(3) + fiberLength/2 & ...
             x1(3) > volumeCenter(3) - fiberLength/2  & ...
             x1(1) > volumeCenter(1) - radius & x1(1) < volumeCenter(1) + radius));
-
-       lambdaFn = @(x1, x0)((x1(3)- (volumeCenter(3) + fiberLength/2))/(x1(3)-x0(3)));
+        
+        %%% Lambda is not entirely correct as we want ray dist to border, not just z dist. 
+            %%% But probably negligible for small distances
+       lambdaFn = @(x1, x0)(((volumeCenter(3) + fiberLength/2) - x0(3))/(x1(3)-x0(3)));
     end
 end
 
@@ -394,21 +395,15 @@ for iOrigin = 1:nOrigins
             voxelX = round(rayX/voxelSize); 
             
             if interfaceRefraction
-                % Get surface normal and RI at entry point
+                % Get interior RI at entry point
                 [~, rOut] = numerical_dT_dt(rayX, volCoords(goodInds,:), goodInds, lensRIVolume, []);
 
+                % Get surface normal and exterior RI at entry point
                 if useRealData
                     warning('Need to find correct enterance rIn')
-
-                    % Test from surface tracer
-    %                 sqrt((grinNormals(faceIndex(1),1)-rayT(1))^2+(grinNormals(faceIndex(1),2)-rayT(2))^2+...
-    %                         (grinNormals(faceIndex(1),3)-rayT(3))^2) < sqrt(2)
-                    % Normals point in, so need to flip as ray is coming from exterior
-
-                    %%% Test direction before deciding on flip
-                    surfaceNormal = -grinNormals(faceIndex,:);
-
                     rIn = exteriorRI;
+                    
+                    surfaceNormal = grinNormals(faceIndex,:);
 
                 elseif useTestData
                     if createLunebergLens
@@ -427,6 +422,15 @@ for iOrigin = 1:nOrigins
                     end
 
                     rIn = exteriorRI;
+                end
+                
+                % Test from surface tracer
+%                 sqrt((grinNormals(faceIndex(1),1)-rayT(1))^2+(grinNormals(faceIndex(1),2)-rayT(2))^2+...
+%                         (grinNormals(faceIndex(1),3)-rayT(3))^2) < sqrt(2)
+
+                % Test normal points against ray
+                if acos(dot(rayT, surfaceNormal)/(norm(surfaceNormal)*norm(rayT))) < pi/2
+                    surfaceNormal = -surfaceNormal;
                 end
 
                 % Calculate entry refraction
@@ -575,6 +579,8 @@ for iOrigin = 1:nOrigins
             testInds_forwards = testInds(nearInds);
             testCoords_forwards = testCoords(nearInds,:);
             
+            lambda0 = lambdaFn(rayX, x0);
+            
             if iterativeFinal
                 % Get backwards sorted as well
                 [~, nearInds] = sort(sqrt((testCoords(:,1)-rayX(1)).^2+(testCoords(:,2)-rayX(2)).^2+...
@@ -589,7 +595,6 @@ for iOrigin = 1:nOrigins
                 
                 % Test intersection, leaving could just be a rounding point           
                 deltaS0_final = deltaS;
-                lambda0 = lambdaFn(rayX, x0);
 
                 %error term, sqrt of machine precision, from Nishidate paper sqrt(1.49e-8)
                     % Take geometric mean of single and double precision, double takes ages to evaluate
@@ -597,13 +602,13 @@ for iOrigin = 1:nOrigins
 
                 its = 1;
 
-                while deltaS0_final*norm(t0) > epsilon && abs(lambda0-1) > 10^-5 
+                while deltaS0_final*norm(t0) > epsilon && abs(lambda0-1) > 10^-6 
                     %%% using 10^-3 as test for zero in tests above and below
 
                     SF = 1; %A from paper - saftey factor
 
-                    % included in loop on paper but never hit
-                    if lambda0 < 10^-5
+                    % included in loop on paper seems to never get hit
+                    if lambda0 < 10^-6
                        rayT = t0;
                        warning('Not sure on this');
                        break
@@ -648,8 +653,6 @@ for iOrigin = 1:nOrigins
                 end
 
             else
-               lambda0 = lambdaFn(rayX, x0);               
-
                 [x, t] = ray_interpolation(interpType, 'iso', x0', t0', deltaS*lambda0, testCoords_forwards, ...
                     testInds_forwards, lensRIVolume, tolerance, []);
             
@@ -659,7 +662,7 @@ for iOrigin = 1:nOrigins
                pathLength = pathLength + sqrt((x0(1) - rayX(1))^2 + (x0(2) - rayX(2))^2 + (x0(3) - rayX(3))^2);
             end
             
-            % Normalize no before refraction
+            % Normalize before refraction
             rayT = rayT/norm(rayT);
             
             finalIntersect(iOrigin,:) = rayX;
@@ -722,8 +725,6 @@ for iOrigin = 1:nOrigins
                     
                     faceIndex = intersectFaces(nearestInd);
                     
-                    %%% Test direction before deciding on flip
-                    
                     surfaceNormal = grinNormals(faceIndex,:);
 
                     rOut = exteriorRI;
@@ -745,6 +746,10 @@ for iOrigin = 1:nOrigins
                     rOut = exteriorRI;
                 end
 
+                if acos(dot(rayT, surfaceNormal)/(norm(surfaceNormal)*norm(rayT))) < pi/2
+                    surfaceNormal = -surfaceNormal;
+                end
+                
                 % Calculate exit refraction
                 nRatio = rIn/rOut;
                 cosI = -dot(surfaceNormal, rayT);
@@ -1192,5 +1197,46 @@ function  intersect = surfaceIntersectFunction(volumeFull, volumeBorder, x, scal
         intersect = 1; 
     else
         intersect = 0;
+    end
+end
+
+function lambda = surfaceLambdaFunction(x1, x0, surface)
+
+    lineDef = [x0 (x1-x0)];  
+
+    [intersectPoints, intersectDistance] = intersectLineMesh3d(lineDef, surface.vertices, surface.faces);
+    
+    % Sort out intersections
+    if length(intersectDistance) > 1
+        backInds = find(intersectDistance < 0);
+        frontInds = find(intersectDistance > 0);
+
+        [~, closestBackInd] = min(abs(intersectDistance(backInds)));
+        [~, closestFrontInd] = min(intersectDistance(frontInds));
+
+        if isempty(backInds) | isempty(frontInds)
+            %%% Have a treatment for ray exit
+            error('Check treatment - all inds either in front or behind')
+        end
+
+        % Expect front ind to be closer
+        if abs(intersectDistance(backInds(closestBackInd))) > intersectDistance(frontInds(closestFrontInd))
+            nearestInd = frontInds(closestFrontInd);
+
+        else
+           error('Check treatment - front ind closer') 
+        end
+
+    elseif length(intersectDistance) == 1
+            nearestInd = 1;
+
+    elseif isempty(intersectDistance)
+            error('No intersect')
+    end
+    
+    lambda = norm(intersectPoints(nearestInd,:)-x0)/norm(x1-x0);
+    
+    if lambda > 1 | lambda < 0
+       error('Check this') 
     end
 end

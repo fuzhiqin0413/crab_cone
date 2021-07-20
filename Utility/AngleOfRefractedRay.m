@@ -127,6 +127,8 @@ function [interceptPoint, outRay, transmission ] = AngleOfRefractedRay(coarseInt
     %update this from compound eye
     
     %flip normal to same side as ray propogation if they are more than 90deg apart
+    
+    %%% Why isn't this done with angle between vectors? acos(dot(X,Y)/(norm(X)*norm(Y)))
     if sqrt((approximateNormal(1)-N(1))^2+(approximateNormal(2)-N(2))^2+(approximateNormal(3)-N(3))^2) > sqrt(2)
         N = N*-1;
     end
@@ -143,6 +145,7 @@ function [interceptPoint, outRay, transmission ] = AngleOfRefractedRay(coarseInt
     end
     
     %check if angle within 90 deg of normal (should be solved in previous step...)
+    %%% Why isn't this done with angle between vectors? acos(dot(X,Y)/(norm(X)*norm(Y)))
     if sqrt((-rotOriginRay(1)-N(1))^2+(-rotOriginRay(2)-N(2))^2+(-rotOriginRay(3)-N(3))^2) < sqrt(2)
         %check if TIR occurs
         nRatio = rIn/rOut;

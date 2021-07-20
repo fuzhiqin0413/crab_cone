@@ -136,6 +136,10 @@ for i = 1:size(ray_origins,2)
                 delta_t0 = delta_t;
                 rad_current = sqrt(X(1)^2+X(2)^2+X(3)^2); %always larger outbound
                 rad_back = sqrt(X0(1)^2+X0(2)^2+X0(3)^2);
+                
+                %%% Check in trace and test file
+                error('Lambda should be rad - x0, not x1 - rad')
+                
                 lambda0 = (rad_current-radius)/(rad_current-rad_back);
                 
                 epsilon = sqrt(1.49e-8); %error term, suggest using sqrt of machine precision
