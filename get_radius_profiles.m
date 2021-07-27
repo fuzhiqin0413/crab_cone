@@ -4,6 +4,7 @@ clear
 clc
 close all
 
+warning('Update pixel size, 0.16?')
 voxSize = 2;
 
 numCones = 7;

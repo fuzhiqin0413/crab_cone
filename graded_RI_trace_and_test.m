@@ -1,22 +1,13 @@
 % Set up to do both tracing on data and have testing mode on either
 % lundaberg lens or graded fibre, as in nishdate 2011 papers
     
-    % Also need to add interface refraction - not required for test cases but
-    % for normal tracing. Should also do accuracy test for my patch method.
-    
-    % Should test on smoothed RI map calculated from 200 nm maps
-        % Have exterior RI loading and processing function
+    % If variable angle: test on smoothed RI map calculated from 200 nm maps
         % May also want to smooth
-
-    % Start with fixed on axis RI but later update to recalc with angle dependence
-    
-    % Note grin is basically only in trasition area, so can skip calc if
-    % all values in region are equal
-        % Should test this speed up
+        % Start with fixed on axis RI but could recalc with angle dependence
+        % Note grin was basically only in trasition area, so can skip calc if all values in region are equal
+  
+error('Check if voxel sizing is used correctly')        
         
-    % Create 3d view of rays and spot diagram (for fibre do on phase and half phase)
-        % Add fiber test case of inclined rays
-                 
 clear; 
 clc; close all
 
@@ -25,6 +16,8 @@ clc; close all
 useRealData = 1;
 if useRealData
     dataFile = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/Data/Matlab RI Volumes/Test1_SD0_vox2.mat';
+    
+    warning('Update pixel size, 0.16?')
     voxelSize = 2*10^-3; % mm
 
     createGradedFiber = 0;
@@ -66,7 +59,7 @@ interpType = '4S';
         % (I guess it ends up stepping further at loose tolerance...)
     iterativeFinal = 0;  
     
-incidenceAngle = 10; % deg, in XZ - plane    
+incidenceAngle = 15; % deg, in XZ - plane    
     
 % Should be on, but can switch off to test    
 interfaceRefraction = 1;  
@@ -930,7 +923,7 @@ for iOrigin = 1:nOrigins
         
         voxelX = round(rayX/voxelSize);
         
-        rayMap(voxelX(1), voxelX(2), voxelX(3)) = 1;
+%         rayMap(voxelX(1), voxelX(2), voxelX(3)) = 1;
         
         % At each z step, record path for plotting later 
         if rayX(3) >= zSteps(currentStep+1)
@@ -1447,13 +1440,7 @@ function lambda = surfaceLambdaFunction(x1, x0, surface)
             error('Check treatment - all inds either in front or behind')
         end
 
-        % Expect front ind to be closer
-        if abs(intersectDistance(backInds(closestBackInd))) > intersectDistance(frontInds(closestFrontInd))
-            nearestInd = frontInds(closestFrontInd);
-
-        else
-           error('Check treatment - front ind closer') 
-        end
+        nearestInd = frontInds(closestFrontInd);
 
     elseif length(intersectDistance) == 1
             nearestInd = 1;

@@ -22,7 +22,8 @@ if 1
     sphericalAxis = [];
     
     % Either 1 or 2 micron...
-    pixelScale = 1;
+    warning('Update pixel size, 0.16?')
+    pixelScale = 2;
     dsP = 30; %down sampling for plotting surfaces
     dsFact = 1; %resize input volumes if desired
     

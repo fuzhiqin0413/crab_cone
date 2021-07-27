@@ -5,7 +5,7 @@ close all
 voxSize = 6.17;
 
 % Load in ct data
-dataFolder = '/Users/gavintaylor/Documents/Shared VM Folder/CT labels for Gavin as tif/LP2_matlab/Labels';
+dataFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/Data/CT Images for tip analysis/LP2_matlab/Labels';
 dataVolume = logical(loadtiffstack(dataFolder, 1));
 
 volumeSize = size(dataVolume);
@@ -14,8 +14,8 @@ volumeSize = size(dataVolume);
 % from ascii path set. Actual Path is not very important as we just want
 % the points we clicked
 
-points = load('/Users/gavintaylor/Documents/Shared VM Folder/CT labels for Gavin as tif/LP2_matlab/ControlPoints.pathset');
-pointsCoords = load('/Users/gavintaylor/Documents/Shared VM Folder/CT labels for Gavin as tif/LP2_matlab/Coordinates.pathset');
+points = load('/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/Data/CT Images for tip analysis/LP2_matlab/ControlPoints.pathset');
+pointsCoords = load('/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/Data/CT Images for tip analysis/LP2_matlab/Coordinates.pathset');
 
 %%% Flip coords 1 and 2 to match loaded volume
 
@@ -151,7 +151,6 @@ grid3D.maxBound = volumeSize';
 warning('off', 'MATLAB:nearlySingularMatrix')
 
 xStep = 0;
-
 yStep = 0;
 
 offSet = 30;
@@ -242,7 +241,7 @@ for iTip = 1:numTips;
 
         intersectCoord = [intersectX(intersectInds), intersectY(intersectInds), intersectZ(intersectInds)];
 
-        % rotate cone
+        % rotate cone around tip
         coneCoords = coneCoords - intersectCoord;
 
         % Limit to those quite close
@@ -986,3 +985,119 @@ cd('/Users/gavintaylor/Desktop')
 imwrite(flipud(meanCone), 'Cone_mean.png')
 imwrite(flipud(plusCone),'Cone_plus2D.png')
 imwrite(flipud(minusCone),'Cone_minus2D.png')
+
+%% Cone shape analysis, radius based
+
+depthTests = -5:20;
+depth0Ind = find(depthTests == 0);
+
+corneaAverage = zeros(numTips,length(depthTests))*NaN;
+corneaAverageNotAdj = zeros(numTips,length(depthTests))*NaN;
+corneaStandard = zeros(numTips,length(depthTests))*NaN;
+
+fSummary = figure; 
+f3D = figure; hold on; axis equal
+
+xStep = 0;
+yStep = 0;
+
+offSet = 30;
+colRadMax = 10;
+cols = jet(colRadMax);
+
+for iTip = 1:numTips
+    
+    tempCone = goodConeShapes{iTip};
+    if ~isempty(tempCone)
+        %%% Round might be too course here
+        tempZ = round(-tempCone(:,3));
+        
+        corneaNum = zeros(length(depthTests),1);
+        
+        %%% Refactor to plot later, very slow currently.  
+            % doing fscatter3 with all points from cone would probably work better
+%         figure(f3D) 
+        
+        for j = depthTests
+            tempInds = find(tempZ == j);
+
+            corneaNum(j-min(depthTests)+1) = length(tempInds);
+
+            if ~isempty(tempInds)
+                tempDists = sqrt(tempCone(tempInds,1).^2 + tempCone(tempInds,2).^2);
+
+                corneaAverage(iTip, j-min(depthTests)+1) = mean(tempDists);
+
+                corneaStandard(iTip, j-min(depthTests)+1) = std(tempDists);
+                
+%                 [~, colInd] = min(abs((1:colRadMax) - corneaAverage(iTip, j-min(depthTests)+1)));
+%                 
+%                 plot3(tempCone(tempInds,1) + xStep*offSet, tempCone(tempInds,2), tempCone(tempInds,3)+ yStep*offSet, '.', 'color', cols(colInd,:))
+            end
+        end
+        
+%         xStep = xStep + 1;
+%         
+%         if xStep > 30
+%             xStep = 0;
+% 
+%             yStep = yStep + 1;
+%         end
+        
+        figure(fSummary)
+        
+        subplot(2,3,1); hold on
+        plot(depthTests, corneaNum)
+        
+        subplot(2,3,2); hold on
+        plot(depthTests, corneaAverage(iTip,:))
+        
+        subplot(2,3,3); hold on
+        plot(depthTests, corneaStandard(iTip,:))
+        
+        %%% Copied adjustment from profile script
+        % Adjust offset to narrow point
+        [narrowVal] = min(corneaAverage(iTip,1:depth0Ind));
+
+        % Adjust for duplicates
+        narrowInd = find(corneaAverage(iTip,1:depth0Ind) == narrowVal);
+        narrowInd = narrowInd(end);
+
+        subplot(2,3,2);
+        plot(depthTests(narrowInd), corneaAverage(iTip,narrowInd), 'rx');
+        
+        % Shift back to make start point 
+        corneaAverage(iTip, depth0Ind:end) = corneaAverage(iTip, narrowInd:end-(depth0Ind-narrowInd));
+        corneaStandard(iTip, depth0Ind:end) = corneaStandard(iTip, narrowInd:end-(depth0Ind-narrowInd));
+
+        % Remove part above narrow point
+        corneaAverage(iTip, 1:depth0Ind-1) = NaN;
+        corneaStandard(iTip, 1:depth0Ind-1) = NaN;
+        
+        subplot(2,3,5); hold on
+        plot(depthTests, corneaAverage(iTip,:))
+        
+        subplot(2,3,6); hold on
+        plot(depthTests, corneaStandard(iTip,:))
+    end
+end
+ 
+averageCornea = nanmean(corneaAverage);
+averageCorneaStd = nanstd(corneaAverage);
+
+% Always quite pointy
+
+%%% Need to close across top
+figure; hold on;
+plot(averageCornea*voxSize, -depthTests*voxSize, 'g-', 'linewidth', 2)
+plot(-averageCornea*voxSize, -depthTests*voxSize, 'g-', 'linewidth', 2)
+
+plusRadius = averageCornea + averageCorneaStd;
+plot(plusRadius*voxSize, -depthTests*voxSize, '-r')
+plot(-plusRadius*voxSize, -depthTests*voxSize, '-r')
+
+minusRadius = averageCornea - averageCorneaStd;
+plot(minusRadius*voxSize, -depthTests*voxSize, '-b')
+plot(-minusRadius*voxSize, -depthTests*voxSize, '-b')
+
+axis equal
