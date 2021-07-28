@@ -155,7 +155,7 @@ yStep = 0;
 
 offSet = 30;
 
-radiiHist = zeros(numTips,1);
+radiiHist = zeros(numTips,2);
 
 goodConeShapes = cell(numTips,1);
 
@@ -165,9 +165,9 @@ coneTipsAngles = zeros(numTips,2);
 
 for iTip = 1:numTips;
 
-    inds = find(coneLabels == iTip);
+    coneInds = find(coneLabels == iTip);
     
-    coneCoords = labelSurfaceCoords(inds,:);
+    coneCoords = labelSurfaceCoords(coneInds,:);
     
     %Fitting a an ellipsoid
     
@@ -261,7 +261,9 @@ for iTip = 1:numTips;
         if col == 'b'
             plot3(coneCoords(:,1)*voxSize, coneCoords(:,2)*voxSize, coneCoords(:,3)*voxSize, '.')
             
-            goodConeShapes{iTip} = coneCoords;
+            goodConeShapes{iTip,1} = coneCoords;
+            
+            goodConeShapes{iTip,2} = coneInds;
             
             coneTipsCoords(iTip,:) = intersectCoord;
 
@@ -344,7 +346,7 @@ toRemove = [];
 
 for iTip = 1:numTips
     
-    tempCone = goodConeShapes{iTip};
+    tempCone = goodConeShapes{iTip, 1};
     if ~isempty(tempCone)
         % convert x/y to radial cords
         
@@ -995,56 +997,32 @@ corneaAverage = zeros(numTips,length(depthTests))*NaN;
 corneaAverageNotAdj = zeros(numTips,length(depthTests))*NaN;
 corneaStandard = zeros(numTips,length(depthTests))*NaN;
 
-fSummary = figure; 
-f3D = figure; hold on; axis equal
-
-xStep = 0;
-yStep = 0;
-
-offSet = 30;
-colRadMax = 10;
-cols = jet(colRadMax);
+corneaLayers = cell(numTips, length(depthTests));
 
 for iTip = 1:numTips
     
-    tempCone = goodConeShapes{iTip};
+    tempCone = goodConeShapes{iTip, 1};
     if ~isempty(tempCone)
         %%% Round might be too course here
         tempZ = round(-tempCone(:,3));
         
         corneaNum = zeros(length(depthTests),1);
         
-        %%% Refactor to plot later, very slow currently.  
-            % doing fscatter3 with all points from cone would probably work better
-%         figure(f3D) 
-        
-        for j = depthTests
-            tempInds = find(tempZ == j);
+        for j = 1:length(depthTests)
+            tempInds = find(tempZ == depthTests(j));
 
-            corneaNum(j-min(depthTests)+1) = length(tempInds);
+            corneaNum(j) = length(tempInds);
 
             if ~isempty(tempInds)
                 tempDists = sqrt(tempCone(tempInds,1).^2 + tempCone(tempInds,2).^2);
 
-                corneaAverage(iTip, j-min(depthTests)+1) = mean(tempDists);
+                corneaAverage(iTip, j) = mean(tempDists);
 
-                corneaStandard(iTip, j-min(depthTests)+1) = std(tempDists);
+                corneaStandard(iTip, j) = std(tempDists);
                 
-%                 [~, colInd] = min(abs((1:colRadMax) - corneaAverage(iTip, j-min(depthTests)+1)));
-%                 
-%                 plot3(tempCone(tempInds,1) + xStep*offSet, tempCone(tempInds,2), tempCone(tempInds,3)+ yStep*offSet, '.', 'color', cols(colInd,:))
+                corneaLayers{iTip,j} = tempInds;
             end
         end
-        
-%         xStep = xStep + 1;
-%         
-%         if xStep > 30
-%             xStep = 0;
-% 
-%             yStep = yStep + 1;
-%         end
-        
-        figure(fSummary)
         
         subplot(2,3,1); hold on
         plot(depthTests, corneaNum)
@@ -1085,19 +1063,66 @@ end
 averageCornea = nanmean(corneaAverage);
 averageCorneaStd = nanstd(corneaAverage);
 
-% Always quite pointy
-
 %%% Need to close across top
 figure; hold on;
 plot(averageCornea*voxSize, -depthTests*voxSize, 'g-', 'linewidth', 2)
 plot(-averageCornea*voxSize, -depthTests*voxSize, 'g-', 'linewidth', 2)
 
-plusRadius = averageCornea + averageCorneaStd;
+plusRadius = averageCornea + averageCorneaStd*2;
 plot(plusRadius*voxSize, -depthTests*voxSize, '-r')
 plot(-plusRadius*voxSize, -depthTests*voxSize, '-r')
 
-minusRadius = averageCornea - averageCorneaStd;
+minusRadius = averageCornea - averageCorneaStd*2;
 plot(minusRadius*voxSize, -depthTests*voxSize, '-b')
 plot(-minusRadius*voxSize, -depthTests*voxSize, '-b')
 
 axis equal
+
+%% plot cone radius variation across eye across eye 
+figure; hold on; axis equal
+
+coneStdRange = zeros(numTips,1);
+coneStdMean = zeros(numTips,1);
+
+cols = jet(11);
+
+for iTip = 1:numTips
+
+    if any(~isnan(corneaAverage(iTip,:)))
+        coneStdProfile = (corneaAverage(iTip,:)-averageCornea)./averageCorneaStd;
+        
+        coneStdRange(iTip) = max(coneStdProfile) - min(coneStdProfile);
+        
+        coneStdMean(iTip) = nanmean(coneStdProfile);
+        
+        coneInds = goodConeShapes{iTip, 2};
+    
+        for j = 1:length(depthTests)
+            
+            layerInds = corneaLayers{iTip,j};
+            
+            if ~isnan(coneStdProfile(j)) & ~isempty(layerInds)
+                coneStdInd = round(coneStdProfile(j)/2*5)+(1+5);
+
+                if coneStdInd < 1; coneStdInd = 1; end
+                if coneStdInd > 11; coneStdInd = 11; end
+
+                plot3(labelSurfaceCoords(coneInds(layerInds),1), labelSurfaceCoords(coneInds(layerInds),2), labelSurfaceCoords(coneInds(layerInds),3), ...
+                    '.', 'color', cols(coneStdInd,:))
+            else
+                if ~isempty(layerInds)
+                    plot3(labelSurfaceCoords(coneInds(layerInds),1), labelSurfaceCoords(coneInds(layerInds),2), labelSurfaceCoords(coneInds(layerInds),3), ...
+                        '.m')
+                end
+            end
+        end
+    else
+        coneInds = find(coneLabels == iTip);
+    
+        plot3(labelSurfaceCoords(coneInds,1), labelSurfaceCoords(coneInds,2), labelSurfaceCoords(coneInds,3), '.k')
+    end
+end
+
+figure; 
+subplot(1,2,1); plot(coneStdMean)
+subplot(1,2,2); plot(coneStdRange)

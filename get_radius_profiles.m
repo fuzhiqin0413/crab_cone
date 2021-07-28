@@ -83,6 +83,8 @@ angleDiff = zeros(7,1);
 subplot(1,2,2);  hold on; axis equal
 for i = 1:7
     
+    warning('Shift to ellpise fit for axis and center')
+    
     % Axis one for cone because it is long
     tempVoxels = coneParam(i,:).VoxelList{1};
     coneCenter(i,:) = mean(tempVoxels(:,[2 1 3]));
@@ -180,6 +182,8 @@ for i = 1:7
     
     % Get rotation vector
     rotVec = matrix2rotatevectors([0,0,1], coneAxes(i,:));
+    
+    warning('Shift to tip for rotation center')
     
     % Rotate around center - note, this doesn't guarantee that rotational
     % axis is kept constant between cones
