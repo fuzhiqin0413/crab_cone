@@ -16,9 +16,7 @@ clc; close all
 useRealData = 1;
 if useRealData
     dataFile = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/Data/Matlab RI Volumes/Test1_SD0_vox2.mat';
-    
-    warning('Update pixel size, 0.16?')
-    voxelSize = 2*10^-3; % mm
+    voxelSize = 2*0.16; % mm
 
     createGradedFiber = 0;
     createLunebergLens = 0;

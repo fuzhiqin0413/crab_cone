@@ -21,9 +21,7 @@ if 1
     folderToGet = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/Data/Sync CT/Amira project/Matlab/Inital_1_cone'; 
     sphericalAxis = [];
     
-    % Either 1 or 2 micron...
-    warning('Update pixel size, 0.16?')
-    pixelScale = 2;
+    pixelScale = 2*0.16;
     dsP = 30; %down sampling for plotting surfaces
     dsFact = 1; %resize input volumes if desired
     

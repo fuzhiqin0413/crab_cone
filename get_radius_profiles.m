@@ -4,13 +4,14 @@ clear
 clc
 close all
 
-warning('Update pixel size, 0.16?')
-voxSize = 2;
-
+voxSize = 2*0.16;
 numCones = 7;
-
 % Load in angle data
 dataFolder = '/Users/gavintaylor/Documents/Shared VM Folder/ForProfiles_1_allCone_Borders';
+
+ringValue = 7;
+coneValues = [5 6];
+corneaValue = 4;
 
 coneData = loadtiffstack(dataFolder, 0);
 
@@ -22,15 +23,19 @@ volumeSize = size(coneData);
 
 % Seperate cones
 % Removed closes as they caused problems with intercone overlap
-tempVolume = logical(coneData == 5 | coneData == 6);
+if length(coneValue) == 2
+    tempVolume = logical(coneData == coneValues(1) | coneData == coneValues(2));
+else
+    tempVolume = logical(coneData == coneValues);
+end
 % tempVolume = imclose(tempVolume, strel('sphere',1));
 coneParam = regionprops3(tempVolume, 'VoxelList', 'VoxelIdxList', 'Volume');
 
-tempVolume = logical(coneData == 4);
+tempVolume = logical(coneData == corneaValue);
 % tempVolume = imclose(tempVolume, strel('sphere',1));
 corneaParam = regionprops3(tempVolume, 'VoxelList', 'VoxelIdxList', 'Volume');
 
-ringVolume = logical(coneData == 7);
+ringVolume = logical(coneData == ringValue);
 
 % Note voxel lists here have flipped x y coords
 
