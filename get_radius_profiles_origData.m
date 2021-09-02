@@ -4,14 +4,14 @@ clear
 clc
 close all
 
-voxSize = 2.18;
-numCones = 7; %%%
+voxSize = 2*0.16;
+numCones = 7;
 % Load in angle data
-dataFolder = '/Users/gavintaylor/Documents/Shared VM Folder/Amira/CT images for full cone profile/Labels';
+dataFolder = '/Users/gavintaylor/Documents/Shared VM Folder/ForProfiles_1_allCone_Borders';
 
-ringValue = 7; %%%
-coneValues = [5 6]; %%%
-corneaValue = 4; %%%
+ringValue = 7;
+coneValues = [5 6];
+corneaValue = 4;
 
 coneData = loadtiffstack(dataFolder, 0);
 
