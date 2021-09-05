@@ -1,17 +1,23 @@
 % Get radius profiles for cones
 
+%%% For new data technique...
+
 clear
 clc
 close all
 
 voxSize = 2.18;
-numCones = 7; %%%
+
+numCones = 6; % full segmented, extra 4 not included...
+
 % Load in angle data
 dataFolder = '/Users/gavintaylor/Documents/Shared VM Folder/Amira/CT images for full cone profile/Labels';
 
-ringValue = 7; %%%
-coneValues = [5 6]; %%%
-corneaValue = 4; %%%
+coneExposedValue = 5; %%% exposed w/o intercone is 6
+coneEmbededValue = 7;
+interconeExposedValue = 8;
+coneInConeValue = 9; 
+corneaExteriorValue = 10;
 
 coneData = loadtiffstack(dataFolder, 0);
 
@@ -22,97 +28,149 @@ coneData = loadtiffstack(dataFolder, 0);
 volumeSize = size(coneData);
 
 % Seperate cones
-% Removed closes as they caused problems with intercone overlap
-if length(coneValue) == 2
-    tempVolume = logical(coneData == coneValues(1) | coneData == coneValues(2));
-else
-    tempVolume = logical(coneData == coneValues);
-end
+%%% Removed closes as they caused problems with intercone overlap
+tempVolume = logical(coneData == coneExposedValue);
 % tempVolume = imclose(tempVolume, strel('sphere',1));
-coneParam = regionprops3(tempVolume, 'VoxelList', 'VoxelIdxList', 'Volume');
+coneExposedParam = regionprops3(tempVolume, 'VoxelList', 'VoxelIdxList', 'Volume');
 
-tempVolume = logical(coneData == corneaValue);
+tempVolume = logical(coneData == coneEmbededValue);
 % tempVolume = imclose(tempVolume, strel('sphere',1));
-corneaParam = regionprops3(tempVolume, 'VoxelList', 'VoxelIdxList', 'Volume');
+coneEmbeddedParam = regionprops3(tempVolume, 'VoxelList', 'VoxelIdxList', 'Volume');
 
-ringVolume = logical(coneData == ringValue);
+tempVolume = logical(coneData == interconeExposedValue);
+% tempVolume = imclose(tempVolume, strel('sphere',1));
+interconeExposedParam = regionprops3(tempVolume, 'VoxelList', 'VoxelIdxList', 'Volume');
+
+tempVolume = logical(coneData == coneInConeValue);
+% tempVolume = imclose(tempVolume, strel('sphere',1));
+coneInConeParam = regionprops3(tempVolume, 'VoxelList', 'VoxelIdxList', 'Volume');
+
+tempVolume = logical(coneData == corneaExteriorValue);
+% tempVolume = imclose(tempVolume, strel('sphere',1));
+corneaExteriorParam = regionprops3(tempVolume, 'VoxelList', 'VoxelIdxList', 'Volume');
+
+%%% removed
+%%% ringVolume = logical(coneData == ringValue);
 
 % Note voxel lists here have flipped x y coords
 
 clear tempVolume
 
 % Tidy up found regions
-goodCones = find(coneParam.Volume > 1000);
-if length(goodCones) == 7
-    coneParam = coneParam(goodCones,:);
+goodCones = find(coneExposedParam.Volume > 1000);
+if length(goodCones) == numCones
+    coneExposedParam = coneExposedParam(goodCones,:);
 else
    error('Wrong number of cones found') 
 end
 
-goodCorneas = find(corneaParam.Volume > 1000);
-if length(goodCones) == 7
-    corneaParam = corneaParam(goodCorneas,:);
+goodCinC = find(coneInConeParam.Volume > 1000);
+if length(goodCinC) == numCones
+    coneInConeParam = coneInConeParam(goodCinC,:);
 else
    error('Wrong number of corneas found') 
 end
 
 %% check plots 
 
-cols = lines(7);
+cols = lines(numCones);
 
 fCone = figure; 
 
 % Plot to check match
 subplot(1,2,1); hold on; axis equal
-for i = 1:7
+for i = 1:numCones
     
-    tempVoxels = coneParam(i,:).VoxelList{1};
+    tempVoxels = coneExposedParam(i,:).VoxelList{1};
     plot3(tempVoxels(:,2), tempVoxels(:,1), tempVoxels(:,3), '.', 'color', cols(i,:))
 
-%     tempVoxels = corneaParam(i,:).VoxelList{1};
-%     plot3(tempVoxels(:,2), tempVoxels(:,1), tempVoxels(:,3), 'x', 'color', cols(i,:))
+    tempVoxels = coneInConeParam(i,:).VoxelList{1};
+    plot3(tempVoxels(:,2), tempVoxels(:,1), tempVoxels(:,3), 'x', 'color', cols(i,:))
 end
 
 
-display('Check colours correctly match for cones and corneas')
+display('Check colours correctly match for cones and CinC')
 
-coneAxes = zeros(7,3);
-corneaAxes = zeros(7,3);
+coneInConeCenter = zeros(numCones,3);
+coneInConeAxes = zeros(numCones,3);
 
-coneCenter = zeros(7,3);
-corneaCenter = zeros(7,3);
+coneExposedCenter = zeros(numCones,3);
+coneExposedAxes = zeros(numCones,3);
 
-angleDiff = zeros(7,1);
+angleDiff = zeros(numCones,1);
+
+% Turn off for backslash in ellipsoid fit
+warning('off', 'MATLAB:nearlySingularMatrix')
 
 % Plot to check axes
-subplot(1,2,2);  hold on; axis equal
-for i = 1:7
+% subplot(1,2,2);  hold on; axis equal
+for i = 1:numCones
+
+    tempVoxels = coneExposedParam(i,:).VoxelList{1};
+
+    coneExposedCenter(i,:) = mean(tempVoxels(:,[2 1 3]));
     
-    warning('Shift to ellpise fit for axis and center')
+% PCA xis one for cone because it is long    
+%     tempAxes = pca(tempVoxels(:,[2 1 3]));
+%     line([0 100]*tempAxes(1,1) + coneExposedCenter(i,1), [0 100]*tempAxes(2,1) + coneExposedCenter(i,2),...
+%         [0 100]*tempAxes(3,1) + coneExposedCenter(i,3), 'color', cols(i,:))
+%     coneExposedAxes(i,:) = tempAxes(:,1);
+
+    % Fit ellipsoid for non-closed cone
     
-    % Axis one for cone because it is long
-    tempVoxels = coneParam(i,:).VoxelList{1};
-    coneCenter(i,:) = mean(tempVoxels(:,[2 1 3]));
+    [ center, radii, evecs, v, chi2 ] = ellipsoid_fit( tempVoxels );
+    
+    % hyperboloid has two negative radii
+    if sum(radii < 0) == 2
+        hyperboloid = 1;
+    elseif sum(radii < 0) == 0   
+        hyperboloid = 0;
+    else
+       error('Check what shape this is') 
+    end
+    
+    [~, maxR] = max(radii);
+   
+    %draw fit to test
+    mind = min( tempVoxels );
+    maxd = max( tempVoxels );
+    nsteps = 50;
+    step = ( maxd - mind ) / nsteps;
+    [ x, y, z ] = meshgrid( linspace( mind(1) - step(1), maxd(1) + step(1), nsteps ), linspace( mind(2) - step(2), maxd(2) + step(2), nsteps ), linspace( mind(3) - step(3), maxd(3) + step(3), nsteps ) );
+
+    Ellipsoid = v(1) *x.*x +   v(2) * y.*y + v(3) * z.*z + ...
+          2*v(4) *x.*y + 2*v(5)*x.*z + 2*v(6) * y.*z + ...
+          2*v(7) *x    + 2*v(8)*y    + 2*v(9) * z;
+    p = patch( isosurface( y, x, z, Ellipsoid, -v(10) ) );
+    
+%   coneExposedCenter(i,:) = center;
+    coneExposedAxes(i,:) = evecs([2 1 3],maxR);
+
+    % PCA axis three for CinC because it is flat
+    tempVoxels = coneInConeParam(i,:).VoxelList{1};
+    coneInConeCenter(i,:) = mean(tempVoxels(:,[2 1 3]));
     
     tempAxes = pca(tempVoxels(:,[2 1 3]));
-    line([0 100]*tempAxes(1,1) + coneCenter(i,1), [0 100]*tempAxes(2,1) + coneCenter(i,2),...
-        [0 100]*tempAxes(3,1) + coneCenter(i,3), 'color', cols(i,:))
-    coneAxes(i,:) = tempAxes(:,1);
+    coneInConeAxes(i,:) = -tempAxes(:,3); % flip up as always points down
     
-    %Axis three for cornea because it is flat
-    tempVoxels = corneaParam(i,:).VoxelList{1};
-    corneaCenter(i,:) = mean(tempVoxels(:,[2 1 3]));
+    % flip angle if needed - CinC always points up but cone varies
+    if sqrt((coneExposedAxes(i,1)-coneInConeAxes(i,1))^2 + (coneExposedAxes(i,2)-coneInConeAxes(i,2))^2 + ...
+            (coneExposedAxes(i,3)-coneInConeAxes(i,3))^2) > sqrt(2)
+       coneExposedAxes(i,:) = -coneExposedAxes(i,:); 
+    end
     
-    tempAxes = pca(tempVoxels(:,[2 1 3]));
-    line([0 100]*tempAxes(1,3) + corneaCenter(i,1), [0 100]*tempAxes(2,3) + corneaCenter(i,2),...
-        [0 100]*tempAxes(3,3) + corneaCenter(i,3), 'linestyle', ':', 'color', cols(i,:))
-    corneaAxes(i,:) = tempAxes(:,3);
+    line([0 100]*coneExposedAxes(i,1) + coneExposedCenter(i,1), [0 100]*coneExposedAxes(i,2) + coneExposedCenter(i,2),...
+        [0 100]*coneExposedAxes(i,3) + coneExposedCenter(i,3), 'color', cols(i,:))
     
-    angleDiff(i) = acos(dot(coneAxes(i,:), corneaAxes(i,:))/(norm(corneaAxes(i,:)) * norm(coneAxes(i,:))) )/pi*180;
+    line([0 100]*coneInConeAxes(i,1) + coneInConeCenter(i,1), [0 100]*coneInConeAxes(i,2) + coneInConeCenter(i,2),...
+        [0 100]*coneInConeAxes(i,3) + coneInConeCenter(i,3), 'linestyle', ':', 'color', cols(i,:))
+    
+    angleDiff(i) = acos(dot(coneExposedAxes(i,:), coneInConeAxes(i,:))/(norm(coneExposedAxes(i,:)) * norm(coneInConeAxes(i,:))) )/pi*180;
 end
 
-angleDiff
+warning('on', 'MATLAB:nearlySingularMatrix')
 
+angleDiff
 
 %% get tip and rotate for cones
 
