@@ -49,9 +49,6 @@ tempVolume = logical(coneData == corneaExteriorValue);
 % tempVolume = imclose(tempVolume, strel('sphere',1));
 corneaExteriorParam = regionprops3(tempVolume, 'VoxelList', 'VoxelIdxList', 'Volume');
 
-%%% removed
-%%% ringVolume = logical(coneData == ringValue);
-
 % Note voxel lists here have flipped x y coords
 
 clear tempVolume
@@ -88,8 +85,9 @@ for i = 1:numCones
     plot3(tempVoxels(:,2), tempVoxels(:,1), tempVoxels(:,3), 'x', 'color', cols(i,:))
 end
 
-
 display('Check colours correctly match for cones and CinC')
+
+display('Check vectors for cones and CinC both point forward')
 
 coneInConeCenter = zeros(numCones,3);
 coneInConeAxes = zeros(numCones,3);
@@ -131,18 +129,18 @@ for i = 1:numCones
     
     [~, maxR] = max(radii);
    
-    %draw fit to test
-    mind = min( tempVoxels );
-    maxd = max( tempVoxels );
-    nsteps = 50;
-    step = ( maxd - mind ) / nsteps;
-    [ x, y, z ] = meshgrid( linspace( mind(1) - step(1), maxd(1) + step(1), nsteps ), linspace( mind(2) - step(2), maxd(2) + step(2), nsteps ), linspace( mind(3) - step(3), maxd(3) + step(3), nsteps ) );
-
-    Ellipsoid = v(1) *x.*x +   v(2) * y.*y + v(3) * z.*z + ...
-          2*v(4) *x.*y + 2*v(5)*x.*z + 2*v(6) * y.*z + ...
-          2*v(7) *x    + 2*v(8)*y    + 2*v(9) * z;
-    p = patch( isosurface( y, x, z, Ellipsoid, -v(10) ) );
-    
+    %%% draw fit to test
+%     mind = min( tempVoxels );
+%     maxd = max( tempVoxels );
+%     nsteps = 50;
+%     step = ( maxd - mind ) / nsteps;
+%     [ x, y, z ] = meshgrid( linspace( mind(1) - step(1), maxd(1) + step(1), nsteps ), linspace( mind(2) - step(2), maxd(2) + step(2), nsteps ), linspace( mind(3) - step(3), maxd(3) + step(3), nsteps ) );
+% 
+%     Ellipsoid = v(1) *x.*x +   v(2) * y.*y + v(3) * z.*z + ...
+%           2*v(4) *x.*y + 2*v(5)*x.*z + 2*v(6) * y.*z + ...
+%           2*v(7) *x    + 2*v(8)*y    + 2*v(9) * z;
+%     p = patch( isosurface( y, x, z, Ellipsoid, -v(10) ) );
+     
 %   coneExposedCenter(i,:) = center;
     coneExposedAxes(i,:) = evecs([2 1 3],maxR);
 
@@ -183,56 +181,50 @@ grid3D.maxBound = [volumeSize(1), volumeSize(2), volumeSize(3)]';
 depthTests = -10:1000;
 depth0Ind = find(depthTests == 0);
 
-coneAverage = zeros(7,length(depthTests))*NaN;
-coneStandard = zeros(7,length(depthTests))*NaN;
-interconeRatio = zeros(7,length(depthTests))*NaN;
+coneAverage = zeros(numCones,length(depthTests))*NaN;
+coneStandard = zeros(numCones,length(depthTests))*NaN;
+interconeRatio = zeros(numCones,length(depthTests))*NaN;
 
-coneRingMean = zeros(7,1);
-coneRingStandard = zeros(7,1);
-
-coneRingHeightMean = zeros(7,1);
-coneRingHeightStandard = zeros(7,1);
-
-coneToCICLength = zeros(7,1);
+coneToCICLength = zeros(numCones,1);
 
 fSummary = figure; hold on; 
 
-fTemp = figure;
-
-for i = 1:7
+for i = 1:numCones
     % Get intersect for cone
     % Create vectors
-    [xCords, yCords, zCords] = amanatideswooalgorithm_efficient(coneCenter(i,:), coneAxes(i,:), grid3D, ...
+    [xCords, yCords, zCords] = amanatideswooalgorithm_efficient(coneExposedCenter(i,:), coneExposedAxes(i,:), grid3D, ...
         0, [], [], 0); 
     outInds = sub2ind(volumeSize, xCords, yCords, zCords);
     
-    [xCords, yCords, zCords] = amanatideswooalgorithm_efficient(coneCenter(i,:), -coneAxes(i,:), grid3D, ...
+    [xCords, yCords, zCords] = amanatideswooalgorithm_efficient(coneExposedCenter(i,:), -coneExposedAxes(i,:), grid3D, ...
         0, [], [], 0); 
     reverseInds = sub2ind(volumeSize, xCords, yCords, zCords);
     
     % check intersects 
-    outIntersects = find(coneData(outInds) == 5 | coneData(outInds) == 6);
+    outIntersects = find(coneData(outInds) == coneExposedValue);
     
-    reverseIntersects = find(coneData(reverseInds) == 5 | coneData(reverseInds) == 6);
+    reverseIntersects = find(coneData(reverseInds) == coneInConeValue);
     
     if ~isempty(outIntersects) 
-        finalInd = outInds(max(outIntersects));
-        
-        corneaIntersect = find(coneData(reverseInds) == 4);
-        corneaInd = reverseInds(max(corneaIntersect));
-        
-    elseif ~isempty(reverseIntersects)
-        finalInd = reverseInds(max(reverseIntersects));
-        
-        corneaIntersect = find(coneData(outInds) == 4);
-        corneaInd = outInds(max(corneaIntersect));
+        internalInd = outInds(max(outIntersects));
+    else
+        error('No exposed cone intersect')
     end
     
-    tempInds = coneParam(i,:).VoxelIdxList{1};
-    tempVoxels = coneParam(i,:).VoxelList{1};
+    if ~isempty(reverseIntersects)
+        coneInConeInd = reverseInds(min(reverseIntersects));
+    else
+        error('No cone in cone intersect')
+    end
+    
+    tempInds = coneExposedParam(i,:).VoxelIdxList{1};
+    tempVoxels = coneExposedParam(i,:).VoxelList{1};
     tempVoxels = tempVoxels(:, [2 1 3]);
     
-    tipIndex = find(tempInds == finalInd);
+    tipIndex = find(tempInds == internalInd);
+    
+    %%% WORK FROM HERE %%%
+    
     [corneaX, corneaY, corneaZ] = ind2sub(volumeSize, corneaInd);
     
     interConeInds = find(coneData(tempInds) == 5);
@@ -320,35 +312,6 @@ for i = 1:7
     
     subplot(1,3,3); hold on
     plot(depthTests, interconeRatio(i,:))
-    
-    % Get ring points associated to this cone
-    tempVolume = zeros(size(coneData), 'logical');
-    tempVolume(coneParam(i,:).VoxelIdxList{1}) = 1;
-    tempVolume = imdilate(tempVolume, strel('sphere',1));
-    
-    ringInds = find(ringVolume & tempVolume);
-    ringVoxels = zeros(length(ringInds),3);
-    [ringVoxels(:,1), ringVoxels(:,2), ringVoxels(:,3)] = ind2sub(volumeSize, ringInds);
-    
-    % Transform
-    rotatedRing = (ringVoxels-coneCenter(i,:))*rotVec;
-    
-    % Note, narrow ind used in shift here
-    rotatedRing = rotatedRing - tipOffset - depthTests(narrowInd);
-    
-    ringRadius = sqrt(rotatedRing(:,1).^2 + rotatedRing(:,2).^2);
-    
-    coneRingMean(i) = mean(ringRadius);
-    coneRingStandard(i) = std(ringRadius);
-
-    coneRingHeightMean(i) = mean(rotatedRing(:,3));
-    coneRingHeightStandard(i) = std(rotatedRing(:,3));
-    
-    figure(fTemp); hold on
-
-    meanRingInd = round(mean(rotatedRing(:,3))) -min(depthTests)+1;
-    
-    plot(meanRingInd, coneFullNumber(meanRingInd), 'o', 'color', cols(i,:));
 end
 
 averageCone = nanmean(coneAverage);
@@ -389,16 +352,10 @@ ylabel('% Embedded')
 depthTests = -10:200;
 depth0Ind = find(depthTests == 0);
 
-corneaAverage = zeros(7,length(depthTests))*NaN;
-corneaStandard = zeros(7,length(depthTests))*NaN;
+corneaAverage = zeros(numCones,length(depthTests))*NaN;
+corneaStandard = zeros(numCones,length(depthTests))*NaN;
 
-corneaRingMean = zeros(7,1);
-corneaRingStandard = zeros(7,1);
-
-corneaRingHeightMean = zeros(7,1);
-corneaRingHeightStandard = zeros(7,1);
-
-for i = 1:7
+for i = 1:numCones
     % Get intersect for cornea
     % Create vectors
     [xCords, yCords, zCords] = amanatideswooalgorithm_efficient(corneaCenter(i,:), corneaAxes(i,:), grid3D, ...
@@ -487,46 +444,11 @@ for i = 1:7
 %     subplot(1,2,2); hold on
 %     plot(depthTests, corneaStandard(i,:))
 
-    % Get ring points associated to this cornea
-    tempVolume = zeros(size(coneData), 'logical');
-    tempVolume(corneaParam(i,:).VoxelIdxList{1}) = 1;
-    tempVolume = imdilate(tempVolume, strel('sphere',1));
-    
-    ringInds = find(ringVolume & tempVolume);
-    ringVoxels = zeros(length(ringInds),3);
-    [ringVoxels(:,1), ringVoxels(:,2), ringVoxels(:,3)] = ind2sub(volumeSize, ringInds);
-    
     figure(fCone)
     
     subplot(1,2,2)
     
     plot3(tempVoxels(tipIndex,1), tempVoxels(tipIndex,2), tempVoxels(tipIndex,3), 'x', 'color', cols(i,:))
-    
-    plot3(ringVoxels(:,1), ringVoxels(:,2), ringVoxels(:,3), 'x', 'color', cols(i,:))
-    
-    % Transform
-    rotatedRing = (ringVoxels-corneaCenter(i,:))*rotVec;
-    
-    rotatedRing = rotatedRing - tipOffset - depthTests(narrowInd);
-    
-    ringRadius = sqrt(rotatedRing(:,1).^2 + rotatedRing(:,2).^2);
-    
-    corneaRingMean(i) = mean(ringRadius);
-    corneaRingStandard(i) = std(ringRadius);
-
-    corneaRingHeightMean(i) = mean(rotatedRing(:,3));
-    corneaRingHeightStandard(i) = std(rotatedRing(:,3));
-    
-    figure(fTemp); hold on
-
-    meanRingInd = round(mean(rotatedRing(:,3))) -min(depthTests)+1;
-    
-    plot(meanRingInd, corneaNum(meanRingInd), 'o', 'color', cols(i,:));
-    
-%     figure; hold on
-%     plot3(rotatedVoxels(:,1), rotatedVoxels(:,2), rotatedVoxels(:,3), 'r.')
-%     plot3(rotatedRing(:,1), rotatedRing(:,2), rotatedRing(:,3), 'bx')
-    
 end
 
 clear tempVolume
