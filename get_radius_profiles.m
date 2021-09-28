@@ -195,9 +195,6 @@ embededConesLinked = cell(numCones,2);
 
 coneToCICLength = zeros(numCones,1);
 
-% For intersection with embeded cone
-internalInterconeGrownVolume = imdilate(logical(coneData == internalInterconeValue), strel('sphere',1));
-
 fSummary = figure; hold on; 
 
 fTest = figure; hold on
@@ -205,21 +202,21 @@ fTest = figure; hold on
 for i = 1:numCones
     % Get intersect for cone
     % Create vectors
-    [xCords, yCords, zCords] = amanatideswooalgorithm_efficient(coneExposedCenter(i,:), coneExposedAxes(i,:), grid3D, ...
+    [xCords, yCords, zCords] = amanatideswooalgorithm_efficient(coneCenter(i,:), coneAxes(i,:), grid3D, ...
         0, [], [], 0); 
     outInds = sub2ind(volumeSize, xCords, yCords, zCords);
     
-    [xCords, yCords, zCords] = amanatideswooalgorithm_efficient(coneExposedCenter(i,:), -coneExposedAxes(i,:), grid3D, ...
+    [xCords, yCords, zCords] = amanatideswooalgorithm_efficient(coneCenter(i,:), -coneAxes(i,:), grid3D, ...
         0, [], [], 0); 
     reverseInds = sub2ind(volumeSize, xCords, yCords, zCords);
     
     % check intersects 
     outIntersects = find(coneData(outInds) == coneExposedValue);
     
-    reverseIntersects = find(coneData(reverseInds) == coneInConeValue);
+    reverseIntersects = find(coneData(reverseInds) == cInCtoConeValue);
     
     if ~isempty(outIntersects) 
-        internalInd = outInds(max(outIntersects));
+        tipInd = outInds(max(outIntersects));
     else
         error('No exposed cone intersect')
     end
@@ -230,12 +227,12 @@ for i = 1:numCones
         error('No cone in cone intersect')
     end
     
-    tempInds = coneExposedParam(i,:).VoxelIdxList{1};
+    tempConeInds = [(coneExposedParam(i,:).VoxelIdxList{1})' (interconeOfConeExposedParam(i,:).VoxelIdxList{1})']';
     
-    tempConeVoxels = coneExposedParam(i,:).VoxelList{1};
+    tempConeVoxels = [(coneExposedParam(i,:).VoxelList{1})' (interconeOfConeExposedParam(i,:).VoxelList{1})']';
     tempConeVoxels = tempConeVoxels(:, [2 1 3]);
     
-    tipIndex = find(tempInds == internalInd);
+    tipIndex = find(tempConeInds == tipInd);
     [CinCX, CinCY, CinCZ] = ind2sub(volumeSize, coneInConeInd);
     
     originalConeTip = tempConeVoxels(tipIndex,:);
@@ -244,17 +241,20 @@ for i = 1:numCones
         (originalConeTip(3) - CinCZ)^2);
     
     % Get rotation vector
-    rotVec = matrix2rotatevectors([0,0,-1], coneExposedAxes(i,:));
+    rotVec = matrix2rotatevectors([0,0,-1], coneAxes(i,:));
     
-    % Rotat cone. Note, this doesn't guarantee that rotational axes (ie. yaw) is kept constant between cones
+    % Rotate cone. 
+    %%% Note, this doesn't guarantee that rotational axes (ie. yaw) is kept constant between cones
     
     % Rotate around center 
 %     rotatedVoxels = (tempConeVoxels-coneCenter(i,:))*rotVec;
 
     % Rotate around tip
     rotatedConeExposed = (tempConeVoxels - originalConeTip)*rotVec;
-    rotatedInternalIntercone = (internalInterconeSubs - originalConeTip)*rotVec;
-    rotatedInterconeExposed = (interconeExposedSubs - originalConeTip)*rotVec;
+    
+    % Removing unnecersary
+%     rotatedInternalIntercone = (internalInterconeSubs - originalConeTip)*rotVec;
+%     rotatedInterconeExposed = (interconeExposedSubs - originalConeTip)*rotVec;
     
     % Offset Tip to zero
     %%% No longer neccersary
@@ -262,141 +262,30 @@ for i = 1:numCones
 %     rotatedConeExposed = rotatedConeExposed - tipOffset;
 
     rotatedConeExposed(:,3) = round(rotatedConeExposed(:,3));
-    rotatedInternalIntercone(:,3) = round(rotatedInternalIntercone(:,3));
-    rotatedInterconeExposed(:,3) = round(rotatedInterconeExposed(:,3));
+    
+%     rotatedInternalIntercone(:,3) = round(rotatedInternalIntercone(:,3));
+%     rotatedInterconeExposed(:,3) = round(rotatedInterconeExposed(:,3));
     
     coneExposedRadius = sqrt(rotatedConeExposed(:,1).^2 + rotatedConeExposed(:,2).^2);
-    internalInterconeRadius = sqrt(rotatedInternalIntercone(:,1).^2 + rotatedInternalIntercone(:,2).^2);
-    interconeExposedRadius = sqrt(rotatedInterconeExposed(:,1).^2 + rotatedInterconeExposed(:,2).^2);
     
-    % Get intersection between embeded and exposed cone
-    intersectInds = find(internalInterconeGrownVolume(coneExposedParam(i,:).VoxelIdxList{1}));
-
-    % Get minimum distance to this exposed cone and all embeded
-    minExposedRadius = zeros(length(depthTests),1);
-    minInternalRadius = zeros(length(depthTests),1);
+%     internalInterconeRadius = sqrt(rotatedInternalIntercone(:,1).^2 + rotatedInternalIntercone(:,2).^2);
+%     interconeExposedRadius = sqrt(rotatedInterconeExposed(:,1).^2 + rotatedInterconeExposed(:,2).^2);
     
-    for j = depthTests
-        tempInds = find(rotatedInternalIntercone(:,3) == j);
-        if ~isempty(tempInds)
-            minInternalRadius(j-min(depthTests)+1) = min(internalInterconeRadius(tempInds));
-        end
-        
-        tempInds = find(rotatedConeExposed(:,3) == j);
-        if ~isempty(tempInds)
-            minExposedRadius(j-min(depthTests)+1) = min(coneExposedRadius(tempInds));
-        end
-    end
-    
-    % Find distance at which to cut base
-    baseExposedInd = find(minExposedRadius > 0);
-    baseExposedInd = baseExposedInd(end);
-    
-    baseRadius = minExposedRadius(baseExposedInd)*2;
-    
-    % Test which embeded points are connected to initial intersect
-    internalInterconeToTest = find(internalInterconeRadius <= baseRadius);
-    
-    internalInterconeResult = zeros(length(internalInterconeToTest),1);
-    
-    %%% Could probably do faster by indexing into volume
-    
-    for j = 1:size(intersectInds,1)
-        % Check distance is within 1.5 and higher than or equal to current
-        inds = find(abs(rotatedInternalIntercone(internalInterconeToTest,1) - rotatedConeExposed(intersectInds(j),1)) < 1.5 & ...
-                abs(rotatedInternalIntercone(internalInterconeToTest,2) - rotatedConeExposed(intersectInds(j),2)) < 1.5 & ... 
-                (rotatedInternalIntercone(internalInterconeToTest,3) == rotatedConeExposed(intersectInds(j),3) | ...
-                rotatedInternalIntercone(internalInterconeToTest,3) == rotatedConeExposed(intersectInds(j),3) + 1) );
-        % Allow equal levels here
-            
-            
-        internalInterconeResult(inds) = 1;
-    end
-    
-    testList = find(internalInterconeResult == 1);
-    
-    % Then step through and see what these are connected to...
-    
-    while ~isempty(testList)
-        inds = find(abs(rotatedInternalIntercone(internalInterconeToTest,1) - rotatedInternalIntercone(internalInterconeToTest(testList(1)),1)) < 1.5 & ...
-                abs(rotatedInternalIntercone(internalInterconeToTest,2) - rotatedInternalIntercone(internalInterconeToTest(testList(1)),2)) < 1.5 & ... 
-                rotatedInternalIntercone(internalInterconeToTest,3) == rotatedInternalIntercone(internalInterconeToTest(testList(1)),3) + 1 );
-
-            % Remove equal levels here so there is less base spread.
-%           rotatedInternalIntercone(internalInterconeToTest,3) == rotatedInternalIntercone(internalInterconeToTest(testList(1)),3) | ...
-            
-        
-        % set to 2 so not retested 
-        internalInterconeResult(testList(1)) = 2;
-        
-        internalInterconeResult(inds(internalInterconeResult(inds) == 0)) = 1;
-        
-        testList = find(internalInterconeResult == 1);
-    end
-    
-    linkedInds = find(internalInterconeResult == 2);
-
-    % Grow selected inds to make sure continous region is caught.
-    tempVol = zeros(volumeSize,'logical');
-    embededConeInds = sub2ind(volumeSize, internalInterconeSubs(internalInterconeToTest(linkedInds),1), internalInterconeSubs(internalInterconeToTest(linkedInds),2), internalInterconeSubs(internalInterconeToTest(linkedInds),3));
-    tempConeInds = sub2ind(volumeSize, tempConeVoxels(intersectInds,1), tempConeVoxels(intersectInds,2), tempConeVoxels(intersectInds,3));
-    
-    tempVol([embededConeInds' tempConeInds']) = 1;
-    
-    localInternalInterconeInds = find(imdilate(tempVol, strel('sphere',1)) & logical(coneData == internalInterconeValue));
-    [~, ~, localInternalInterconeInds] = intersect(localInternalInterconeInds, internalInterconeInds);
-    
-    figure(fTest);
-%   plot3(rotatedInternalIntercone(:,1), rotatedInternalIntercone(:,2), rotatedInternalIntercone(:,3),'.')
-    plot3(rotatedConeExposed(:,1), rotatedConeExposed(:,2), rotatedConeExposed(:,3),'.')
-%     plot3(rotatedConeExposed(intersectInds,1), rotatedConeExposed(intersectInds,2), rotatedConeExposed(intersectInds,3),'gx')
-    plot3(rotatedInternalIntercone(localInternalInterconeInds,1), rotatedInternalIntercone(localInternalInterconeInds,2), rotatedInternalIntercone(localInternalInterconeInds,3),'.')
-%     plot3(rotatedInternalIntercone(internalInterconeToTest(linkedInds),1), rotatedInternalIntercone(internalInterconeToTest(linkedInds),2), rotatedInternalIntercone(internalInterconeToTest(linkedInds),3),'.')
-    
-    % Make and store subscripts for this cone
-    embededConesLinked{i,1} = internalInterconeSubs(localInternalInterconeInds,:);
-    embededConesLinked{i,2} = internalInterconeInds(localInternalInterconeInds);
-    
-    rotatedEmbededCone = rotatedInternalIntercone(localInternalInterconeInds,:);
-    rotatedEmbededRadius = internalInterconeRadius(localInternalInterconeInds);
-    
-    % Remove indexs in this cone from all internalIntercone lists
-    internalInterconeInds(localInternalInterconeInds) = [];
-    internalInterconeSubs(localInternalInterconeInds,:) = [];
-    internalInterconeRadius(localInternalInterconeInds) = [];
-
     % Get profile along cone
     coneExposedAngles = atan2(rotatedConeExposed(:,1), rotatedConeExposed(:,2))+pi;
-    embededConeAngles = atan2(rotatedEmbededCone(:,1), rotatedEmbededCone(:,2))+pi;
+%     embededConeAngles = atan2(rotatedEmbededCone(:,1), rotatedEmbededCone(:,2))+pi;
     
     for j = depthTests
-        % get exposed first
         tempInds = find(rotatedConeExposed(:,3) == j);
         
         if ~isempty(tempInds)
-            tempRadiusExposed = coneExposedRadius(tempInds);
+            tempRadius = coneExposedRadius(tempInds);
             
-            tempAnglesExposed = coneExposedAngles(tempInds);
+            tempAngles = coneExposedAngles(tempInds);
         else
-            tempRadiusExposed = [];
-            tempAnglesExposed = [];
+            tempRadius = [];
+            tempAngles = [];
         end
-        
-        % Then internal
-        tempInds = find(rotatedEmbededCone(:,3) == j);
-        
-        if ~isempty(tempInds)
-            tempRadiusEmbeded = rotatedEmbededRadius(tempInds);
-            
-            tempAnglesEmbeded = embededConeAngles(tempInds);
-        else
-            tempRadiusEmbeded = [];
-            tempAnglesEmbeded = [];
-        end
-        
-        % combine
-        tempRadius = [tempRadiusExposed' tempRadiusEmbeded'];
-        tempAngles = [tempAnglesExposed' tempAnglesEmbeded'];
         
         if ~isempty(tempRadius)
             
@@ -407,7 +296,7 @@ for i = 1:numCones
 
                 coneStandard(i, j-min(depthTests)+1) = std(tempRadius);
 
-                interconeRatio(i, j-min(depthTests)+1) = length(tempRadiusEmbeded)/length(tempRadius);
+                interconeRatio(i, j-min(depthTests)+1) = sum(coneData(tempConeInds(tempInds)) == interconeOfConeExposedValue)/length(tempInds);
             end
         end
     end
@@ -432,7 +321,7 @@ for i = 1:numCones
     figure(fSummary)
     
     subplot(1,3,1); hold on;
-    plot(depthTests, coneAverage(i,:))
+    plot(depthTests*voxSize, coneAverage(i,:)*voxSize)
     
     subplot(1,3,3); hold on
     plot(depthTests, interconeRatio(i,:))
@@ -464,11 +353,11 @@ xlabel('Distance from tip')
 ylabel('Radius')
 
 subplot(1,3,3);
-plot(depthTests*voxSize, interconeRatioMean*voxSize, 'r-', 'linewidth', 2)
+plot(depthTests, interconeRatioMean, 'r-', 'linewidth', 2)
 
-plot(depthTests*voxSize, (interconeRatioMean+interconeRatioStd)*voxSize, 'r:', 'linewidth', 2)
-plot(depthTests*voxSize, (interconeRatioMean-interconeRatioStd)*voxSize, 'r:', 'linewidth', 2)
-ylim([0 100])
+plot(depthTests, (interconeRatioMean+interconeRatioStd), 'r:', 'linewidth', 2)
+plot(depthTests, (interconeRatioMean-interconeRatioStd), 'r:', 'linewidth', 2)
+ylim([0 1])
 
 title('Intercone embedded')
 xlabel('Distance from tip')
