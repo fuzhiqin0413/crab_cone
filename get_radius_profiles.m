@@ -193,52 +193,74 @@ interconeRatio = zeros(numCones,length(depthTests))*NaN;
 
 embededConesLinked = cell(numCones,2);
 
-coneToCICLength = zeros(numCones,1);
+% From tip, CinC, epiCornea, cornea.
+lengthsToIntersects = zeros(numCones,3);
 
 fSummary = figure; hold on; 
-
-fTest = figure; hold on
 
 for i = 1:numCones
     % Get intersect for cone
     % Create vectors
     [xCords, yCords, zCords] = amanatideswooalgorithm_efficient(coneCenter(i,:), coneAxes(i,:), grid3D, ...
         0, [], [], 0); 
-    outInds = sub2ind(volumeSize, xCords, yCords, zCords);
+    frontInds = sub2ind(volumeSize, xCords, yCords, zCords);
     
     [xCords, yCords, zCords] = amanatideswooalgorithm_efficient(coneCenter(i,:), -coneAxes(i,:), grid3D, ...
         0, [], [], 0); 
-    reverseInds = sub2ind(volumeSize, xCords, yCords, zCords);
+    backInds = sub2ind(volumeSize, xCords, yCords, zCords);
     
     % check intersects 
-    outIntersects = find(coneData(outInds) == coneExposedValue);
+    frontIntersects = find(coneData(frontInds) == coneExposedValue);
+    cInCIntersects = find(coneData(backInds) == cInCtoConeValue);
+    epicorneaIntersects = find(coneData(backInds) == epicorneaInnerValue);
+    corneaIntersects = find(coneData(backInds) == epicorneaOuterValue);
     
-    reverseIntersects = find(coneData(reverseInds) == cInCtoConeValue);
-    
-    if ~isempty(outIntersects) 
-        tipInd = outInds(max(outIntersects));
+    if ~isempty(frontIntersects) 
+        tipInd = frontInds(max(frontIntersects));
     else
         error('No exposed cone intersect')
     end
     
-    if ~isempty(reverseIntersects)
-        coneInConeInd = reverseInds(min(reverseIntersects));
+    if ~isempty(cInCIntersects)
+        coneInConeInd = backInds(min(cInCIntersects));
     else
         error('No cone in cone intersect')
     end
     
+    if ~isempty(epicorneaIntersects)
+        epicorneaInd = backInds(min(epicorneaIntersects));
+    else
+        error('No epicornea intersect')
+    end
+    
+    if ~isempty(corneaIntersects)
+        corneaInd = backInds(min(corneaIntersects));
+    else
+        error('No cornea intersect')
+    end
+    
+    % get original cone
     tempConeInds = [(coneExposedParam(i,:).VoxelIdxList{1})' (interconeOfConeExposedParam(i,:).VoxelIdxList{1})']';
     
     tempConeVoxels = [(coneExposedParam(i,:).VoxelList{1})' (interconeOfConeExposedParam(i,:).VoxelList{1})']';
     tempConeVoxels = tempConeVoxels(:, [2 1 3]);
     
+    % get tip
     tipIndex = find(tempConeInds == tipInd);
-    [CinCX, CinCY, CinCZ] = ind2sub(volumeSize, coneInConeInd);
-    
     originalConeTip = tempConeVoxels(tipIndex,:);
     
-    coneToCICLength(i) = sqrt((originalConeTip(1) - CinCX)^2 + (originalConeTip(2) - CinCY)^2 + ...
-        (originalConeTip(3) - CinCZ)^2);
+    % get lengths to each intersection
+    [tempX, tempY, tempZ] = ind2sub(volumeSize, coneInConeInd);
+    lengthsToIntersects(i,1) = sqrt((originalConeTip(1) - tempX)^2 + (originalConeTip(2) - tempY)^2 + ...
+        (originalConeTip(3) - tempZ)^2);
+    
+    [tempX, tempY, tempZ] = ind2sub(volumeSize, epicorneaInd);
+    lengthsToIntersects(i,2) = sqrt((originalConeTip(1) - tempX)^2 + (originalConeTip(2) - tempY)^2 + ...
+        (originalConeTip(3) - tempZ)^2);
+    
+    [tempX, tempY, tempZ] = ind2sub(volumeSize, corneaInd);
+    lengthsToIntersects(i,3) = sqrt((originalConeTip(1) - tempX)^2 + (originalConeTip(2) - tempY)^2 + ...
+        (originalConeTip(3) - tempZ)^2);
     
     % Get rotation vector
     rotVec = matrix2rotatevectors([0,0,-1], coneAxes(i,:));
@@ -252,24 +274,17 @@ for i = 1:numCones
     % Rotate around tip
     rotatedConeExposed = (tempConeVoxels - originalConeTip)*rotVec;
     
-    % Removing unnecersary
-%     rotatedInternalIntercone = (internalInterconeSubs - originalConeTip)*rotVec;
-%     rotatedInterconeExposed = (interconeExposedSubs - originalConeTip)*rotVec;
-    
-    % Offset Tip to zero
-    %%% No longer neccersary
+    % Offset Tip to zero - No longer neccersary
 %     tipOffset = rotatedConeExposed(tipIndex,:)
 %     rotatedConeExposed = rotatedConeExposed - tipOffset;
 
+    % Round height and take radius
     rotatedConeExposed(:,3) = round(rotatedConeExposed(:,3));
-    
-%     rotatedInternalIntercone(:,3) = round(rotatedInternalIntercone(:,3));
-%     rotatedInterconeExposed(:,3) = round(rotatedInterconeExposed(:,3));
-    
     coneExposedRadius = sqrt(rotatedConeExposed(:,1).^2 + rotatedConeExposed(:,2).^2);
     
-%     internalInterconeRadius = sqrt(rotatedInternalIntercone(:,1).^2 + rotatedInternalIntercone(:,2).^2);
-%     interconeExposedRadius = sqrt(rotatedInterconeExposed(:,1).^2 + rotatedInterconeExposed(:,2).^2);
+    radiusLimit = 2*max(coneExposedRadius);
+    
+    % Do for other surfaces.
     
     % Get profile along cone
     coneExposedAngles = atan2(rotatedConeExposed(:,1), rotatedConeExposed(:,2))+pi;
