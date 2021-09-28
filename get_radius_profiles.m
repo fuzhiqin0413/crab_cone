@@ -41,7 +41,7 @@ coneData = loadtiffstack(dataFolder, 0);
 
 volumeSize = size(coneData);
 
-% Seperate cones
+% Seperate cones and CinCs
 %%% Removed closes as they caused problems with intercone overlap
 tempVolume = logical(coneData == coneExposedValue);
 % tempVolume = imclose(tempVolume, strel('sphere',1));
@@ -49,6 +49,9 @@ coneExposedParam = regionprops3(tempVolume, 'VoxelList', 'VoxelIdxList', 'Volume
 
 tempVolume = logical(coneData == interconeOfConeExposedValue);
 interconeOfConeExposedParam = regionprops3(tempVolume, 'VoxelList', 'VoxelIdxList', 'Volume');
+
+tempVolume = logical(coneData == cInCtoConeValue);
+cInCtoConeParam = regionprops3(tempVolume, 'VoxelList', 'VoxelIdxList', 'Volume');
 
 clear tempVolume 
 % Note voxel lists from regionprops have flipped x y coords
@@ -58,9 +61,10 @@ tempInds = find(coneData == interconeExposedValue);
 [tempX, tempY, tempZ] = ind2sub(volumeSize, tempInds);
 interconeExposedSubs = [tempX, tempY, tempZ];
 
-tempInds = find(coneData == cInCtoConeValue);
-[tempX, tempY, tempZ] = ind2sub(volumeSize, tempInds); 
-cInCtoConeSubs = [tempX, tempY, tempZ];
+% Got these as split
+% tempInds = find(coneData == cInCtoConeValue);
+% [tempX, tempY, tempZ] = ind2sub(volumeSize, tempInds); 
+% cInCtoConeSubs = [tempX, tempY, tempZ];
 
 tempInds = find(coneData == cInCtoInterconeValue);
 [tempX, tempY, tempZ] = ind2sub(volumeSize, tempInds); 
@@ -86,7 +90,14 @@ goodConeInterior = find(interconeOfConeExposedParam.Volume > 1000);
 if length(goodConeInterior) == numCones
     interconeOfConeExposedParam = interconeOfConeExposedParam(goodConeInterior,:);
 else
-   error('Wrong number of corneas found') 
+   error('Wrong number of intercones found') 
+end
+
+goodCinC = find(cInCtoConeParam.Volume > 1000);
+if length(goodCinC) == numCones
+    cInCtoConeParam = cInCtoConeParam(goodCinC,:);
+else
+   error('Wrong number of CinC found') 
 end
 
 %% check plots 
@@ -96,16 +107,20 @@ cols = lines(numCones);
 fCone = figure; 
 
 % Plot to check match
-subplot(1,2,1); hold on; axis equal
 for i = 1:numCones
+    subplot(1,2,1); hold on; axis equal
     tempVoxels = coneExposedParam(i,:).VoxelList{1};
     plot3(tempVoxels(:,2), tempVoxels(:,1), tempVoxels(:,3), '.', 'color', cols(i,:))
-
+    
+    tempVoxels = cInCtoConeParam(i,:).VoxelList{1};
+    plot3(tempVoxels(:,2), tempVoxels(:,1), tempVoxels(:,3), '.', 'color', cols(i,:))
+    
+    subplot(1,2,2); hold on; axis equal
     tempVoxels = interconeOfConeExposedParam(i,:).VoxelList{1};
-    plot3(tempVoxels(:,2), tempVoxels(:,1), tempVoxels(:,3), 'x', 'color', cols(i,:))
+    plot3(tempVoxels(:,2), tempVoxels(:,1), tempVoxels(:,3), '.', 'color', cols(i,:))
 end
 
-display('Check colours correctly match for cones and CinC')
+display('Check colours correctly match for cones and CinC and intercones')
 
 display('Check vectors for cones and CinC both point forward')
 
@@ -265,31 +280,61 @@ for i = 1:numCones
     % Get rotation vector
     rotVec = matrix2rotatevectors([0,0,-1], coneAxes(i,:));
     
-    % Rotate cone. 
+    % Rotate cone around tip
     %%% Note, this doesn't guarantee that rotational axes (ie. yaw) is kept constant between cones
-    
-    % Rotate around center 
-%     rotatedVoxels = (tempConeVoxels-coneCenter(i,:))*rotVec;
-
-    % Rotate around tip
     rotatedConeExposed = (tempConeVoxels - originalConeTip)*rotVec;
     
-    % Offset Tip to zero - No longer neccersary
-%     tipOffset = rotatedConeExposed(tipIndex,:)
-%     rotatedConeExposed = rotatedConeExposed - tipOffset;
-
     % Round height and take radius
     rotatedConeExposed(:,3) = round(rotatedConeExposed(:,3));
     coneExposedRadius = sqrt(rotatedConeExposed(:,1).^2 + rotatedConeExposed(:,2).^2);
-    
+    coneExposedAngles = atan2(rotatedConeExposed(:,1), rotatedConeExposed(:,2))+pi;
+        
     radiusLimit = 2*max(coneExposedRadius);
     
     % Do for other surfaces.
+    %%% Need to add other cones to intercone
+    
+    rotatedInterconeExposed = (interconeExposedSubs - originalConeTip)*rotVec;
+    rotatedInterconeExposed(:,3) = round(rotatedInterconeExposed(:,3));
+    interconeExposedRadius = sqrt(rotatedInterconeExposed(:,1).^2 + rotatedInterconeExposed(:,2).^2);
+    interconeExposedAngles = atan2(rotatedInterconeExposed(:,1), rotatedInterconeExposed(:,2))+pi;
+    
+    rotatedCInCtoIntercone = (cInCtoInterconeSubs - originalConeTip)*rotVec;
+    rotatedCInCtoIntercone(:,3) = round(rotatedCInCtoIntercone(:,3));
+    cInCtoInterconeRadius = sqrt(rotatedCInCtoIntercone(:,1).^2 + rotatedCInCtoIntercone(:,2).^2);
+    cInCtoInterconeAngles = atan2(rotatedCInCtoIntercone(:,1), rotatedCInCtoIntercone(:,2))+pi;
+    
+    rotatedEpicorneaInner = (epicorneaInnerSubs - originalConeTip)*rotVec;
+    rotatedEpicorneaInner(:,3) = round(rotatedEpicorneaInner(:,3));
+    epicorneaInnerRadius = sqrt(rotatedEpicorneaInner(:,1).^2 + rotatedEpicorneaInner(:,2).^2);
+    epicorneaInnerAngles = atan2(rotatedEpicorneaInner(:,1), rotatedEpicorneaInner(:,2))+pi;
+    
+    rotatedEpicorneaOuter = (epicorneaOuterSubs - originalConeTip)*rotVec;
+    rotatedEpicorneaOuter(:,3) = round(rotatedEpicorneaOuter(:,3));
+    epicorneaOuterRadius = sqrt(rotatedEpicorneaOuter(:,1).^2 + rotatedEpicorneaOuter(:,2).^2);
+    epicorneaOuterAngles = atan2(rotatedEpicorneaOuter(:,1), rotatedEpicorneaOuter(:,2))+pi;
+
+    %%% Need to add seperated CInC to Cone here
+    
+    % Remove radius and angles from each that are beyond limit
+    interconeExposedAngles(interconeExposedRadius > radiusLimit) = [];
+    interconeExposedRadius(interconeExposedRadius > radiusLimit) = [];
+    
+    cInCtoInterconeAngles(cInCtoInterconeRadius > radiusLimit) = [];
+    cInCtoInterconeRadius(cInCtoInterconeRadius > radiusLimit) = [];
+    
+    epicorneaInnerAngles(epicorneaInnerRadius > radiusLimit) = [];
+    epicorneaInnerRadius(epicorneaInnerRadius > radiusLimit) = [];
+    
+    interconeExposedAngles(interconeExposedRadius > radiusLimit) = [];
+    interconeExposedRadius(interconeExposedRadius > radiusLimit) = [];
+    
+    epicorneaOuterAngles(epicorneaOuterRadius > radiusLimit) = [];
+    epicorneaOuterRadius(epicorneaOuterRadius > radiusLimit) = [];
+    
+    %%% Need to add seperated CInC to Cone here
     
     % Get profile along cone
-    coneExposedAngles = atan2(rotatedConeExposed(:,1), rotatedConeExposed(:,2))+pi;
-%     embededConeAngles = atan2(rotatedEmbededCone(:,1), rotatedEmbededCone(:,2))+pi;
-    
     for j = depthTests
         tempInds = find(rotatedConeExposed(:,3) == j);
         
