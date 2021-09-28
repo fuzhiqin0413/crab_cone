@@ -11,46 +11,68 @@ voxSize = 2.18;
 numCones = 6; % full segmented, extra 4 not included...
 
 % Load in angle data
-dataFolder = '/Users/gavintaylor/Documents/Shared VM Folder/Amira/CT images for full cone profile/Labels';
+% dataFolder = '/Users/gavintaylor/Documents/Shared VM Folder/Amira/CT images for full cone profile/Labels';
 
-coneExposedValue = 5; %%% exposed w/o intercone is 6
-internalInterconeValue = 7;
-interconeExposedValue = 8;
-coneInConeValue = 9; 
-corneaExteriorValue = 10;
+dataFolder = '/Users/gavintaylor/Documents/Shared VM Folder/Amira/CT images for full cone profile/Labels_w_CinC';
+
+% for original
+% coneExposedValue = 5; %%% exposed w/o intercone is 6
+% internalInterconeValue = 7;
+% interconeExposedValue = 8;
+% coneInConeValue = 9; 
+% corneaExteriorValue = 10;
+
+% for revised
+coneExposedValue = 6; %%% exposed w/o intercone is 7
+interconeOfConeExposedValue = 14;
+
+% internalInterconeValue = 8;
+interconeExposedValue = 9;
+
+cInCtoConeValue = 10; 
+cInCtoInterconeValue = 11; 
+
+epicorneaInnerValue = 12;
+epicorneaOuterValue = 13;
 
 coneData = loadtiffstack(dataFolder, 0);
 
 %%% Note, should add rescaling to all profiles on plots here
 
-%
 volumeSize = size(coneData);
 
 % Seperate cones
 %%% Removed closes as they caused problems with intercone overlap
-tempVolume = logical(coneData == coneInConeValue);
-% tempVolume = imclose(tempVolume, strel('sphere',1));
-coneInConeParam = regionprops3(tempVolume, 'VoxelList', 'VoxelIdxList', 'Volume');
-
 tempVolume = logical(coneData == coneExposedValue);
 % tempVolume = imclose(tempVolume, strel('sphere',1));
 coneExposedParam = regionprops3(tempVolume, 'VoxelList', 'VoxelIdxList', 'Volume');
+
+tempVolume = logical(coneData == interconeOfConeExposedValue);
+interconeOfConeExposedParam = regionprops3(tempVolume, 'VoxelList', 'VoxelIdxList', 'Volume');
 
 clear tempVolume 
 % Note voxel lists from regionprops have flipped x y coords
 
 % Get subs for others
-internalInterconeInds = find(coneData == internalInterconeValue);
-[tempX, tempY, tempZ] = ind2sub(volumeSize, internalInterconeInds);
-internalInterconeSubs = [tempX, tempY, tempZ];
-
 tempInds = find(coneData == interconeExposedValue);
 [tempX, tempY, tempZ] = ind2sub(volumeSize, tempInds);
 interconeExposedSubs = [tempX, tempY, tempZ];
 
-tempInds = find(coneData == corneaExteriorValue);
+tempInds = find(coneData == cInCtoConeValue);
 [tempX, tempY, tempZ] = ind2sub(volumeSize, tempInds); 
-corneaExteriorSubs = [tempX, tempY, tempZ];
+cInCtoConeSubs = [tempX, tempY, tempZ];
+
+tempInds = find(coneData == cInCtoInterconeValue);
+[tempX, tempY, tempZ] = ind2sub(volumeSize, tempInds); 
+cInCtoInterconeSubs = [tempX, tempY, tempZ];
+
+tempInds = find(coneData == epicorneaInnerValue);
+[tempX, tempY, tempZ] = ind2sub(volumeSize, tempInds); 
+epicorneaInnerSubs = [tempX, tempY, tempZ];
+
+tempInds = find(coneData == epicorneaOuterValue);
+[tempX, tempY, tempZ] = ind2sub(volumeSize, tempInds); 
+epicorneaOuterSubs = [tempX, tempY, tempZ];
 
 % Tidy up found regions
 goodCones = find(coneExposedParam.Volume > 1000);
@@ -60,9 +82,9 @@ else
    error('Wrong number of cones found') 
 end
 
-goodCinC = find(coneInConeParam.Volume > 1000);
-if length(goodCinC) == numCones
-    coneInConeParam = coneInConeParam(goodCinC,:);
+goodConeInterior = find(interconeOfConeExposedParam.Volume > 1000);
+if length(goodConeInterior) == numCones
+    interconeOfConeExposedParam = interconeOfConeExposedParam(goodConeInterior,:);
 else
    error('Wrong number of corneas found') 
 end
@@ -76,11 +98,10 @@ fCone = figure;
 % Plot to check match
 subplot(1,2,1); hold on; axis equal
 for i = 1:numCones
-    
     tempVoxels = coneExposedParam(i,:).VoxelList{1};
     plot3(tempVoxels(:,2), tempVoxels(:,1), tempVoxels(:,3), '.', 'color', cols(i,:))
 
-    tempVoxels = coneInConeParam(i,:).VoxelList{1};
+    tempVoxels = interconeOfConeExposedParam(i,:).VoxelList{1};
     plot3(tempVoxels(:,2), tempVoxels(:,1), tempVoxels(:,3), 'x', 'color', cols(i,:))
 end
 
@@ -88,13 +109,10 @@ display('Check colours correctly match for cones and CinC')
 
 display('Check vectors for cones and CinC both point forward')
 
-coneInConeCenter = zeros(numCones,3);
-coneInConeAxes = zeros(numCones,3);
+coneCenter = zeros(numCones,3);
+coneAxes = zeros(numCones,3);
 
-coneExposedCenter = zeros(numCones,3);
-coneExposedAxes = zeros(numCones,3);
-
-angleDiff = zeros(numCones,1);
+% angleDiff = zeros(numCones,1);
 
 % Turn off for backslash in ellipsoid fit
 warning('off', 'MATLAB:nearlySingularMatrix')
@@ -103,18 +121,20 @@ warning('off', 'MATLAB:nearlySingularMatrix')
 % subplot(1,2,2);  hold on; axis equal
 for i = 1:numCones
 
-    tempVoxels = coneExposedParam(i,:).VoxelList{1};
+    tempVoxels = [(coneExposedParam(i,:).VoxelList{1})' (interconeOfConeExposedParam(i,:).VoxelList{1})']';
 
-    coneExposedCenter(i,:) = mean(tempVoxels(:,[2 1 3]));
+    tempTipDirection = mean(coneExposedParam(i,:).VoxelList{1}) - mean(interconeOfConeExposedParam(i,:).VoxelList{1});
+    tempTipDirection = tempTipDirection/norm(tempTipDirection);
     
-% PCA xis one for cone because it is long    
-%     tempAxes = pca(tempVoxels(:,[2 1 3]));
-%     line([0 100]*tempAxes(1,1) + coneExposedCenter(i,1), [0 100]*tempAxes(2,1) + coneExposedCenter(i,2),...
-%         [0 100]*tempAxes(3,1) + coneExposedCenter(i,3), 'color', cols(i,:))
+    coneCenter(i,:) = mean(tempVoxels(:,[2 1 3]));
+    
+% PCA axis one for cone because it is long    
+%     tempAxes = pca(tempVoxels(:,[2 1 3]) - coneCenter(i,:));
+%     line([0 100]*tempAxes(1,1) + coneCenter(i,1), [0 100]*tempAxes(2,1) + coneCenter(i,2),...
+%         [0 100]*tempAxes(3,1) + coneCenter(i,3), 'color', cols(i,:))
 %     coneExposedAxes(i,:) = tempAxes(:,1);
 
-    % Fit ellipsoid for non-closed cone
-    
+    % Fit ellipsoid for non-closed/tilted cone
     [ center, radii, evecs, v, chi2 ] = ellipsoid_fit( tempVoxels );
     
     % hyperboloid has two negative radii
@@ -129,45 +149,32 @@ for i = 1:numCones
     [~, maxR] = max(radii);
    
     %%% draw fit to test
-%     mind = min( tempVoxels );
-%     maxd = max( tempVoxels );
-%     nsteps = 50;
-%     step = ( maxd - mind ) / nsteps;
-%     [ x, y, z ] = meshgrid( linspace( mind(1) - step(1), maxd(1) + step(1), nsteps ), linspace( mind(2) - step(2), maxd(2) + step(2), nsteps ), linspace( mind(3) - step(3), maxd(3) + step(3), nsteps ) );
-% 
-%     Ellipsoid = v(1) *x.*x +   v(2) * y.*y + v(3) * z.*z + ...
-%           2*v(4) *x.*y + 2*v(5)*x.*z + 2*v(6) * y.*z + ...
-%           2*v(7) *x    + 2*v(8)*y    + 2*v(9) * z;
-%     p = patch( isosurface( y, x, z, Ellipsoid, -v(10) ) );
-     
-%   coneExposedCenter(i,:) = center;
-    coneExposedAxes(i,:) = evecs([2 1 3],maxR);
+    mind = min( tempVoxels );
+    maxd = max( tempVoxels );
+    nsteps = 50;
+    step = ( maxd - mind ) / nsteps;
+    [ x, y, z ] = meshgrid( linspace( mind(1) - step(1), maxd(1) + step(1), nsteps ), linspace( mind(2) - step(2), maxd(2) + step(2), nsteps ), linspace( mind(3) - step(3), maxd(3) + step(3), nsteps ) );
 
-    % PCA axis three for CinC because it is flat
-    tempVoxels = coneInConeParam(i,:).VoxelList{1};
-    coneInConeCenter(i,:) = mean(tempVoxels(:,[2 1 3]));
-    
-    tempAxes = pca(tempVoxels(:,[2 1 3]));
-    coneInConeAxes(i,:) = -tempAxes(:,3); % flip up as always points down
-    
-    % flip angle if needed - CinC always points up but cone varies
-    if sqrt((coneExposedAxes(i,1)-coneInConeAxes(i,1))^2 + (coneExposedAxes(i,2)-coneInConeAxes(i,2))^2 + ...
-            (coneExposedAxes(i,3)-coneInConeAxes(i,3))^2) > sqrt(2)
-       coneExposedAxes(i,:) = -coneExposedAxes(i,:); 
+    Ellipsoid = v(1) *x.*x +   v(2) * y.*y + v(3) * z.*z + ...
+          2*v(4) *x.*y + 2*v(5)*x.*z + 2*v(6) * y.*z + ...
+          2*v(7) *x    + 2*v(8)*y    + 2*v(9) * z;
+    p = patch( isosurface( y, x, z, Ellipsoid, -v(10) ) );
+     
+%   coneCenter(i,:) = center;
+    coneAxes(i,:) = evecs([2 1 3],maxR);
+
+    % flip angle if needed - should point towards tip
+    if sqrt((coneAxes(i,1)-tempTipDirection(1))^2 + (coneAxes(i,2)-tempTipDirection(2))^2 + ...
+            (coneAxes(i,3)-tempTipDirection(3))^2) > sqrt(2)
+       coneAxes(i,:) = -coneAxes(i,:); 
     end
     
-    line([0 100]*coneExposedAxes(i,1) + coneExposedCenter(i,1), [0 100]*coneExposedAxes(i,2) + coneExposedCenter(i,2),...
-        [0 100]*coneExposedAxes(i,3) + coneExposedCenter(i,3), 'color', cols(i,:))
+    line([0 300]*coneAxes(i,1) + coneCenter(i,1), [0 300]*coneAxes(i,2) + coneCenter(i,2),...
+        [0 300]*coneAxes(i,3) + coneCenter(i,3), 'color', cols(i,:))
     
-    line([0 100]*coneInConeAxes(i,1) + coneInConeCenter(i,1), [0 100]*coneInConeAxes(i,2) + coneInConeCenter(i,2),...
-        [0 100]*coneInConeAxes(i,3) + coneInConeCenter(i,3), 'linestyle', ':', 'color', cols(i,:))
-    
-    angleDiff(i) = acos(dot(coneExposedAxes(i,:), coneInConeAxes(i,:))/(norm(coneExposedAxes(i,:)) * norm(coneInConeAxes(i,:))) )/pi*180;
-end
+ end
 
 warning('on', 'MATLAB:nearlySingularMatrix')
-
-angleDiff
 
 %% get tip and rotate for cones
 
@@ -192,6 +199,8 @@ coneToCICLength = zeros(numCones,1);
 internalInterconeGrownVolume = imdilate(logical(coneData == internalInterconeValue), strel('sphere',1));
 
 fSummary = figure; hold on; 
+
+fTest = figure; hold on
 
 for i = 1:numCones
     % Get intersect for cone
@@ -260,10 +269,6 @@ for i = 1:numCones
     internalInterconeRadius = sqrt(rotatedInternalIntercone(:,1).^2 + rotatedInternalIntercone(:,2).^2);
     interconeExposedRadius = sqrt(rotatedInterconeExposed(:,1).^2 + rotatedInterconeExposed(:,2).^2);
     
-%     figure; hold on; axis equal
-%     plot3(rotatedVoxels(:,1), rotatedVoxels(:,2), rotatedVoxels(:,3), '.', 'color', cols(i,:))
-%     plot3(rotatedVoxels(interConeInds,1), rotatedVoxels(interConeInds,2), rotatedVoxels(interConeInds,3), 'x', 'color', 'm')
-
     % Get intersection between embeded and exposed cone
     intersectInds = find(internalInterconeGrownVolume(coneExposedParam(i,:).VoxelIdxList{1}));
 
@@ -282,10 +287,6 @@ for i = 1:numCones
             minExposedRadius(j-min(depthTests)+1) = min(coneExposedRadius(tempInds));
         end
     end
-    
-    figure;
-    plot(depthTests, minExposedRadius); hold on
-    plot(depthTests, minInternalRadius)
     
     % Find distance at which to cut base
     baseExposedInd = find(minExposedRadius > 0);
@@ -345,55 +346,72 @@ for i = 1:numCones
     localInternalInterconeInds = find(imdilate(tempVol, strel('sphere',1)) & logical(coneData == internalInterconeValue));
     [~, ~, localInternalInterconeInds] = intersect(localInternalInterconeInds, internalInterconeInds);
     
-    
-    figure; 
-%     plot3(rotatedInternalIntercone(:,1), rotatedInternalIntercone(:,2), rotatedInternalIntercone(:,3),'.')
-    hold on
+    figure(fTest);
+%   plot3(rotatedInternalIntercone(:,1), rotatedInternalIntercone(:,2), rotatedInternalIntercone(:,3),'.')
     plot3(rotatedConeExposed(:,1), rotatedConeExposed(:,2), rotatedConeExposed(:,3),'.')
-    plot3(rotatedConeExposed(intersectInds,1), rotatedConeExposed(intersectInds,2), rotatedConeExposed(intersectInds,3),'gx')
-    axis equal
+%     plot3(rotatedConeExposed(intersectInds,1), rotatedConeExposed(intersectInds,2), rotatedConeExposed(intersectInds,3),'gx')
     plot3(rotatedInternalIntercone(localInternalInterconeInds,1), rotatedInternalIntercone(localInternalInterconeInds,2), rotatedInternalIntercone(localInternalInterconeInds,3),'.')
-    plot3(rotatedInternalIntercone(internalInterconeToTest(linkedInds),1), rotatedInternalIntercone(internalInterconeToTest(linkedInds),2), rotatedInternalIntercone(internalInterconeToTest(linkedInds),3),'r.')
-    
+%     plot3(rotatedInternalIntercone(internalInterconeToTest(linkedInds),1), rotatedInternalIntercone(internalInterconeToTest(linkedInds),2), rotatedInternalIntercone(internalInterconeToTest(linkedInds),3),'.')
     
     % Make and store subscripts for this cone
     embededConesLinked{i,1} = internalInterconeSubs(localInternalInterconeInds,:);
     embededConesLinked{i,2} = internalInterconeInds(localInternalInterconeInds);
     
-    rotatedEmbededCone = rotatedInternalIntercone(localInternalInterconeInds,1);
+    rotatedEmbededCone = rotatedInternalIntercone(localInternalInterconeInds,:);
+    rotatedEmbededRadius = internalInterconeRadius(localInternalInterconeInds);
     
     % Remove indexs in this cone from all internalIntercone lists
     internalInterconeInds(localInternalInterconeInds) = [];
     internalInterconeSubs(localInternalInterconeInds,:) = [];
-
-    %%% Work from here %%%
-
-    coneFullNumber = zeros(length(depthTests),1);
+    internalInterconeRadius(localInternalInterconeInds) = [];
 
     % Get profile along cone
+    coneExposedAngles = atan2(rotatedConeExposed(:,1), rotatedConeExposed(:,2))+pi;
+    embededConeAngles = atan2(rotatedEmbededCone(:,1), rotatedEmbededCone(:,2))+pi;
+    
     for j = depthTests
-        tempInds = find(rotatedVoxels(:,3) == j);
+        % get exposed first
+        tempInds = find(rotatedConeExposed(:,3) == j);
         
         if ~isempty(tempInds)
-            tempDists = sqrt(rotatedVoxels(tempInds,1).^2 + rotatedVoxels(tempInds,2).^2);
+            tempRadiusExposed = coneExposedRadius(tempInds);
             
-            coneAverage(i, j-min(depthTests)+1) = mean(tempDists);
+            tempAnglesExposed = coneExposedAngles(tempInds);
+        else
+            tempRadiusExposed = [];
+            tempAnglesExposed = [];
+        end
+        
+        % Then internal
+        tempInds = find(rotatedEmbededCone(:,3) == j);
+        
+        if ~isempty(tempInds)
+            tempRadiusEmbeded = rotatedEmbededRadius(tempInds);
             
-            coneStandard(i, j-min(depthTests)+1) = std(tempDists);
+            tempAnglesEmbeded = embededConeAngles(tempInds);
+        else
+            tempRadiusEmbeded = [];
+            tempAnglesEmbeded = [];
+        end
+        
+        % combine
+        tempRadius = [tempRadiusExposed' tempRadiusEmbeded'];
+        tempAngles = [tempAnglesExposed' tempAnglesEmbeded'];
+        
+        if ~isempty(tempRadius)
             
-            interconeRatio(i, j-min(depthTests)+1) = sum(interConePoints(tempInds))/length(tempInds)*100;
-            
-            coneFullNumber(j-min(depthTests)+1) = sum(interConePoints(tempInds));
+            % Check angle range aim for 3/4 of circle
+            if max(tempAngles) - min(tempAngles) > pi*3/2
+
+                coneAverage(i, j-min(depthTests)+1) = mean(tempRadius);
+
+                coneStandard(i, j-min(depthTests)+1) = std(tempRadius);
+
+                interconeRatio(i, j-min(depthTests)+1) = length(tempRadiusEmbeded)/length(tempRadius);
+            end
         end
     end
-    
-    figure(fTemp);
-    subplot(1,2,1); hold on
-    plot(coneFullNumber, 'color', cols(i,:));
-    
-    [~, maxI] = max(coneFullNumber);
-    plot(maxI, coneFullNumber(maxI), 'x', 'color', cols(i,:));
-    
+
     % Adjust offset to narrow point
     [narrowVal] = min(coneAverage(i,1:depth0Ind));
     
@@ -411,14 +429,6 @@ for i = 1:numCones
     coneStandard(i, 1:depth0Ind-1) = NaN;
     interconeRatio(i, 1:depth0Ind-1) = NaN;
     
-    figure(fCone)
-    
-    subplot(1,2,2)
-    
-    plot3(corneaX, corneaY, corneaZ, 'o', 'color', cols(i,:))
-    
-    
-    
     figure(fSummary)
     
     subplot(1,3,1); hold on;
@@ -428,33 +438,36 @@ for i = 1:numCones
     plot(depthTests, interconeRatio(i,:))
 end
 
-averageCone = nanmean(coneAverage);
-averageConeStd = nanstd(coneAverage);
+coneAverageMean = nanmean(coneAverage);
+coneAverageStd = nanstd(coneAverage);
 
-aaExportCone = [depthTests', coneAverage', averageCone', averageConeStd'];
+aaExportCone = [depthTests', coneAverage', coneAverageMean', coneAverageStd'];
 
-averageinterconeRatio = nanmean(interconeRatio);
-averageinterconeRatioStd = nanstd(interconeRatio);
+interconeRatioMean = nanmean(interconeRatio);
+interconeRatioStd = nanstd(interconeRatio);
 
-aaExportNumber = [depthTests', interconeRatio', averageinterconeRatio', averageinterconeRatioStd'];
+aaExportNumber = [depthTests', interconeRatio', interconeRatioMean', interconeRatioStd'];
+
+%%% Looks like average is making a bit of a mess of this because one cone is a bit wider, but general trend is to inflect in at end. 
+    %%% Add radius based normalization as well as height based.
 
 figure(fSummary)
 
 subplot(1,3,1);
-plot(depthTests, averageCone, 'r-', 'linewidth', 2)
+plot(depthTests*voxSize, coneAverageMean*voxSize, 'r-', 'linewidth', 2)
 
-plot(depthTests, averageCone+averageConeStd, 'r:', 'linewidth', 2)
-plot(depthTests, averageCone-averageConeStd, 'r:', 'linewidth', 2)
+plot(depthTests*voxSize, (coneAverageMean+coneAverageStd)*voxSize, 'r:', 'linewidth', 2)
+plot(depthTests*voxSize, (coneAverageMean-coneAverageStd)*voxSize, 'r:', 'linewidth', 2)
 
 title('Cone radius profile')
 xlabel('Distance from tip')
 ylabel('Radius')
 
 subplot(1,3,3);
-plot(depthTests, averageinterconeRatio, 'r-', 'linewidth', 2)
+plot(depthTests*voxSize, interconeRatioMean*voxSize, 'r-', 'linewidth', 2)
 
-plot(depthTests, averageinterconeRatio+averageinterconeRatioStd, 'r:', 'linewidth', 2)
-plot(depthTests, averageinterconeRatio-averageinterconeRatioStd, 'r:', 'linewidth', 2)
+plot(depthTests*voxSize, (interconeRatioMean+interconeRatioStd)*voxSize, 'r:', 'linewidth', 2)
+plot(depthTests*voxSize, (interconeRatioMean-interconeRatioStd)*voxSize, 'r:', 'linewidth', 2)
 ylim([0 100])
 
 title('Intercone embedded')
