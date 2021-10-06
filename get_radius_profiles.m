@@ -16,14 +16,16 @@ numCones = 6; % full segmented, extra 4 not included...
 dataFolder = '/Users/gavintaylor/Documents/Shared VM Folder/Amira/CT images for full cone profile/Labels_w_CinC';
 
 % for original
-% coneExposedValue = 5; %%% exposed w/o intercone is 6
+% coneExposedValue = 5; %%% exposed w/o CinC is 6
 % internalInterconeValue = 7;
 % interconeExposedValue = 8;
 % coneInConeValue = 9; 
 % corneaExteriorValue = 10;
 
 % for revised
-coneExposedValue = 6; %%% exposed w/o intercone is 7
+coneExposedValue = 6; 
+coneExposedWOCinCValue = 7;
+coneExposedNoCleanValue = 15;
 interconeOfConeExposedValue = 14;
 
 internalInterconeValue = 8;
@@ -42,9 +44,7 @@ coneData = loadtiffstack(dataFolder, 0);
 volumeSize = size(coneData);
 
 % Seperate cones and CinCs
-%%% Removed closes as they caused problems with intercone overlap
 tempVolume = logical(coneData == coneExposedValue);
-% tempVolume = imclose(tempVolume, strel('sphere',1));
 coneExposedParam = regionprops3(tempVolume, 'VoxelList', 'VoxelIdxList', 'Volume');
 
 tempVolume = logical(coneData == interconeOfConeExposedValue);
@@ -60,6 +60,23 @@ clear tempVolume
 tempInds = find(coneData == interconeExposedValue);
 [tempX, tempY, tempZ] = ind2sub(volumeSize, tempInds);
 interconeExposedSubs = [tempX, tempY, tempZ];
+
+% Take intersect between exposed cone and exposed intercone
+% Order of intersections puts internal intercone between non-cleaned exposed cone and exposed intercone 
+    % correct for that by growing non-cleaned exposed cone label into internal intercone
+tempVolume = zeros(volumeSize,'logical'); % 
+tempVolume(coneData == coneExposedNoCleanValue) = 1;
+tempVolume = imdilate(tempVolume, strel('cube',3));
+coneData(coneData == internalInterconeValue & tempVolume) = coneExposedNoCleanValue;
+
+tempVolume(:) = 0;
+tempVolume(coneData == coneExposedValue | coneData == coneExposedWOCinCValue | coneData == coneExposedNoCleanValue) = 1;
+tempVolume = imdilate(tempVolume, strel('cube',3));
+
+coneRimInds = find((interconeExposedValue == coneData) & tempVolume);
+[~, coneRimInds] = intersect(tempInds, coneRimInds);
+
+clear tempVolume
 
 tempInds = find(coneData == internalInterconeValue);
 [tempX, tempY, tempZ] = ind2sub(volumeSize, tempInds);
@@ -98,6 +115,7 @@ if length(goodCinC) == numCones
 else
    error('Wrong number of CinC found') 
 end
+
 
 %% check plots 
 
@@ -270,7 +288,6 @@ lengthsToIntersects = zeros(numCones,3);
 % From tip to top intercone, bottom intercone, CinC, inner epicornea, outer epicornea
 lengthsToPlanes = zeros(numCones,5);
 
-
 fSummary = figure; hold on; 
 
 for i = 1:numCones
@@ -339,7 +356,6 @@ for i = 1:numCones
     
     % Get rotation vector
     rotVec = matrix2rotatevectors([0,0,-1], coneAxes(i,:));
-    
 
     % Rotate cone around tip
     %%% Note, this doesn't guarantee that rotational axes (ie. yaw) is kept constant between cones
@@ -350,7 +366,7 @@ for i = 1:numCones
     coneExposedAngles = atan2(rotatedConeExposed(:,1), rotatedConeExposed(:,2))+pi;
         
     radiusLimit = 2*max(coneExposedRadius);
-    
+
     % Do for other surfaces.
     rotatedInterconeExposed = (interconeExposedSubs - originalConeTip)*rotVec;
     interconeExposedRadius = sqrt(rotatedInterconeExposed(:,1).^2 + rotatedInterconeExposed(:,2).^2);
@@ -388,6 +404,12 @@ for i = 1:numCones
     epicorneaOuterAngles = atan2(rotatedEpicorneaOuter(:,1), rotatedEpicorneaOuter(:,2))+pi;
 
     % Remove radius and angles from each that are beyond limit
+
+    tempFlag = zeros(length(interconeExposedRadius),1);
+    tempFlag(coneRimInds) = 1;
+    tempFlag(interconeExposedRadius > radiusLimit) = [];
+    clippedConeRimInds = find(tempFlag);
+
     interconeExposedAngles(interconeExposedRadius > radiusLimit) = [];
     rotatedInterconeExposed(interconeExposedRadius > radiusLimit, :) = [];
     interconeExposedRadius(interconeExposedRadius > radiusLimit) = [];
@@ -413,40 +435,111 @@ for i = 1:numCones
     
     plot3(rotatedConeExposed(:,1), rotatedConeExposed(:,2), rotatedConeExposed(:,3), '.')
 
-    plot3(rotatedCinCToCone(:,1), rotatedCinCToCone(:,2), rotatedCinCToCone(:,3), '.')
-    plot3(rotatedCInCtoIntercone(:,1), rotatedCInCtoIntercone(:,2), rotatedCInCtoIntercone(:,3), '.');
+%     plot3(rotatedCinCToCone(:,1), rotatedCinCToCone(:,2), rotatedCinCToCone(:,3), '.')
+%     plot3(rotatedCInCtoIntercone(:,1), rotatedCInCtoIntercone(:,2), rotatedCInCtoIntercone(:,3), '.');
 
-    plot3(rotatedInterconeInternal(:,1), rotatedInterconeInternal(:,2), rotatedInterconeInternal(:,3), '.');
-    plot3(rotatedInterconeExposed(:,1), rotatedInterconeExposed(:,2), rotatedInterconeExposed(:,3), '.');
+%     plot3(rotatedInterconeInternal(:,1), rotatedInterconeInternal(:,2), rotatedInterconeInternal(:,3), '.');
+    
+%     plot3(rotatedInterconeExposed(:,1), rotatedInterconeExposed(:,2), rotatedInterconeExposed(:,3), '.');
+%     plot3(rotatedInterconeExposed(clippedConeRimInds,1), rotatedInterconeExposed(clippedConeRimInds,2), rotatedInterconeExposed(clippedConeRimInds,3), 'rx')
 
-    plot3(rotatedEpicorneaInner(:,1), rotatedEpicorneaInner(:,2), rotatedEpicorneaInner(:,3), '.');
-    plot3(rotatedEpicorneaOuter(:,1), rotatedEpicorneaOuter(:,2), rotatedEpicorneaOuter(:,3), '.');
+%     plot3(rotatedEpicorneaInner(:,1), rotatedEpicorneaInner(:,2), rotatedEpicorneaInner(:,3), '.');
+%     plot3(rotatedEpicorneaOuter(:,1), rotatedEpicorneaOuter(:,2), rotatedEpicorneaOuter(:,3), '.');
 
     % Fit planes to each surface (was previously doing rotations)
+    fExposedInterconeTop = fit( rotatedInterconeExposed(clippedConeRimInds,1:2), rotatedInterconeExposed(clippedConeRimInds,3), 'poly11' );
     tempSubs = [rotatedCInCtoIntercone' rotatedCinCToCone']';
     fCInCBoth = fit( tempSubs(:,1:2), tempSubs(:,3), 'poly11' );
-    plot(fCInCBoth, tempSubs(:,1:2), tempSubs(:,3));
-
-    fEpicorneaInner = fit( rotatedEpicorneaInner(:,1:2), rotatedEpicorneaInner(:,3), 'poly11' );
-    plot(fEpicorneaInner, rotatedEpicorneaInner(:,1:2), rotatedEpicorneaInner(:,3));
-        
+    fEpicorneaInner = fit( rotatedEpicorneaInner(:,1:2), rotatedEpicorneaInner(:,3), 'poly11' );    
     fEpicorneaOuter = fit( rotatedEpicorneaOuter(:,1:2), rotatedEpicorneaOuter(:,3), 'poly11' );
-    plot(fEpicorneaOuter, rotatedEpicorneaOuter(:,1:2), rotatedEpicorneaOuter(:,3));
+
+%     plot(fExposedInterconeTop, rotatedInterconeExposed(clippedConeRimInds,1:2), rotatedInterconeExposed(clippedConeRimInds,3));
+%     plot(fCInCBoth, tempSubs(:,1:2), tempSubs(:,3));
+%     plot(fEpicorneaInner, rotatedEpicorneaInner(:,1:2), rotatedEpicorneaInner(:,3));
+%     plot(fEpicorneaOuter, rotatedEpicorneaOuter(:,1:2), rotatedEpicorneaOuter(:,3));
 
     line([0 0],[0 0],[0 300], 'color', cols(i,:))
 
     % Get normal vectors - can take ange to vertical axis as well
         % They should all be roughly co-planer
-    normEpicorneaOuter = cross([1, 0, fEpicorneaOuter.p10], [0, 1, fEpicorneaOuter.p01]);
-    normEpicorneaInner = cross([1, 0, fEpicorneaInner.p10], [0, 1, fEpicorneaInner.p01]);
+    normExposedInterconeTop = cross([1, 0, fExposedInterconeTop.p10], [0, 1, fExposedInterconeTop.p01]);
+    %
     normCInCBoth = cross([1, 0, fCInCBoth.p10], [0, 1, fCInCBoth.p01]);
+    normEpicorneaInner = cross([1, 0, fEpicorneaInner.p10], [0, 1, fEpicorneaInner.p01]);
+    normEpicorneaOuter = cross([1, 0, fEpicorneaOuter.p10], [0, 1, fEpicorneaOuter.p01]);
+
+    % Flip direction so they all point down
+    if normExposedInterconeTop(3) > 0; normExposedInterconeTop = -normExposedInterconeTop; end
+    %
+    if normCInCBoth(3) > 0; normCInCBoth = -normCInCBoth; end
+    if normEpicorneaInner(3) > 0; normEpicorneaInner = -normEpicorneaInner; end
+    if normEpicorneaOuter(3) > 0; normEpicorneaOuter = -normEpicorneaOuter; end
 
     % Distance from cone tip are just z values at centre
+    lengthsToPlanes(i,1) = fExposedInterconeTop.p00;
+    %
     lengthsToPlanes(i,3) = fCInCBoth.p00;
     lengthsToPlanes(i,4) = fEpicorneaInner.p00;
     lengthsToPlanes(i,5) = fEpicorneaOuter.p00;
 
-    %%% Need to add flow down to get base line of exposed cone was in previous code section...
+    % rotate each CinC and epicornea inner and outer to parallel around there own centres
+    tempRotVec = matrix2rotatevectors([0,0,-1], normCInCBoth);
+    rotatedCInCtoIntercone = (rotatedCInCtoIntercone - [0 0 fCInCBoth.p00])*tempRotVec + [0 0 fCInCBoth.p00];
+    rotatedCinCToCone = (rotatedCinCToCone - [0 0 fCInCBoth.p00])*tempRotVec + [0 0 fCInCBoth.p00];
+
+    tempRotVec = matrix2rotatevectors([0,0,-1], normEpicorneaInner);
+    rotatedEpicorneaInner = (rotatedEpicorneaInner - [0 0 fEpicorneaInner.p00])*tempRotVec + [0 0 fEpicorneaInner.p00];
+
+    tempRotVec = matrix2rotatevectors([0,0,-1], normEpicorneaOuter);
+    rotatedEpicorneaOuter = (rotatedEpicorneaOuter - [0 0 fEpicorneaOuter.p00])*tempRotVec + [0 0 fEpicorneaOuter.p00];
+
+    plot3(rotatedEpicorneaInner(:,1), rotatedEpicorneaInner(:,2), rotatedEpicorneaInner(:,3), '.');
+    plot3(rotatedEpicorneaOuter(:,1), rotatedEpicorneaOuter(:,2), rotatedEpicorneaOuter(:,3), '.');
+    plot3(rotatedCinCToCone(:,1), rotatedCinCToCone(:,2), rotatedCinCToCone(:,3), '.')
+    plot3(rotatedCInCtoIntercone(:,1), rotatedCInCtoIntercone(:,2), rotatedCInCtoIntercone(:,3), '.');
+
+    % rotating intercone is more complicated as I want to rotate around base and then apply a shear in z 
+    % average top and bottom vectors
+    tempRotVec = matrix2rotatevectors([0,0,-1], (normExposedInterconeTop+normCInCBoth)/2);
+    
+    % rotate top centre around base centre
+    newTopCentre = ([0 0 fExposedInterconeTop.p00] - [0 0 fCInCBoth.p00])*tempRotVec;
+    % Then get shear components
+    shearX = -newTopCentre(1)/newTopCentre(3);
+    shearY = -newTopCentre(2)/newTopCentre(3);
+
+    newTopCentre(1) = newTopCentre(1)+shearX*newTopCentre(3);
+    newTopCentre(2) = newTopCentre(2)+shearY*newTopCentre(3);
+    newTopCentre = newTopCentre + [0 0 fCInCBoth.p00];
+
+    % rotate main intercone
+    rotatedInterconeInternal = (rotatedInterconeInternal - [0 0 fCInCBoth.p00])*tempRotVec;
+    % apply shear in z
+    rotatedInterconeInternal(:,1) = rotatedInterconeInternal(:,1) + shearX*rotatedInterconeInternal(:,3);
+    rotatedInterconeInternal(:,2) = rotatedInterconeInternal(:,2) + shearY*rotatedInterconeInternal(:,3);
+    % Shift back
+    rotatedInterconeInternal = rotatedInterconeInternal + [0 0 fCInCBoth.p00];
+
+    plot3(rotatedInterconeInternal(:,1), rotatedInterconeInternal(:,2), rotatedInterconeInternal(:,3), '.');
+
+    % Try appling to exposed intercone
+    rotatedInterconeExposed = (rotatedInterconeExposed - [0 0 fCInCBoth.p00])*tempRotVec;
+    % apply shear in z
+    rotatedInterconeExposed(:,1) = rotatedInterconeExposed(:,1) + shearX*rotatedInterconeExposed(:,3);
+    rotatedInterconeExposed(:,2) = rotatedInterconeExposed(:,2) + shearY*rotatedInterconeExposed(:,3);
+    % Shift back
+    rotatedInterconeExposed = rotatedInterconeExposed + [0 0 fCInCBoth.p00];
+    plot3(rotatedInterconeExposed(:,1), rotatedInterconeExposed(:,2), rotatedInterconeExposed(:,3), '.');
+
+
+    %%% Need to get valleys between cones - have top levels
+
+    
+    figure; 
+    tempCols = (rotatedInterconeExposed(:,3) - min(rotatedInterconeExposed(:,3)));
+    tempCols = round(tempCols/(max(tempCols) - min(tempCols))*99)+1;
+    cols = jet(100);
+    scatter(rotatedInterconeExposed(:,1), rotatedInterconeExposed(:,2), [], cols(tempCols,:))
 
     % Do rounding just before profiles
     rotatedConeExposed(:,3) = round(rotatedConeExposed(:,3));
