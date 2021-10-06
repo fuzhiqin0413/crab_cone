@@ -145,11 +145,6 @@ display('Check vectors for cones and CinC both point forward')
 coneCenter = zeros(numCones,3);
 coneAxes = zeros(numCones,3);
 
-cInCCenter = zeros(numCones,3);
-cInCAxes = zeros(numCones,3);
-
-angleDiff = zeros(numCones,1);
-
 % Turn off for backslash in ellipsoid fit
 warning('off', 'MATLAB:nearlySingularMatrix')
 
@@ -206,64 +201,9 @@ for i = 1:numCones
     
     line([0 300]*coneAxes(i,1) + coneCenter(i,1), [0 300]*coneAxes(i,2) + coneCenter(i,2),...
         [0 300]*coneAxes(i,3) + coneCenter(i,3), 'color', cols(i,:))
-    
-    % Get for cone in cone
-    subplot(1,2,2); hold on; axis equal
-
-    % Firstly take for all
-    tempVoxels = cInCtoConeParam(i,:).VoxelList{1};
-
-    tempCenter = mean(tempVoxels(:,[2 1 3]));
-    tempAxes = pca(tempVoxels(:,[2 1 3]) - tempCenter);
-
-    % 3rd axes as quite flat
-    tempAxes = tempAxes(:,3);
-
-    if sqrt((tempAxes(1)-tempTipDirection(1))^2 + (tempAxes(2)-tempTipDirection(2))^2 + ...
-            (tempAxes(3)-tempTipDirection(3))^2) > sqrt(2)
-        tempAxes = -tempAxes; 
-    end
    
-    % Now rotate temp voxels
-    rotVec = matrix2rotatevectors([0,0,1], tempAxes);
-    rotatedTempVoxels = (tempVoxels(:,[2 1 3]) - tempCenter)*rotVec;
-
-    % Get top voxel
-    [~, topVoxInd] = max(rotatedTempVoxels(:,3));
-
-    % Get top inds
-    topInds = find(rotatedTempVoxels(:,3) - rotatedTempVoxels(topVoxInd,3) > -15 & ...
-        sqrt(rotatedTempVoxels(:,1).^2 + rotatedTempVoxels(:,2).^2) < 25);
-
-    % Reget center and axes just using top inds
-    cInCCenter(i,:) = mean(tempVoxels(topInds,[2 1 3])); 
-
-    %%% Neither PCA or ellipsoid fit do a good job on capturing the axis...
-%     tempAxes = pca(tempVoxels(topInds,[2 1 3]) - cInCCenter(i,:));
-%     cInCAxes(i,:) = tempAxes(:,3);
-
-    % Fit ellipsoid for non-closed/tilted cone
-%     [ center, radii, evecs, v, chi2 ] = ellipsoid_fit( tempVoxels(topInds,:) );
-%         cInCAxes(i,:) = evecs([2 1 3],useR);
-
-    cInCAxes(i,:) = normalToSurface_withCurvature( tempVoxels(topVoxInd,[2 1 3]), tempVoxels(topInds,[2 1 3]), cInCCenter(i,:), 1, 50, [], [], [] );
-
-    if sqrt((cInCAxes(i,1)-tempTipDirection(1))^2 + (cInCAxes(i,2)-tempTipDirection(2))^2 + ...
-            (cInCAxes(i,3)-tempTipDirection(3))^2) > sqrt(2)
-        cInCAxes(i,:) = -cInCAxes(i,:); 
-    end
-
-    line([0 100]*cInCAxes(i,1) + cInCCenter(i,1), [0 100]*cInCAxes(i,2) + cInCCenter(i,2),...
-        [0 100]*cInCAxes(i,3) + cInCCenter(i,3), 'color', cols(i,:))
-
-    plot3(tempVoxels(topVoxInd,2), tempVoxels(topVoxInd,1), tempVoxels(topVoxInd,3), 'ro')
-    plot3(tempVoxels(topInds,2), tempVoxels(topInds,1), tempVoxels(topInds,3), 'm.')
-
-    angleDiff(i) = acos(dot(coneAxes(i,:), cInCAxes(i,:))/(norm(cInCAxes(i,:)) * norm(coneAxes(i,:))) )/pi*180;
-
  end
 
- angleDiff
  warning('on', 'MATLAB:nearlySingularMatrix')
 
 %% get tip and rotate for cones
