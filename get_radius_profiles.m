@@ -64,7 +64,7 @@ interconeExposedSubs = [tempX, tempY, tempZ];
 % Take intersect between exposed cone and exposed intercone
 % Order of intersections puts internal intercone between non-cleaned exposed cone and exposed intercone 
     % correct for that by growing non-cleaned exposed cone label into internal intercone
-tempVolume = zeros(volumeSize,'logical'); % 
+tempVolume = zeros(volumeSize,'logical');  
 tempVolume(coneData == coneExposedNoCleanValue) = 1;
 tempVolume = imdilate(tempVolume, strel('cube',3));
 coneData(coneData == internalInterconeValue & tempVolume) = coneExposedNoCleanValue;
@@ -159,7 +159,7 @@ for i = 1:numCones
     
     coneCenter(i,:) = mean(tempVoxels(:,[2 1 3]));
     
-% PCA axis one for cone because it is long    
+%   PCA axis one for cone because it is long    
 %     tempAxes = pca(tempVoxels(:,[2 1 3]) - coneCenter(i,:));
 %     line([0 100]*tempAxes(1,1) + coneCenter(i,1), [0 100]*tempAxes(2,1) + coneCenter(i,2),...
 %         [0 100]*tempAxes(3,1) + coneCenter(i,3), 'color', coneCols(i,:))
@@ -244,12 +244,13 @@ lengthsToIntersects = zeros(numCones,3);
 % From tip to top intercone, intercone, CinC, inner epicornea, outer epicornea
 lengthsToPlanes = zeros(numCones,4);
 
-radiusMult = 2;
+radiusMult = 1.5;
 minAngleRange = pi*3/2;
 planeSepLimit = 0;
 
 fExamples = figure;
 fSummary = figure; hold on; 
+fIms = figure;
 
 for i = 1:numCones
     % Get intersect for cone
@@ -393,7 +394,7 @@ for i = 1:numCones
     
      % Test plot
     figure(fExamples) 
-    subplot(2,numCones,i);hold on; axis equal; view(0,0)
+    subplot(2,numCones,i); hold on; axis equal; view(0,0)
     
     cols = lines(8);
 
@@ -489,7 +490,7 @@ for i = 1:numCones
 
     plot3(rotatedInterconeInternal(:,1), rotatedInterconeInternal(:,2), rotatedInterconeInternal(:,3), '.', 'color', cols(4,:));
 
-    % Try appling to exposed intercone
+    % Try applying to exposed intercone
     rotatedInterconeExposed = (rotatedInterconeExposed - [0 0 fCInCBoth.p00])*tempRotVec;
     % apply shear in z
     rotatedInterconeExposed(:,1) = rotatedInterconeExposed(:,1) + shearX*rotatedInterconeExposed(:,3);
@@ -511,7 +512,7 @@ for i = 1:numCones
     epicorneaInnerAngles(rotatedEpicorneaInner(:,3) < fEpicorneaInner.p00) = [];
     rotatedEpicorneaInner(rotatedEpicorneaInner(:,3) < fEpicorneaInner.p00, :) = [];
 
-    % Do rounding just before profiles
+    % Do z rounding 
     rotatedConeExposed(:,3) = round(rotatedConeExposed(:,3));
     rotatedCinCToCone(:,3) = round(rotatedCinCToCone(:,3));
     rotatedInterconeInternal(:,3) = round(rotatedInterconeInternal(:,3));
@@ -520,6 +521,142 @@ for i = 1:numCones
     % These two are not used
 %     rotatedCInCtoIntercone(:,3) = round(rotatedCInCtoIntercone(:,3));
 %     rotatedEpicorneaOuter(:,3) = round(rotatedEpicorneaOuter(:,3));
+
+    % Split internal intercone points by cone
+    % First split to indvidual cones - w/ unkown number it's easiest to do from image rather than clustering...
+    tempRange = ceil(max(rotatedInterconeExposed(clippedConeRimInds,1:2)) - min(rotatedInterconeExposed(clippedConeRimInds,1:2))+1);
+    tempImage = zeros(tempRange, 'logical');
+    tempSubs = round(rotatedInterconeExposed(clippedConeRimInds,1:2) - min(rotatedInterconeExposed(clippedConeRimInds,1:2))+1);
+    tempInd = sub2ind(tempRange, tempSubs(:,1), tempSubs(:,2));
+    tempImage(tempInd) = 1;
+    % Need to check, could merge cones...
+    tempImage= imdilate(tempImage, strel('disk',1));
+    
+    figure(fIms); subplot(2,numCones,i); 
+    imshow(tempImage); hold on
+
+    % Get regions
+    coneRimsParam = regionprops(tempImage, 'Centroid', 'PixelIdxList', 'PixelList');
+
+    % Clean of small regions, adjust centroid and remove closest to zero
+    regionLengths = zeros(length(coneRimsParam),1);
+    centroidDist = zeros(length(coneRimsParam),1);
+    for j = 1:length(coneRimsParam)
+        regionLengths(j) = length(coneRimsParam(j).PixelIdxList);
+
+        coneRimsParam(j).Centroid = coneRimsParam(j).Centroid + min(rotatedInterconeExposed(clippedConeRimInds,1:2)) -1;
+        centroidDist(j) = sqrt( sum(coneRimsParam(j).Centroid.^2));
+    end
+    centroidDist(regionLengths < 20) = [];
+    coneRimsParam(regionLengths < 20) = [];
+    
+    [~, minI] = min(centroidDist);
+    coneRimsParam(minI) = [];
+
+    numExtraCones = length(coneRimsParam);
+    extraConeCols = winter(numExtraCones);
+
+    set(gca, 'clipping', 'off')
+
+    centroids = zeros(numExtraCones,2);
+    for j = 1:numExtraCones
+        % Fit circle to border
+        fitParam = CircleFitByPratt(coneRimsParam(j).PixelList);
+
+        viscircles(fitParam(1:2),fitParam(3), 'color', extraConeCols(j,:));
+        plot(coneRimsParam(j).PixelList(:,1), coneRimsParam(j).PixelList(:,2),'.', 'color', extraConeCols(j,:))
+        plot(fitParam(1), fitParam(2), 'x', 'color', extraConeCols(j,:))
+
+        centroids(j,:) = fliplr(fitParam(1:2) + min(rotatedInterconeExposed(clippedConeRimInds,1:2)) -1);
+    end
+
+    % Get closest point at each depth level on each cone
+    internalInterconeID = zeros(length(depthTests),numExtraCones)*NaN;
+    sideProfileSubs = zeros(length(depthTests),numExtraCones,2)*NaN;
+
+    for j = depthTests
+        tempInds = find(rotatedInterconeInternal(:,3) == j);
+
+        if ~isempty(tempInds)
+            for k = 1:numExtraCones
+                % Get distances to line
+                dists = abs( (centroids(k,1)-0)*(0-rotatedInterconeInternal(tempInds,2)) - ...
+                    (0-rotatedInterconeInternal(tempInds,1))*(centroids(k,2)-0))/sqrt(centroids(k,1)^2+centroids(k,2)^2);
+                % Also get angle between pts and centroid
+                dirs = acos((centroids(k,1)*rotatedInterconeInternal(tempInds,1) + centroids(k,2)*rotatedInterconeInternal(tempInds,2)) ./ ...
+                    (sqrt(centroids(k,1)^2+centroids(k,2)^2).*sqrt(rotatedInterconeInternal(tempInds,1).^2+rotatedInterconeInternal(tempInds,2).^2)) );
+
+                % Get rid of points w/ high angles
+                dists(dirs > pi/2) = 100;
+
+                [minD, minI] = min(dists); 
+
+                if minD < 1
+                    internalInterconeID(j-min(depthTests)+1,k) = minI;
+
+                    sideProfileSubs(j-min(depthTests)+1,k,:) = rotatedInterconeInternal(tempInds(minI),1:2);
+
+                end
+            end
+        end
+    end
+    
+    figure(fIms);
+    subplot(2,numCones,i+numCones); hold on
+
+    %%% If radius is large can have points on both sides of cone that oscialate
+        % Mostly because of height discritization?
+
+    % check for continuity in side profiles
+    for j = 1:numExtraCones
+        tempSubs = [permute(sideProfileSubs(:,j,:), [1 3 2]), depthTests']; 
+
+        % get distance between each and point above that isn't nan
+        points = find(~isnan(tempSubs(:,1)));
+        dists = zeros(length(depthTests),1);
+
+        for k = 2:length(points)
+
+            temp = sqrt((tempSubs(points(k),1) - tempSubs(points(k-1),1)).^2 + ...
+                (tempSubs(points(k),2) - tempSubs(points(k-1),2)).^2 + (tempSubs(points(k),3) - tempSubs(points(k-1),3)).^2);
+
+            dists(points(k)) = min(temp);
+        end
+
+        steps = find(dists > 2.5);
+%         plot(dists, '-', 'color', extraConeCols(j,:))
+%         plot(steps, dists(steps),'o', 'color', extraConeCols(j,:))
+
+        if ~isempty(steps)
+            pointsTOCut =[];
+            for k = 1:length(steps)
+                % if below center cut all in front
+                if steps(k) < mean(points)
+                    pointsTOCut = [pointsTOCut 1:steps(k)-1];
+                %if above centre cut all behind    
+                elseif steps(k) > mean(points)
+                    pointsTOCut = [pointsTOCut steps(k):length(dists)];
+                end
+%                 plot(pointsTOCut, dists(pointsTOCut), 'x', 'color', extraConeCols(j,:))
+            end
+        end
+
+        plot3(tempSubs(:,1), tempSubs(:,2), tempSubs(:,3), '.', 'color', extraConeCols(j,:));
+
+        plot3(tempSubs(pointsTOCut,1), tempSubs(pointsTOCut,2), tempSubs(pointsTOCut,3), 'rx');
+
+        internalInterconeID(pointsTOCut, j) = NaN;
+        sideProfileSubs(pointsTOCut, j, 1) = NaN;
+    end
+
+    % plot cleaned sides 
+    figure((fExamples))
+    subplot(2,numCones,numCones+i);
+    for j = 1:numExtraCones
+        plot3(sideProfileSubs(:,j,1), sideProfileSubs(:,j,2), depthTests, ...
+            'x', 'color', extraConeCols(j,:));
+    end
+
 
     % Get profile of all features along and past cone
     for j = depthTests
@@ -556,8 +693,14 @@ for i = 1:numCones
         [exposedInterconeAverage(i, j-min(depthTests)+1), exposedInterconeStandard(i, j-min(depthTests)+1)] = getProfileValue(rotatedInterconeExposed(:,3), j, ...
                 interconeExposedRadius, interconeExposedAngles, minAngleRange);
 
-        [internalInterconeAverage(i, j-min(depthTests)+1), internalInterconeStandard(i, j-min(depthTests)+1)] = getProfileValue(rotatedInterconeInternal(:,3), j, ...
-                interconeInternalRadius, interconeInternalAngles, minAngleRange);
+        % for internal intercone just average closest point on side profiles
+        tempInds = find(rotatedInterconeInternal(:,3) == j);
+        profileInds = internalInterconeID(j-min(depthTests)+1,:); profileInds(isnan(profileInds)) = [];
+
+        if ~isempty(profileInds)
+            internalInterconeAverage(i, j-min(depthTests)+1) = mean( interconeInternalRadius( tempInds( profileInds))); 
+            internalInterconeStandard(i, j-min(depthTests)+1) = std( interconeInternalRadius( tempInds( profileInds)));
+        end
 
         [epicorneaInnerAverage(i, j-min(depthTests)+1), epicorneaInnerStandard(i, j-min(depthTests)+1)] = getProfileValue(rotatedEpicorneaInner(:,3), j, ...
                 epicorneaInnerRadius, epicorneaInnerAngles, minAngleRange);
