@@ -244,6 +244,7 @@ lengthsToIntersects = zeros(numCones,3);
 % From tip to top intercone, intercone, CinC, inner epicornea, outer epicornea
 lengthsToPlanes = zeros(numCones,4);
 
+numConesForBorder = 3;
 radiusMult = 1.5;
 minAngleRange = pi*3/2;
 planeSepLimit = 0;
@@ -541,16 +542,22 @@ for i = 1:numCones
     % Clean of small regions, adjust centroid and remove closest to zero
     regionLengths = zeros(length(coneRimsParam),1);
     centroidDist = zeros(length(coneRimsParam),1);
+    minDist = zeros(length(coneRimsParam),1);
     for j = 1:length(coneRimsParam)
         regionLengths(j) = length(coneRimsParam(j).PixelIdxList);
 
-        coneRimsParam(j).Centroid = coneRimsParam(j).Centroid + min(rotatedInterconeExposed(clippedConeRimInds,1:2)) -1;
-        centroidDist(j) = sqrt( sum(coneRimsParam(j).Centroid.^2));
+        tempCentroid = coneRimsParam(j).Centroid + min(rotatedInterconeExposed(clippedConeRimInds,1:2)) -1;
+        centroidDist(j) = sqrt( sum(tempCentroid.^2));
+
+        tempSubs = coneRimsParam(j).PixelList + min(rotatedInterconeExposed(clippedConeRimInds,1:2)) -1;
+        minDist(j) = min(sqrt(tempSubs(:,1).^2 + tempSubs(:,2).^2));
     end
+    minDist(regionLengths < 20) = [];
     centroidDist(regionLengths < 20) = [];
     coneRimsParam(regionLengths < 20) = [];
     
     [~, minI] = min(centroidDist);
+    minDist(minI) = [];
     coneRimsParam(minI) = [];
 
     numExtraCones = length(coneRimsParam);
@@ -570,6 +577,22 @@ for i = 1:numCones
         centroids(j,:) = fliplr(fitParam(1:2) + min(rotatedInterconeExposed(clippedConeRimInds,1:2)) -1);
     end
 
+    % Take closest X cones
+    % based on centroid distance
+%     centroidDist = sqrt(centroids(:,1).^2 + centroids(:,2).^2);
+%     [~, sortI] = sort(centroidDist);
+
+    % Based on min distance 
+    [~, sortI] = sort(minDist);
+
+    if numExtraCones > numConesForBorder
+        centroids(sortI(numConesForBorder+1:end),:) = [];
+    end
+    
+    plot(centroids(:,2) - min(rotatedInterconeExposed(clippedConeRimInds,2)) + 1, ...
+        centroids(:,1) - min(rotatedInterconeExposed(clippedConeRimInds,1)) + 1, 'ro');
+    numExtraCones = numConesForBorder;
+
     % Get closest point at each depth level on each cone
     internalInterconeID = zeros(length(depthTests),numExtraCones)*NaN;
     sideProfileSubs = zeros(length(depthTests),numExtraCones,2)*NaN;
@@ -588,6 +611,8 @@ for i = 1:numCones
 
                 % Get rid of points w/ high angles
                 dists(dirs > pi/2) = 100;
+
+                %%% If large radius use it can also catch points on opposite side of cone.
 
                 [minD, minI] = min(dists); 
 
@@ -627,8 +652,10 @@ for i = 1:numCones
 %         plot(dists, '-', 'color', extraConeCols(j,:))
 %         plot(steps, dists(steps),'o', 'color', extraConeCols(j,:))
 
+        pointsTOCut =[];
+        
         if ~isempty(steps)
-            pointsTOCut =[];
+            
             for k = 1:length(steps)
                 % if below center cut all in front
                 if steps(k) < mean(points)
@@ -656,7 +683,6 @@ for i = 1:numCones
         plot3(sideProfileSubs(:,j,1), sideProfileSubs(:,j,2), depthTests, ...
             'x', 'color', extraConeCols(j,:));
     end
-
 
     % Get profile of all features along and past cone
     for j = depthTests
@@ -777,6 +803,7 @@ for i = 1:6
         line([1 1]*mean(lengthsToPlanes(:,2))*voxSize, [0 200]); 
     end
 end
+
 coneAverageMean = nanmean(coneAverage);
 coneAverageStd = nanstd(coneAverage);
 
