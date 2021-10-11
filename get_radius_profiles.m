@@ -459,7 +459,6 @@ for i = 1:numCones
     subplot(2,numCones,numCones+i);hold on; axis equal; view(0,0)
     
     plot3(rotatedConeExposed(:,1), rotatedConeExposed(:,2), rotatedConeExposed(:,3), '.', 'color', cols(1,:))
-
     plot3(rotatedEpicorneaInner(:,1), rotatedEpicorneaInner(:,2), rotatedEpicorneaInner(:,3), '.', 'color', cols(6,:));
     plot3(rotatedEpicorneaOuter(:,1), rotatedEpicorneaOuter(:,2), rotatedEpicorneaOuter(:,3), '.', 'color', cols(7,:));
     plot3(rotatedCinCToCone(:,1), rotatedCinCToCone(:,2), rotatedCinCToCone(:,3), '.', 'color', cols(2,:))
@@ -498,7 +497,7 @@ for i = 1:numCones
     rotatedInterconeExposed(:,2) = rotatedInterconeExposed(:,2) + shearY*rotatedInterconeExposed(:,3);
     % Shift back
     rotatedInterconeExposed = rotatedInterconeExposed + [0 0 fCInCBoth.p00];
-    plot3(rotatedInterconeExposed(:,1), rotatedInterconeExposed(:,2), rotatedInterconeExposed(:,3), '.', 'color', cols(5,:));
+%     plot3(rotatedInterconeExposed(:,1), rotatedInterconeExposed(:,2), rotatedInterconeExposed(:,3), '.', 'color', cols(5,:));
 
     % Clip based on heights to planes...
     cInCtoConeRadius(rotatedCinCToCone(:,3) > fCInCBoth.p00) = [];
@@ -525,13 +524,14 @@ for i = 1:numCones
 
     % Split internal intercone points by cone
     % First split to indvidual cones - w/ unkown number it's easiest to do from image rather than clustering...
-    tempRange = ceil(max(rotatedInterconeExposed(clippedConeRimInds,1:2)) - min(rotatedInterconeExposed(clippedConeRimInds,1:2))+1);
+    minImValue = min(rotatedInterconeExposed(clippedConeRimInds,1:2));
+    tempRange = ceil(max(rotatedInterconeExposed(clippedConeRimInds,1:2)) - minImValue+1);
     tempImage = zeros(tempRange, 'logical');
-    tempSubs = round(rotatedInterconeExposed(clippedConeRimInds,1:2) - min(rotatedInterconeExposed(clippedConeRimInds,1:2))+1);
-    tempInd = sub2ind(tempRange, tempSubs(:,1), tempSubs(:,2));
+    tempRimSubs = round(rotatedInterconeExposed(clippedConeRimInds,1:2) - minImValue+1);
+    tempInd = sub2ind(tempRange, tempRimSubs(:,1), tempRimSubs(:,2));
     tempImage(tempInd) = 1;
     % Need to check, could merge cones...
-    tempImage= imdilate(tempImage, strel('disk',1));
+    tempImage= imdilate(tempImage, strel('square',2));
     
     figure(fIms); subplot(2,numCones,i); 
     imshow(tempImage); hold on
@@ -546,10 +546,10 @@ for i = 1:numCones
     for j = 1:length(coneRimsParam)
         regionLengths(j) = length(coneRimsParam(j).PixelIdxList);
 
-        tempCentroid = coneRimsParam(j).Centroid + min(rotatedInterconeExposed(clippedConeRimInds,1:2)) -1;
+        tempCentroid = coneRimsParam(j).Centroid + minImValue -1;
         centroidDist(j) = sqrt( sum(tempCentroid.^2));
 
-        tempSubs = coneRimsParam(j).PixelList + min(rotatedInterconeExposed(clippedConeRimInds,1:2)) -1;
+        tempSubs = coneRimsParam(j).PixelList + minImValue -1;
         minDist(j) = min(sqrt(tempSubs(:,1).^2 + tempSubs(:,2).^2));
     end
     minDist(regionLengths < 20) = [];
@@ -557,6 +557,8 @@ for i = 1:numCones
     coneRimsParam(regionLengths < 20) = [];
     
     [~, minI] = min(centroidDist);
+    centralRimParam = coneRimsParam(minI); % save for later
+
     minDist(minI) = [];
     coneRimsParam(minI) = [];
 
@@ -574,7 +576,7 @@ for i = 1:numCones
         plot(coneRimsParam(j).PixelList(:,1), coneRimsParam(j).PixelList(:,2),'.', 'color', extraConeCols(j,:))
         plot(fitParam(1), fitParam(2), 'x', 'color', extraConeCols(j,:))
 
-        centroids(j,:) = fliplr(fitParam(1:2) + min(rotatedInterconeExposed(clippedConeRimInds,1:2)) -1);
+        centroids(j,:) = fliplr(fitParam(1:2) + minImValue -1);
     end
 
     % Take closest X cones
@@ -589,8 +591,7 @@ for i = 1:numCones
         centroids(sortI(numConesForBorder+1:end),:) = [];
     end
     
-    plot(centroids(:,2) - min(rotatedInterconeExposed(clippedConeRimInds,2)) + 1, ...
-        centroids(:,1) - min(rotatedInterconeExposed(clippedConeRimInds,1)) + 1, 'ro');
+    plot(centroids(:,2) - minImValue(1) + 1, centroids(:,1) - minImValue(2) + 1, 'ro');
     numExtraCones = numConesForBorder;
 
     % Get closest point at each depth level on each cone
@@ -600,6 +601,7 @@ for i = 1:numCones
     for j = depthTests
         tempInds = find(rotatedInterconeInternal(:,3) == j);
 
+        % This would be place to check that internal cone is beneath the exposed cone on that level (although that's check on in the following loop)
         if ~isempty(tempInds)
             for k = 1:numExtraCones
                 % Get distances to line
@@ -613,7 +615,7 @@ for i = 1:numCones
                 dists(dirs > pi/2) = 100;
 
                 %%% If large radius use it can also catch points on opposite side of cone.
-
+                    % This is possible because of height discritizaiton
                 [minD, minI] = min(dists); 
 
                 if minD < 1
@@ -628,9 +630,6 @@ for i = 1:numCones
     
     figure(fIms);
     subplot(2,numCones,i+numCones); hold on
-
-    %%% If radius is large can have points on both sides of cone that oscialate
-        % Mostly because of height discritization?
 
     % check for continuity in side profiles
     for j = 1:numExtraCones
@@ -684,6 +683,74 @@ for i = 1:numCones
             'x', 'color', extraConeCols(j,:));
     end
 
+    % Catch exposed intercone associated with this cone
+    
+    % Firstly match image region to original subscripts
+    [~, centralRimInds] = intersect(tempRimSubs, fliplr(centralRimParam.PixelList), 'rows');
+%     plot(centralRimParam.PixelList(:,1), centralRimParam.PixelList(:,2), 'b.')
+%     plot(centralRimParam.PixelList(:,2), centralRimParam.PixelList(:,1), 'g.')
+%     plot(tempRimSubs(:,1), tempRimSubs(:,2), 'rx')
+
+    centralRimInds = clippedConeRimInds(centralRimInds);
+
+    rotatedInterconeExposedIncluded = zeros(size(rotatedInterconeExposed,1),1);
+    previousLevelInds = [];
+
+    figure(fIms);
+    subplot(2,numCones,i+numCones); hold on
+    plot3(rotatedInterconeExposed(:,1), rotatedInterconeExposed(:,2), rotatedInterconeExposed(:,3), 'k.')
+    plot3(rotatedInterconeExposed(centralRimInds,1), rotatedInterconeExposed(centralRimInds,2), rotatedInterconeExposed(centralRimInds,3), 'rx')
+
+    % No longer limit range to rim inds as full range could go slightly beyond
+    minImValue = min(rotatedInterconeExposed(:,1:2));
+    tempRange = ceil(max(rotatedInterconeExposed(:,1:2)) - minImValue+1);
+    tempImage = zeros(tempRange, 'logical');
+
+    for j = depthTests(1:end-1)
+        % Get rim inds on this level
+        tempRimInds = find(rotatedInterconeExposed(centralRimInds,3) == j);
+        
+        % combine with inds on previous level in image and dilate
+        levelInds = [previousLevelInds' centralRimInds(tempRimInds)']';
+
+        if ~isempty(levelInds)
+            tempSubs = round(rotatedInterconeExposed(levelInds,1:2) - minImValue+1);    
+            tempInd = sub2ind(tempRange, tempSubs(:,1), tempSubs(:,2));
+    
+            tempImage(:) = 0;
+            tempImage(tempInd) = 1;
+%             tempImage= imdilate(tempImage, strel('disk',1));
+            tempImage= imdilate(tempImage, strel('square',3));
+
+            % get exposed on current and next level
+                % Doing both helps prevent splitting, but now may be resolved using large strel
+            tempExposedInds = find(rotatedInterconeExposed(:,3) == j | rotatedInterconeExposed(:,3) == j + 1);
+
+            tempSubs = round(rotatedInterconeExposed(tempExposedInds,1:2) - minImValue+1);  
+            tempInds = sub2ind(tempRange, tempSubs(:,1), tempSubs(:,2));
+            indsIncluded = find(tempImage(tempInds));
+
+            if ~isempty(indsIncluded)
+                indsIncluded = tempExposedInds(indsIncluded);
+                rotatedInterconeExposedIncluded(indsIncluded) = 1;
+            end
+
+            previousLevelInds = indsIncluded;
+    
+            plot3(rotatedInterconeExposed(previousLevelInds,1), rotatedInterconeExposed(previousLevelInds,2),...
+                rotatedInterconeExposed(previousLevelInds,3), '.')
+        end
+    end
+
+    % Remove non-flagged
+    interconeExposedAngles(~rotatedInterconeExposedIncluded) = [];
+    interconeExposedRadius(~rotatedInterconeExposedIncluded) = [];
+    rotatedInterconeExposed(~rotatedInterconeExposedIncluded, :) = [];
+
+    figure((fExamples))
+    subplot(2,numCones,numCones+i);
+    plot3(rotatedInterconeExposed(:,1), rotatedInterconeExposed(:,2), rotatedInterconeExposed(:,3), '.', 'color', cols(5,:));
+
     % Get profile of all features along and past cone
     for j = depthTests
         % for cone
@@ -715,7 +782,6 @@ for i = 1:numCones
         [cInCAverage(i, j-min(depthTests)+1), cInCStandard(i, j-min(depthTests)+1)] = getProfileValue(rotatedCinCToCone(:,3), j, ...
                 cInCtoConeRadius, cInCtoConeAngles, minAngleRange);
 
-        %%% This will be different as will be gap in values
         [exposedInterconeAverage(i, j-min(depthTests)+1), exposedInterconeStandard(i, j-min(depthTests)+1)] = getProfileValue(rotatedInterconeExposed(:,3), j, ...
                 interconeExposedRadius, interconeExposedAngles, minAngleRange);
 
