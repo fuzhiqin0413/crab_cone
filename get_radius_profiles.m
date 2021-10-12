@@ -217,6 +217,10 @@ grid3D.maxBound = [volumeSize(1), volumeSize(2), volumeSize(3)]';
 depthTests = (-10:1000);
 depth0Ind = find(depthTests == 0);
 
+numConesForBorder = 3;
+radiusMult = 1.5;
+minAngleRange = pi*3/2;
+
 % Storing profile data
 % Assume external epicornea and CinC to intercone is flat
 coneAverage = zeros(numCones,length(depthTests))*NaN;
@@ -230,8 +234,7 @@ exposedInterconeStandard = zeros(numCones,length(depthTests))*NaN;
 
 interconeRatio = zeros(numCones,length(depthTests))*NaN;
 
-internalInterconeAverage = zeros(numCones,length(depthTests))*NaN;
-internalInterconeStandard = zeros(numCones,length(depthTests))*NaN;
+internalInterconePaths = zeros(numCones,length(depthTests), numConesForBorder)*NaN;
 
 epicorneaInnerAverage = zeros(numCones,length(depthTests))*NaN;
 epicorneaInnerStandard = zeros(numCones,length(depthTests))*NaN;
@@ -240,13 +243,15 @@ embededConesLinked = cell(numCones,2);
 
 % From tip to CinC, epiCornea, cornea.
 lengthsToIntersects = zeros(numCones,3);
+
 % From tip to top intercone, intercone, CinC, inner epicornea, outer epicornea
 lengthsToPlanes = zeros(numCones,4);
 
-numConesForBorder = 3;
-radiusMult = 1.5;
-minAngleRange = pi*3/2;
-planeSepLimit = 0;
+% Lowest point on main cone and cone in cone, highest point on epicornea cone
+    % Could use these to adjust radial position so tip is centered, but adds assumption what is center of shape
+pointCoords = zeros(numCones, 3, 2);
+
+angleToCornea = zeros(numCones,1);
 
 fExamples = figure;
 fSummary = figure; hold on; 
@@ -414,7 +419,7 @@ for i = 1:numCones
     line([0 0],[0 0],[0 300], 'color', coneCols(i,:))
 
     % Fit planes to each surface (was previously doing rotations)
-    fExposedInterconeTop = fit( rotatedInterconeExposed(clippedConeRimInds,1:2), rotatedInterconeExposed(clippedConeRimInds,3), 'poly11' );
+    fExposedInterconeTop = fit( rotatedInterconeExposed(clippedConeRimInds,1:2), rotatedInterconeExposed(clippedConeRimInds,3), 'poly11');
     tempSubs = [rotatedCInCtoIntercone' rotatedCinCToCone']';
     fCInCBoth = fit( tempSubs(:,1:2), tempSubs(:,3), 'poly11' );
     fEpicorneaInner = fit( rotatedEpicorneaInner(:,1:2), rotatedEpicorneaInner(:,3), 'poly11' );    
@@ -438,6 +443,8 @@ for i = 1:numCones
     if normEpicorneaInner(3) > 0; normEpicorneaInner = -normEpicorneaInner; end
     if normEpicorneaOuter(3) > 0; normEpicorneaOuter = -normEpicorneaOuter; end
 
+    angleToCornea(i) = acos(-1*normEpicorneaOuter(3)/norm(normEpicorneaOuter))/pi*180;
+
     % Distance from cone tip are just z values at centre
     lengthsToPlanes(i,1) = fExposedInterconeTop.p00;
     lengthsToPlanes(i,2) = fCInCBoth.p00;
@@ -458,10 +465,10 @@ for i = 1:numCones
     subplot(2,numCones,numCones+i);hold on; axis equal; view(0,0)
     
     plot3(rotatedConeExposed(:,1), rotatedConeExposed(:,2), rotatedConeExposed(:,3), '.', 'color', cols(1,:))
-    plot3(rotatedEpicorneaInner(:,1), rotatedEpicorneaInner(:,2), rotatedEpicorneaInner(:,3), '.', 'color', cols(6,:));
+%     plot3(rotatedEpicorneaInner(:,1), rotatedEpicorneaInner(:,2), rotatedEpicorneaInner(:,3), '.', 'color', cols(6,:));
     plot3(rotatedEpicorneaOuter(:,1), rotatedEpicorneaOuter(:,2), rotatedEpicorneaOuter(:,3), '.', 'color', cols(7,:));
-    plot3(rotatedCinCToCone(:,1), rotatedCinCToCone(:,2), rotatedCinCToCone(:,3), '.', 'color', cols(2,:))
-    plot3(rotatedCInCtoIntercone(:,1), rotatedCInCtoIntercone(:,2), rotatedCInCtoIntercone(:,3), '.', 'color', cols(3,:));
+%     plot3(rotatedCinCToCone(:,1), rotatedCinCToCone(:,2), rotatedCinCToCone(:,3), '.', 'color', cols(2,:))
+%     plot3(rotatedCInCtoIntercone(:,1), rotatedCInCtoIntercone(:,2), rotatedCInCtoIntercone(:,3), '.', 'color', cols(3,:));
 
     line([0 0],[0 0],[0 300], 'color', coneCols(i,:))
 
@@ -486,8 +493,7 @@ for i = 1:numCones
     rotatedInterconeInternal(:,2) = rotatedInterconeInternal(:,2) + shearY*rotatedInterconeInternal(:,3);
     % Shift back
     rotatedInterconeInternal = rotatedInterconeInternal + [0 0 fCInCBoth.p00];
-
-    plot3(rotatedInterconeInternal(:,1), rotatedInterconeInternal(:,2), rotatedInterconeInternal(:,3), '.', 'color', cols(4,:));
+%     plot3(rotatedInterconeInternal(:,1), rotatedInterconeInternal(:,2), rotatedInterconeInternal(:,3), '.', 'color', cols(4,:));
 
     % Try applying to exposed intercone
     rotatedInterconeExposed = (rotatedInterconeExposed - [0 0 fCInCBoth.p00])*tempRotVec;
@@ -498,18 +504,46 @@ for i = 1:numCones
     rotatedInterconeExposed = rotatedInterconeExposed + [0 0 fCInCBoth.p00];
 %     plot3(rotatedInterconeExposed(:,1), rotatedInterconeExposed(:,2), rotatedInterconeExposed(:,3), '.', 'color', cols(5,:));
 
-    % Clip based on heights to planes...
-    cInCtoConeRadius(rotatedCinCToCone(:,3) > fCInCBoth.p00) = [];
-    cInCtoConeAngles(rotatedCinCToCone(:,3) > fCInCBoth.p00 ) = [];
-    rotatedCinCToCone(rotatedCinCToCone(:,3) > fCInCBoth.p00 , :) = [];
+    % Clip based on heights to planes - offset by 1 to account for some noise
+    interconeInternalAngles(rotatedInterconeInternal(:,3) > fCInCBoth.p00 - 1) = [];
+    interconeInternalRadius(rotatedInterconeInternal(:,3) > fCInCBoth.p00 - 1) = [];
+    rotatedInterconeInternal(rotatedInterconeInternal(:,3) > fCInCBoth.p00 - 1, :) = [];
+    plot3(rotatedInterconeInternal(:,1), rotatedInterconeInternal(:,2), rotatedInterconeInternal(:,3), '.', 'color', cols(4,:));
 
-    interconeInternalAngles(rotatedInterconeInternal(:,3) > fCInCBoth.p00 - planeSepLimit) = [];
-    interconeInternalRadius(rotatedInterconeInternal(:,3) > fCInCBoth.p00 - planeSepLimit) = [];
-    rotatedInterconeInternal(rotatedInterconeInternal(:,3) > fCInCBoth.p00 - planeSepLimit, :) = [];
+    orignalRadiusLimit = max(cInCtoConeRadius);
 
-    epicorneaInnerRadius(rotatedEpicorneaInner(:,3) < fEpicorneaInner.p00) = [];
-    epicorneaInnerAngles(rotatedEpicorneaInner(:,3) < fEpicorneaInner.p00) = [];
+    cInCtoConeRadius(rotatedCinCToCone(:,3) > fCInCBoth.p00 - 1) = [];
+    cInCtoConeAngles(rotatedCinCToCone(:,3) > fCInCBoth.p00 - 1) = [];
+    rotatedCinCToCone(rotatedCinCToCone(:,3) > fCInCBoth.p00 - 1, :) = [];
+
+    % can leave straggelers on border of cone in cone - also clip based on original radius
+    cInCtoConeAngles(cInCtoConeRadius > orignalRadiusLimit*0.5) = [];
+    rotatedCinCToCone(cInCtoConeRadius > orignalRadiusLimit*0.5, :) = [];
+    cInCtoConeRadius(cInCtoConeRadius > orignalRadiusLimit*0.5) = [];
+
+    maxCinCRadius = max(cInCtoConeRadius);
+    plot3(rotatedCinCToCone(:,1), rotatedCinCToCone(:,2), rotatedCinCToCone(:,3), '.', 'color', cols(2,:))
+
+    epicorneaInnerRadius(rotatedEpicorneaInner(:,3) < fEpicorneaInner.p00 ) = [];
+    epicorneaInnerAngles(rotatedEpicorneaInner(:,3) < fEpicorneaInner.p00 ) = [];
     rotatedEpicorneaInner(rotatedEpicorneaInner(:,3) < fEpicorneaInner.p00, :) = [];
+
+    % now clip epicornea by max of cone in cone 
+    epicorneaInnerAngles(epicorneaInnerRadius > maxCinCRadius) = [];
+    rotatedEpicorneaInner(epicorneaInnerRadius > maxCinCRadius, :) = [];
+    epicorneaInnerRadius(epicorneaInnerRadius > maxCinCRadius) = [];
+    plot3(rotatedEpicorneaInner(:,1), rotatedEpicorneaInner(:,2), rotatedEpicorneaInner(:,3), '.', 'color', cols(6,:));
+
+
+    % Get center coords as a reference
+    [~, refInd] = min(rotatedConeExposed(:,3));
+    pointCoords(i,1,:) = rotatedConeExposed(refInd,1:2);
+
+    [~, refInd] = min(rotatedCinCToCone(:,3));
+    pointCoords(i,2,:) = rotatedCinCToCone(refInd,1:2);
+
+    [~, refInd] = max(rotatedEpicorneaInner(:,3));
+    pointCoords(i,3,:) = rotatedEpicorneaInner(refInd,1:2);
 
     % Do z rounding 
     rotatedConeExposed(:,3) = round(rotatedConeExposed(:,3));
@@ -677,7 +711,7 @@ for i = 1:numCones
     % plot cleaned sides 
     figure((fExamples))
     subplot(2,numCones,numCones+i);
-    for j = 1:numExtraCones
+    for j = 1:numConesForBorder
         plot3(sideProfileSubs(:,j,1), sideProfileSubs(:,j,2), depthTests, ...
             'x', 'color', extraConeCols(j,:));
     end
@@ -686,9 +720,6 @@ for i = 1:numCones
     
     % Firstly match image region to original subscripts
     [~, centralRimInds] = intersect(tempRimSubs, fliplr(centralRimParam.PixelList), 'rows');
-%     plot(centralRimParam.PixelList(:,1), centralRimParam.PixelList(:,2), 'b.')
-%     plot(centralRimParam.PixelList(:,2), centralRimParam.PixelList(:,1), 'g.')
-%     plot(tempRimSubs(:,1), tempRimSubs(:,2), 'rx')
 
     centralRimInds = clippedConeRimInds(centralRimInds);
 
@@ -752,25 +783,6 @@ for i = 1:numCones
 
     % Get profile of all features along and past cone
     for j = depthTests
-        % for cone
-%         tempInds = find(rotatedConeExposed(:,3) == j);
-%         
-%         if ~isempty(tempInds)
-%             tempRadius = coneExposedRadius(tempInds);
-%             
-%             tempAngles = coneExposedAngles(tempInds);
-%             
-%             % Check angle range - aim for 3/4 of circle
-%             if max(tempAngles) - min(tempAngles) > pi*3/2
-% 
-%                 coneAverage(i, j-min(depthTests)+1) = mean(tempRadius);
-% 
-%                 coneStandard(i, j-min(depthTests)+1) = std(tempRadius);
-% 
-%                 interconeRatio(i, j-min(depthTests)+1) = sum(coneData(tempConeInds(tempInds)) == interconeOfConeExposedValue)/length(tempInds);
-%             end
-%         end
-        
         [coneAverage(i, j-min(depthTests)+1), coneStandard(i, j-min(depthTests)+1), tempInds] = getProfileValue(rotatedConeExposed(:,3), j, ...
                 coneExposedRadius, coneExposedAngles, minAngleRange);
 
@@ -786,16 +798,26 @@ for i = 1:numCones
 
         % for internal intercone just average closest point on side profiles
         tempInds = find(rotatedInterconeInternal(:,3) == j);
-        profileInds = internalInterconeID(j-min(depthTests)+1,:); profileInds(isnan(profileInds)) = [];
+        profileInds = internalInterconeID(j-min(depthTests)+1,:); 
 
-        if ~isempty(profileInds)
-            internalInterconeAverage(i, j-min(depthTests)+1) = mean( interconeInternalRadius( tempInds( profileInds))); 
-            internalInterconeStandard(i, j-min(depthTests)+1) = std( interconeInternalRadius( tempInds( profileInds)));
+        for k = 1:numConesForBorder
+            if ~isnan(profileInds)
+                internalInterconePaths(i, j-min(depthTests)+1, k) = interconeInternalRadius( tempInds( profileInds(k))); 
+            end
         end
 
         [epicorneaInnerAverage(i, j-min(depthTests)+1), epicorneaInnerStandard(i, j-min(depthTests)+1)] = getProfileValue(rotatedEpicorneaInner(:,3), j, ...
                 epicorneaInnerRadius, epicorneaInnerAngles, minAngleRange);
     end
+
+    % sort internal intercone profile given min radius
+    minProfileRadius = zeros(numConesForBorder,1);
+    for j = 1:numConesForBorder
+        minProfileRadius(j) = min(internalInterconePaths(i,:,j));
+    end
+
+    [~, tempInds] = sort(minProfileRadius);
+    internalInterconePaths(i,:,:) = internalInterconePaths(i,:,tempInds);
 
     % Adjust offset to narrow point
     [narrowVal] = min(coneAverage(i,1:depth0Ind));
@@ -812,8 +834,9 @@ for i = 1:numCones
     exposedInterconeAverage(i, depth0Ind:end) = exposedInterconeAverage(i, narrowInd:end-(depth0Ind-narrowInd));
     exposedInterconeStandard(i, depth0Ind:end) = exposedInterconeStandard(i, narrowInd:end-(depth0Ind-narrowInd));
     interconeRatio(i, depth0Ind:end) = interconeRatio(i, narrowInd:end-(depth0Ind-narrowInd));
-    internalInterconeAverage(i, depth0Ind:end) = internalInterconeAverage(i, narrowInd:end-(depth0Ind-narrowInd));
-    internalInterconeStandard(i, depth0Ind:end) = internalInterconeStandard(i, narrowInd:end-(depth0Ind-narrowInd));
+    for j = 1:numConesForBorder
+        internalInterconePaths(i, depth0Ind:end,j) = internalInterconePaths(i, narrowInd:end-(depth0Ind-narrowInd),j);
+    end
     epicorneaInnerAverage(i, depth0Ind:end) = epicorneaInnerAverage(i, narrowInd:end-(depth0Ind-narrowInd));
     epicorneaInnerStandard(i, depth0Ind:end) = epicorneaInnerStandard(i, narrowInd:end-(depth0Ind-narrowInd));
 
@@ -825,8 +848,9 @@ for i = 1:numCones
     exposedInterconeAverage(i, 1:depth0Ind-1) = NaN;
     exposedInterconeStandard(i, 1:depth0Ind-1) = NaN;
     interconeRatio(i, 1:depth0Ind-1) = NaN;
-    internalInterconeAverage(i, 1:depth0Ind-1) = NaN;
-    internalInterconeStandard(i, 1:depth0Ind-1) = NaN;
+    for j = 1:numConesForBorder
+        internalInterconePaths(i, 1:depth0Ind-1,:) = NaN;
+    end
     epicorneaInnerAverage(i, 1:depth0Ind-1) = NaN;
     epicorneaInnerStandard(i, 1:depth0Ind-1) = NaN;
 
@@ -834,28 +858,31 @@ for i = 1:numCones
     figure(fSummary)
     subplot(2,3,1); hold on;
 %     plot(depthTests*voxSize, coneAverage(i,:)*voxSize)
-    errorbar(depthTests*voxSize, coneAverage(i,:)*voxSize, coneStandard(i,:)*voxSize)
+    errorbar(depthTests*voxSize, coneAverage(i,:)*voxSize, coneStandard(i,:)*voxSize, 'color', coneCols(i,:))
 
     subplot(2,3,2); hold on;
 %     plot(depthTests*voxSize, cInCAverage(i,:)*voxSize)
-    errorbar(depthTests*voxSize, cInCAverage(i,:)*voxSize, cInCStandard(i,:)*voxSize)
+    errorbar(depthTests*voxSize, cInCAverage(i,:)*voxSize, cInCStandard(i,:)*voxSize, 'color', coneCols(i,:))
 
     subplot(2,3,3); hold on
-    plot(depthTests*voxSize, interconeRatio(i,:)*100)
+    plot(depthTests*voxSize, interconeRatio(i,:)*100, 'color', coneCols(i,:))
 
     subplot(2,3,4); hold on;
 %     plot(depthTests*voxSize, exposedInterconeAverage(i,:)*voxSize)
-    errorbar(depthTests*voxSize, exposedInterconeAverage(i,:)*voxSize, exposedInterconeStandard(i,:)*voxSize)
+    errorbar(depthTests*voxSize, exposedInterconeAverage(i,:)*voxSize, exposedInterconeStandard(i,:)*voxSize, 'color', coneCols(i,:))
 
     subplot(2,3,5); hold on;
-%     plot(depthTests*voxSize, internalInterconeAverage(i,:)*voxSize)
-    errorbar(depthTests*voxSize, internalInterconeAverage(i,:)*voxSize, internalInterconeStandard(i,:)*voxSize)
-   
+    for j = 1:numConesForBorder
+        plot(depthTests*voxSize, internalInterconePaths(i,:,j)*voxSize, 'color', coneCols(i,:))
+    end
+
     subplot(2,3,6); hold on
 %     plot(depthTests*voxSize, epicorneaInnerAverage(i,:)*voxSize)
-    errorbar(depthTests*voxSize, epicorneaInnerAverage(i,:)*voxSize, epicorneaInnerStandard(i,:)*voxSize)
+    errorbar(depthTests*voxSize, epicorneaInnerAverage(i,:)*voxSize, epicorneaInnerStandard(i,:)*voxSize, 'color', coneCols(i,:))
 
 end
+
+angleToCornea
 
 for i = 1:6
     subplot(2,3,i)
@@ -882,8 +909,12 @@ interconeRatioStd = nanstd(interconeRatio);
 exposedInterconeAverageMean = nanmean(exposedInterconeAverage);
 exposedInterconeAverageStd = nanstd(exposedInterconeAverage);
 
-internalInterconeAverageMean = nanmean(internalInterconeAverage);
-internalInterconeAverageStd = nanstd(internalInterconeAverage);
+internalInterconeAverageMean = zeros(length(depthTests),numConesForBorder);
+internalInterconeAverageStd = zeros(length(depthTests),numConesForBorder);
+for i = 1:numConesForBorder
+    internalInterconeAverageMean(:,i) = nanmean(internalInterconePaths(:,:,i));
+    internalInterconeAverageStd(:,i) = nanstd(internalInterconePaths(:,:,i));
+end
 
 epicorneaInnerAverageMean = nanmean(epicorneaInnerAverage);
 epicorneaInnerAverageStd = nanstd(epicorneaInnerAverage);
@@ -908,44 +939,55 @@ title('Cone in cone radius profile')
 xlabel('Distance from tip')
 ylabel('Radius')
 
-subplot(1,3,3);
-plot(depthTests, interconeRatioMean, 'r-', 'linewidth', 2)
+subplot(2,3,3);
+plot(depthTests*voxSize, interconeRatioMean*100, 'r-', 'linewidth', 2)
 
-plot(depthTests, (interconeRatioMean+interconeRatioStd), 'r:', 'linewidth', 2)
-plot(depthTests, (interconeRatioMean-interconeRatioStd), 'r:', 'linewidth', 2)
+plot(depthTests*voxSize, (interconeRatioMean+interconeRatioStd)*100, 'r:', 'linewidth', 2)
+plot(depthTests*voxSize, (interconeRatioMean-interconeRatioStd)*100, 'r:', 'linewidth', 2)
 
 title('Cone embedded ratio profile')
 xlabel('Distance from tip')
 ylabel('% Embeded')
 
-subplot(1,3,4);
-plot(depthTests, exposedInterconeAverageMean, 'r-', 'linewidth', 2)
+subplot(2,3,4);
+plot(depthTests*voxSize, exposedInterconeAverageMean*voxSize, 'r-', 'linewidth', 2)
 
-plot(depthTests, (exposedInterconeAverageMean+exposedInterconeAverageStd), 'r:', 'linewidth', 2)
-plot(depthTests, (exposedInterconeAverageMean-exposedInterconeAverageStd), 'r:', 'linewidth', 2)
+plot(depthTests*voxSize, (exposedInterconeAverageMean+exposedInterconeAverageStd)*voxSize, 'r:', 'linewidth', 2)
+plot(depthTests*voxSize, (exposedInterconeAverageMean-exposedInterconeAverageStd)*voxSize, 'r:', 'linewidth', 2)
 
 title('Exposed intercone profile')
 xlabel('Distance from tip')
 ylabel('Radius')
 
-subplot(1,3,5);
-plot(depthTests, internalInterconeAverageMean, 'r-', 'linewidth', 2)
+subplot(2,3,5);
+for i = 1:numConesForBorder
+    plot(depthTests*voxSize, internalInterconeAverageMean(:,i)*voxSize, 'r-', 'linewidth', 2)
 
-plot(depthTests, (internalInterconeAverageMean+internalInterconeAverageStd), 'r:', 'linewidth', 2)
-plot(depthTests, (internalInterconeAverageMean-internalInterconeAverageStd), 'r:', 'linewidth', 2)
-ylim([0 1])
+%     plot(depthTests*voxSize, (internalInterconeAverageMean(:,i)+internalInterconeAverageStd(:,i))*voxSize, 'r:', 'linewidth', 2)
+%     plot(depthTests*voxSize, (internalInterconeAverageMean(:,i)-internalInterconeAverageStd(:,i))*voxSize, 'r:', 'linewidth', 2)
+end
 
 title('Embedded intercone profile')
 xlabel('Distance from tip')
 ylabel('Radius')
 
-subplot(1,3,6);
-plot(depthTests, epicorneaInnerAverageMean, 'r-', 'linewidth', 2)
+subplot(2,3,6);
+plot(depthTests*voxSize, epicorneaInnerAverageMean*voxSize, 'r-', 'linewidth', 2)
 
-plot(depthTests, (epicorneaInnerAverageMean+epicorneaInnerAverageStd), 'r:', 'linewidth', 2)
-plot(depthTests, (epicorneaInnerAverageMean-epicorneaInnerAverageStd), 'r:', 'linewidth', 2)
-ylim([0 1])
+plot(depthTests*voxSize, (epicorneaInnerAverageMean+epicorneaInnerAverageStd)*voxSize, 'r:', 'linewidth', 2)
+plot(depthTests*voxSize, (epicorneaInnerAverageMean-epicorneaInnerAverageStd)*voxSize, 'r:', 'linewidth', 2)
 
 title('Inner epicornea profile')
 xlabel('Distance from tip')
 ylabel('Radius')
+
+% Just check how shifted heigh pts are from origion
+figure; hold on; axis equal
+for i = 1:numCones
+    plot(pointCoords(i,1,1), pointCoords(i,1,2),'o', 'color', coneCols(i,:))
+    plot(pointCoords(i,2,1), pointCoords(i,2,2),'x', 'color', coneCols(i,:))
+    plot(pointCoords(i,3,1), pointCoords(i,3,2),'*', 'color', coneCols(i,:))
+end
+plot(mean(pointCoords(:,1,1)), mean(pointCoords(:,1,2)), 'ko')
+plot(mean(pointCoords(:,2,1)), mean(pointCoords(:,2,2)), 'kx')
+plot(mean(pointCoords(:,3,1)), mean(pointCoords(:,3,2)), 'k*')
