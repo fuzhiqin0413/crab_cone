@@ -230,7 +230,6 @@ exposedInterconeStandard = zeros(numCones,length(depthTests))*NaN;
 
 interconeRatio = zeros(numCones,length(depthTests))*NaN;
 
-% Note this will probably have step out at bottom - will need to remove
 internalInterconeAverage = zeros(numCones,length(depthTests))*NaN;
 internalInterconeStandard = zeros(numCones,length(depthTests))*NaN;
 
@@ -870,28 +869,42 @@ for i = 1:6
     end
 end
 
+% average everything
 coneAverageMean = nanmean(coneAverage);
 coneAverageStd = nanstd(coneAverage);
 
-aaExportCone = [depthTests', coneAverage', coneAverageMean', coneAverageStd'];
+cInCAverageMean = nanmean(cInCAverage);
+cInCAverageStd = nanstd(cInCAverage);
 
 interconeRatioMean = nanmean(interconeRatio);
 interconeRatioStd = nanstd(interconeRatio);
 
-aaExportNumber = [depthTests', interconeRatio', interconeRatioMean', interconeRatioStd'];
+exposedInterconeAverageMean = nanmean(exposedInterconeAverage);
+exposedInterconeAverageStd = nanstd(exposedInterconeAverage);
 
-%%% Looks like average is making a bit of a mess of this because one cone is a bit wider, but general trend is to inflect in at end. 
-    %%% Add radius based normalization as well as height based.
+internalInterconeAverageMean = nanmean(internalInterconeAverage);
+internalInterconeAverageStd = nanstd(internalInterconeAverage);
+
+epicorneaInnerAverageMean = nanmean(epicorneaInnerAverage);
+epicorneaInnerAverageStd = nanstd(epicorneaInnerAverage);
 
 figure(fSummary)
 
-subplot(1,3,1);
+subplot(2,3,1);
 plot(depthTests*voxSize, coneAverageMean*voxSize, 'r-', 'linewidth', 2)
-
 plot(depthTests*voxSize, (coneAverageMean+coneAverageStd)*voxSize, 'r:', 'linewidth', 2)
 plot(depthTests*voxSize, (coneAverageMean-coneAverageStd)*voxSize, 'r:', 'linewidth', 2)
 
 title('Cone radius profile')
+xlabel('Distance from tip')
+ylabel('Radius')
+
+subplot(2,3,2);
+plot(depthTests*voxSize, cInCAverageMean*voxSize, 'r-', 'linewidth', 2)
+plot(depthTests*voxSize, (cInCAverageMean+cInCAverageStd)*voxSize, 'r:', 'linewidth', 2)
+plot(depthTests*voxSize, (cInCAverageMean-cInCAverageStd)*voxSize, 'r:', 'linewidth', 2)
+
+title('Cone in cone radius profile')
 xlabel('Distance from tip')
 ylabel('Radius')
 
@@ -900,130 +913,39 @@ plot(depthTests, interconeRatioMean, 'r-', 'linewidth', 2)
 
 plot(depthTests, (interconeRatioMean+interconeRatioStd), 'r:', 'linewidth', 2)
 plot(depthTests, (interconeRatioMean-interconeRatioStd), 'r:', 'linewidth', 2)
-ylim([0 1])
 
-title('Intercone embedded')
+title('Cone embedded ratio profile')
 xlabel('Distance from tip')
 ylabel('% Embeded')
 
-%% Now do for cornea
+subplot(1,3,4);
+plot(depthTests, exposedInterconeAverageMean, 'r-', 'linewidth', 2)
 
-depthTests = -10:200;
-depth0Ind = find(depthTests == 0);
+plot(depthTests, (exposedInterconeAverageMean+exposedInterconeAverageStd), 'r:', 'linewidth', 2)
+plot(depthTests, (exposedInterconeAverageMean-exposedInterconeAverageStd), 'r:', 'linewidth', 2)
 
-corneaAverage = zeros(numCones,length(depthTests))*NaN;
-corneaStandard = zeros(numCones,length(depthTests))*NaN;
+title('Exposed intercone profile')
+xlabel('Distance from tip')
+ylabel('Radius')
 
-for i = 1:numCones
-    % Get intersect for cornea
-    % Create vectors
-    [xCords, yCords, zCords] = amanatideswooalgorithm_efficient(corneaCenter(i,:), corneaAxes(i,:), grid3D, ...
-        0, [], [], 0); 
-    outInds = sub2ind(volumeSize, xCords, yCords, zCords);
-    
-    [xCords, yCords, zCords] = amanatideswooalgorithm_efficient(corneaCenter(i,:), -corneaAxes(i,:), grid3D, ...
-        0, [], [], 0); 
-    reverseInds = sub2ind(volumeSize, xCords, yCords, zCords);
-    
-    % check intersects 
-    outIntersects = find(coneData(outInds) == 4);
-    
-    reverseIntersects = find(coneData(reverseInds) == 4);
-    
-    if ~isempty(outIntersects) 
-        finalInd = outInds(max(outIntersects));
-    elseif ~isempty(reverseIntersects)
-        finalInd = reverseInds(max(reverseIntersects));
-    end
+subplot(1,3,5);
+plot(depthTests, internalInterconeAverageMean, 'r-', 'linewidth', 2)
 
-    tempVoxels = corneaParam(i,:).VoxelList{1};
-    tempVoxels = tempVoxels(:, [2 1 3]);
-    
-    tipIndex = find(corneaParam(i,:).VoxelIdxList{1} == finalInd);
-    
-    % Get rotation vector
-    rotVec = matrix2rotatevectors([0,0,1], corneaAxes(i,:));
-    
-    % Rotate around center - note, this doesn't guarantee that rotational
-    % axis is kept constant between corneas
-    rotatedVoxels = (tempVoxels-corneaCenter(i,:))*rotVec;
-    
-    % Offset Tip to zero
-    tipOffset = rotatedVoxels(tipIndex,:);
-    rotatedVoxels = rotatedVoxels - tipOffset;
-    
-%     plot3(rotatedVoxels(:,1), rotatedVoxels(:,2), rotatedVoxels(:,3), 'x', 'color', cols(i,:))
-    rotatedVoxels(:,3) = round(rotatedVoxels(:,3));
+plot(depthTests, (internalInterconeAverageMean+internalInterconeAverageStd), 'r:', 'linewidth', 2)
+plot(depthTests, (internalInterconeAverageMean-internalInterconeAverageStd), 'r:', 'linewidth', 2)
+ylim([0 1])
 
-    corneaNum = zeros(length(depthTests),1);
-    
-    % Get profile along cornea
-    for j = depthTests
-        tempInds = find(rotatedVoxels(:,3) == j);
-        
-        corneaNum(j-min(depthTests)+1) = length(tempInds);
-        
-        if ~isempty(tempInds)
-            tempDists = sqrt(rotatedVoxels(tempInds,1).^2 + rotatedVoxels(tempInds,2).^2);
-            
-            corneaAverage(i, j-min(depthTests)+1) = mean(tempDists);
-            
-            corneaStandard(i, j-min(depthTests)+1) = std(tempDists);
-        end
-    end
-    
-    figure(fTemp); 
-    subplot(1,2,2); hold on
-    plot(corneaNum, 'color', cols(i,:));
-    
-    [~, maxI] = max(corneaNum);
-    plot(maxI, corneaNum(maxI), 'x', 'color', cols(i,:));
-    
-    % Adjust offset to narrow point
-    [narrowVal] = min(corneaAverage(i,1:depth0Ind));
-    
-    % Add just for duplicates
-    narrowInd = find(corneaAverage(i,1:depth0Ind) == narrowVal);
-    narrowInd = narrowInd(end);
-    
-    % Shift back to make start point 
-    corneaAverage(i, depth0Ind:end) = corneaAverage(i, narrowInd:end-(depth0Ind-narrowInd));
-    corneaStandard(i, depth0Ind:end) = corneaStandard(i, narrowInd:end-(depth0Ind-narrowInd));
+title('Embedded intercone profile')
+xlabel('Distance from tip')
+ylabel('Radius')
 
-    % Remove part above narrow point
-    corneaAverage(i, 1:depth0Ind-1) = NaN;
-    corneaStandard(i, 1:depth0Ind-1) = NaN;
+subplot(1,3,6);
+plot(depthTests, epicorneaInnerAverageMean, 'r-', 'linewidth', 2)
 
-    
-    figure(fSummary)
-    
-    subplot(1,3,2); hold on;
-    plot(depthTests, corneaAverage(i,:))
-    
-%     subplot(1,2,2); hold on
-%     plot(depthTests, corneaStandard(i,:))
+plot(depthTests, (epicorneaInnerAverageMean+epicorneaInnerAverageStd), 'r:', 'linewidth', 2)
+plot(depthTests, (epicorneaInnerAverageMean-epicorneaInnerAverageStd), 'r:', 'linewidth', 2)
+ylim([0 1])
 
-    figure(fCone)
-    
-    subplot(1,2,2)
-    
-    plot3(tempVoxels(tipIndex,1), tempVoxels(tipIndex,2), tempVoxels(tipIndex,3), 'x', 'color', cols(i,:))
-end
-
-clear tempVolume
-
-averageCornea = nanmean(corneaAverage);
-averageCorneaStd = nanstd(corneaAverage);
-
-aaExportCornea = [depthTests', corneaAverage', averageCornea', averageCorneaStd'];
-
-figure(fSummary)
-
-plot(depthTests, averageCornea, 'r-', 'linewidth', 2)
-
-plot(depthTests, averageCornea+averageCorneaStd, 'r:', 'linewidth', 2)
-plot(depthTests, averageCornea-averageCorneaStd, 'r:', 'linewidth', 2)
-
-title('Cornea radius profile')
+title('Inner epicornea profile')
 xlabel('Distance from tip')
 ylabel('Radius')
