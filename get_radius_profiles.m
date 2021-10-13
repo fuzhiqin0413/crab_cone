@@ -219,7 +219,7 @@ depth0Ind = find(depthTests == 0);
 
 numConesForBorder = 3;
 radiusMult = 1.5;
-minAngleRange = pi*3/2;
+minAngleRange = pi/2;
 
 % Storing profile data
 % Assume external epicornea and CinC to intercone is flat
@@ -244,7 +244,7 @@ embededConesLinked = cell(numCones,2);
 % From tip to CinC, epiCornea, cornea.
 lengthsToIntersects = zeros(numCones,3);
 
-% From tip to top intercone, intercone, CinC, inner epicornea, outer epicornea
+% From tip to top intercone, CinC, inner epicornea, outer epicornea
 lengthsToPlanes = zeros(numCones,4);
 
 % Lowest point on main cone and cone in cone, highest point on epicornea cone
@@ -883,6 +883,8 @@ for i = 1:numCones
 end
 
 angleToCornea
+
+coneRefDiameter = nanmean(coneAverage,2)
 
 for i = 1:6
     subplot(2,3,i)

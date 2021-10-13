@@ -3,31 +3,26 @@ get_radius_profiles
 %% 
 %  close all
 
-voxScale = 4; % Scale up factor on image for FDTD
+voxScale = 4; 
 writeLarge = 0;
 
-%%% Switch to use profiles from CT
 % Parameters from oliver
-% interCone = 356.79/voxSize;
-% interConeSD = 24.31/voxSize;
-% use3Dintercone = 1;
-% 
-% outerCornea = 104.84/voxSize;
-% outerCorneaSD = 6.59/voxSize;
-% 
-% epiCornea = 32.68/voxSize;
-% epiCorneaSD = 2.21/voxSize;
+interCone = 356.79/voxSize;
+interConeSD = 24.31/voxSize;
+use3Dintercone = 1;
 
-% For display
+outerCornea = 104.84/voxSize;
+outerCorneaSD = 6.59/voxSize;
+
+epiCornea = 32.68/voxSize;
+epiCorneaSD = 2.21/voxSize;
+
 nPlot = 2;
 tText = 'Mean'; %'-2 SD'; 'Mean'; 
-interconeStep = 1; % 1 is closest
 SDMult = 0;
 figure
 
 tipOffset = 30; 
-
-useSlopedIntercone = 0;
 
 % Set up parameters
 % Labels
@@ -47,60 +42,38 @@ epiCorneaValue = 1.53;
 interconeValue = 1.47;
 
 % Change to ring height for cone length
-% coneLengthToUse = mean(coneRingHeightMean) + std(coneRingHeightMean)*SDMult;
-% 
-% innerConeLengthToUse = mean(corneaRingHeightMean) + std(corneaRingHeightMean)*SDMult;
-% 
-% corneaOffsetToUse = mean(coneToCICLength) + std(coneToCICLength)*SDMult;
+coneLengthToUse = mean(coneRingHeightMean) + std(coneRingHeightMean)*SDMult;
 
-coneLengthToUse = mean(lengthsToPlanes(:,2)) + std(lengthsToPlanes(:,2))*SDMult;
+innerConeLengthToUse = mean(corneaRingHeightMean) + std(corneaRingHeightMean)*SDMult;
 
-interConeLengthToUse = mean(lengthsToPlanes(:,1)) + std(lengthsToPlanes(:,1))*SDMult;
+corneaOffsetToUse = mean(coneToCICLength) + std(coneToCICLength)*SDMult;
 
-outerCorneaToUse = mean(lengthsToPlanes(:,3)) + std(lengthsToPlanes(:,3))*SDMult;
+interConeLengthToUse = interCone + interConeSD*SDMult;
 
-epiCorneaToUse = mean(lengthsToPlanes(:,4)) + std(lengthsToPlanes(:,4))*SDMult;
+outerCorneaToUse = outerCornea + outerCorneaSD*SDMult;
+
+epiCorneaToUse = epiCornea + epiCorneaSD*SDMult;
 
 % Trim start of buffer
 bufferLength = 10;
 
-restretchLength_cone = 500;
-
-% Should ref length be 50??? - Still uses full length???
-restretchLength_CinC = 50;
-
-%%% Not completely sure that just mean(coneRefDiameter) is correct to use for reference radius
-% Cone and cone in cone stretched to full cone length - as in orignal
-[meanStretchedCone, stdStretchedCone] = restretchProfile(coneAverage(:,bufferLength+1:end), numCones, depthTests(bufferLength+1:end), ...
-        coneRefDiameter, ones(numCones,1), lengthsToPlanes(:,2), mean(coneRefDiameter), coneLengthToUse, restretchLength_cone);
-
-%%% What lengths should be used here - also they are formatted in the context of distances from tip...
-    %%% Rethink how these will be used when placing values...
-
-[meanStretchedCinC, stdStretchedCinC] = restretchProfile(cInCAverage(:,bufferLength+1:end), numCones, depthTests(bufferLength+1:end), ...
-        coneRefDiameter, ones(numCones,1), lengthsToPlanes(:,2), mean(coneRefDiameter), ???, restretchLength_CinC);
-
-% Exposed and internal intercone stretched between ring and full cone length
-[meanStretchedExposedIntercone, stdStretchedExposedIntercone] = restretchProfile(exposedInterconeAverage(:,bufferLength+1:end), numCones, depthTests(bufferLength+1:end), ...
-        coneRefDiameter, lengthsToPlanes(:,1), lengthsToPlanes(:,2), mean(coneRefDiameter), ???, restretchLength_cone);
-
-[meanStretchedInternalIntercone, stdStretchedInternalIntercone] = restretchProfile(internalInterconePaths(:,bufferLength+1:end,interconeStep), numCones, depthTests(bufferLength+1:end), ...
-        coneRefDiameter, lengthsToPlanes(:,1), lengthsToPlanes(:,2), mean(coneRefDiameter), ???, restretchLength_cone);
-
-[meanStretchedEpicorneaInner, stdStretchedEpicorneaInner] = restretchProfile(epicorneaInnerAverage(:,bufferLength+1:end), numCones, depthTests(bufferLength+1:end), ...
-        coneRefDiameter, lengthsToPlanes(:,3), lengthsToPlanes(:,4), mean(coneRefDiameter), ???, restretchLength_CinC);
-
-%%% Test plot on orignal so see how they look...
-%%% Debug from here
+% direct average
+% coneProfileToUse =  averageCone + averageConeStd*SDMult;
+% coneProfileToUse = coneProfileToUse(bufferLength+1:end);
+% 
+% innerConeProfileToUse =  averageCornea + averageCorneaStd*SDMult;
+% innerConeProfileToUse = innerConeProfileToUse(bufferLength+1:end);
 
 % do restretch given ring height
 restretchLength_cone = 500;
-coneProfilesStretch = zeros(numCones, restretchLength_cone);
+coneProfilesStretch = zeros(7, restretchLength_cone);
 
 restretchLength_cornea = 50;
-corneaProfilesStretch = zeros(numCones,restretchLength_cornea);
+corneaProfilesStretch = zeros(7,restretchLength_cornea);
 
-for i = 1:numCones
+depthTests = -10:1000;
+
+for i = 1:7
    tempConeProfile = coneAverage(i,bufferLength+1:round(coneRingHeightMean(i)));
    tempDepthProfile = depthTests(bufferLength+1:round(coneRingHeightMean(i)));
    coneProfilesStretch(i,:) = interp1(tempDepthProfile, tempConeProfile, ...
@@ -133,7 +106,6 @@ coneProfileToUse =  meanStretchedCone + stdStretchedCone*SDMult;
 
 innerConeProfileToUse =  meanStrechedCornea + stdStrechedCornea*SDMult;
 
-%%% WTF is going on here???
 % Tweaking profiles - set for 0 SD
     display('Tweaking')
 
