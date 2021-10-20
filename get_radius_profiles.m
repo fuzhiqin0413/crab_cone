@@ -512,9 +512,9 @@ for i = 1:numCones
 
     orignalRadiusLimit = max(cInCtoConeRadius);
 
-    cInCtoConeRadius(rotatedCinCToCone(:,3) > fCInCBoth.p00 - 1) = [];
-    cInCtoConeAngles(rotatedCinCToCone(:,3) > fCInCBoth.p00 - 1) = [];
-    rotatedCinCToCone(rotatedCinCToCone(:,3) > fCInCBoth.p00 - 1, :) = [];
+%     cInCtoConeRadius(rotatedCinCToCone(:,3) > fCInCBoth.p00 - 1) = [];
+%     cInCtoConeAngles(rotatedCinCToCone(:,3) > fCInCBoth.p00 - 1) = [];
+%     rotatedCinCToCone(rotatedCinCToCone(:,3) > fCInCBoth.p00 - 1, :) = [];
 
     % can leave straggelers on border of cone in cone - also clip based on original radius
     cInCtoConeAngles(cInCtoConeRadius > orignalRadiusLimit*0.5) = [];
@@ -524,16 +524,15 @@ for i = 1:numCones
     maxCinCRadius = max(cInCtoConeRadius);
     plot3(rotatedCinCToCone(:,1), rotatedCinCToCone(:,2), rotatedCinCToCone(:,3), '.', 'color', cols(2,:))
 
-    epicorneaInnerRadius(rotatedEpicorneaInner(:,3) < fEpicorneaInner.p00 ) = [];
-    epicorneaInnerAngles(rotatedEpicorneaInner(:,3) < fEpicorneaInner.p00 ) = [];
-    rotatedEpicorneaInner(rotatedEpicorneaInner(:,3) < fEpicorneaInner.p00, :) = [];
+%     epicorneaInnerRadius(rotatedEpicorneaInner(:,3) < fEpicorneaInner.p00 ) = [];
+%     epicorneaInnerAngles(rotatedEpicorneaInner(:,3) < fEpicorneaInner.p00 ) = [];
+%     rotatedEpicorneaInner(rotatedEpicorneaInner(:,3) < fEpicorneaInner.p00, :) = [];
 
     % now clip epicornea by max of cone in cone 
-    epicorneaInnerAngles(epicorneaInnerRadius > maxCinCRadius) = [];
-    rotatedEpicorneaInner(epicorneaInnerRadius > maxCinCRadius, :) = [];
-    epicorneaInnerRadius(epicorneaInnerRadius > maxCinCRadius) = [];
+    epicorneaInnerAngles(epicorneaInnerRadius > orignalRadiusLimit*0.75) = [];
+    rotatedEpicorneaInner(epicorneaInnerRadius > orignalRadiusLimit*0.75, :) = [];
+    epicorneaInnerRadius(epicorneaInnerRadius > orignalRadiusLimit*0.75) = [];
     plot3(rotatedEpicorneaInner(:,1), rotatedEpicorneaInner(:,2), rotatedEpicorneaInner(:,3), '.', 'color', cols(6,:));
-
 
     % Get center coords as a reference
     [~, refInd] = min(rotatedConeExposed(:,3));

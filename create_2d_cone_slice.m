@@ -21,7 +21,8 @@ writeLarge = 0;
 % For display
 nPlot = 2;
 tText = 'Mean'; %'-2 SD'; 'Mean'; 
-interconeStep = 1; % 1 is closest
+%%% 1 is closest but can currently intrude as intercone defined as radius not distance
+coneStepForIntercone = 1;    
 SDMult = 0;
 figure
 
@@ -47,123 +48,84 @@ epiCorneaValue = 1.53;
 interconeValue = 1.47;
 
 % Change to ring height for cone length
-% coneLengthToUse = mean(coneRingHeightMean) + std(coneRingHeightMean)*SDMult;
-% 
-% innerConeLengthToUse = mean(corneaRingHeightMean) + std(corneaRingHeightMean)*SDMult;
-% 
-% corneaOffsetToUse = mean(coneToCICLength) + std(coneToCICLength)*SDMult;
-
 coneLengthToUse = mean(lengthsToPlanes(:,2)) + std(lengthsToPlanes(:,2))*SDMult;
 
-interConeLengthToUse = mean(lengthsToPlanes(:,1)) + std(lengthsToPlanes(:,1))*SDMult;
+interconeLengthToUse = mean(lengthsToPlanes(:,1)) + std(lengthsToPlanes(:,1))*SDMult;
 
-outerCorneaToUse = mean(lengthsToPlanes(:,3)) + std(lengthsToPlanes(:,3))*SDMult;
+outerCorneaLengthToUse = mean(lengthsToPlanes(:,3)) + std(lengthsToPlanes(:,3))*SDMult - coneLengthToUse;
 
-epiCorneaToUse = mean(lengthsToPlanes(:,4)) + std(lengthsToPlanes(:,4))*SDMult;
+epicorneaLengthToUse = mean(lengthsToPlanes(:,4)) + std(lengthsToPlanes(:,4))*SDMult - coneLengthToUse - outerCorneaLengthToUse;
 
 % Trim start of buffer
 bufferLength = 10;
 
-restretchLength_cone = 500;
+restretchLength_cone = ceil(max(lengthsToPlanes(:,2))/100)*100;
 
 % Should ref length be 50??? - Still uses full length???
-restretchLength_CinC = 50;
+restretchLength_cornea = ceil((max(lengthsToPlanes(:,4))-min(lengthsToPlanes(:,3)))/10)*10;
 
 %%% Not completely sure that just mean(coneRefDiameter) is correct to use for reference radius
-% Cone and cone in cone stretched to full cone length - as in orignal
-[meanStretchedCone, stdStretchedCone] = restretchProfile(coneAverage(:,bufferLength+1:end), numCones, depthTests(bufferLength+1:end), ...
-        coneRefDiameter, ones(numCones,1), lengthsToPlanes(:,2), mean(coneRefDiameter), coneLengthToUse, restretchLength_cone);
 
-%%% What lengths should be used here - also they are formatted in the context of distances from tip...
-    %%% Rethink how these will be used when placing values...
+[meanStretchedCone, stdStretchedCone, coneXRef] = restretchProfile(coneAverage(:,bufferLength+1:end), numCones, depthTests(bufferLength+1:end), ...
+        coneRefDiameter, ones(numCones,1), ceil(lengthsToPlanes(:,2)), mean(coneRefDiameter), coneLengthToUse, restretchLength_cone, 0);
 
+% Cone in cone now stretched to full cone length
+    % Doesn't guarantee that cone tips are x-aligned but should match bases well...
 [meanStretchedCinC, stdStretchedCinC] = restretchProfile(cInCAverage(:,bufferLength+1:end), numCones, depthTests(bufferLength+1:end), ...
-        coneRefDiameter, ones(numCones,1), lengthsToPlanes(:,2), mean(coneRefDiameter), ???, restretchLength_CinC);
+        coneRefDiameter, ones(numCones,1), ceil(lengthsToPlanes(:,2)), mean(coneRefDiameter), coneLengthToUse, restretchLength_cone, 0);
 
-% Exposed and internal intercone stretched between ring and full cone length
 [meanStretchedExposedIntercone, stdStretchedExposedIntercone] = restretchProfile(exposedInterconeAverage(:,bufferLength+1:end), numCones, depthTests(bufferLength+1:end), ...
-        coneRefDiameter, lengthsToPlanes(:,1), lengthsToPlanes(:,2), mean(coneRefDiameter), ???, restretchLength_cone);
+        coneRefDiameter, ones(numCones,1), ceil(lengthsToPlanes(:,2)), mean(coneRefDiameter), coneLengthToUse, restretchLength_cone, 0);
 
-[meanStretchedInternalIntercone, stdStretchedInternalIntercone] = restretchProfile(internalInterconePaths(:,bufferLength+1:end,interconeStep), numCones, depthTests(bufferLength+1:end), ...
-        coneRefDiameter, lengthsToPlanes(:,1), lengthsToPlanes(:,2), mean(coneRefDiameter), ???, restretchLength_cone);
+[meanStretchedInternalIntercone, stdStretchedInternalIntercone] = restretchProfile(internalInterconePaths(:,bufferLength+1:end,coneStepForIntercone), numCones, depthTests(bufferLength+1:end), ...
+        coneRefDiameter, ones(numCones,1), ceil(lengthsToPlanes(:,2)), mean(coneRefDiameter), coneLengthToUse, restretchLength_cone, 1);
 
-[meanStretchedEpicorneaInner, stdStretchedEpicorneaInner] = restretchProfile(epicorneaInnerAverage(:,bufferLength+1:end), numCones, depthTests(bufferLength+1:end), ...
-        coneRefDiameter, lengthsToPlanes(:,3), lengthsToPlanes(:,4), mean(coneRefDiameter), ???, restretchLength_CinC);
+% epicornea cone stretch to its own length
+[meanStretchedEpicorneaInner, stdStretchedEpicorneaInner, corneaXRef] = restretchProfile(epicorneaInnerAverage(:,bufferLength+1:end), numCones, depthTests(bufferLength+1:end), ...
+        coneRefDiameter, floor(lengthsToPlanes(:,3)), ceil(lengthsToPlanes(:,4)), mean(coneRefDiameter), epicorneaLengthToUse, restretchLength_cornea, 0);
 
-%%% Test plot on orignal so see how they look...
-%%% Debug from here
+figure;
+subplot(1,2,1); hold on
+errorbar(coneXRef, meanStretchedCone, stdStretchedCone);
+errorbar(coneXRef, meanStretchedCinC, stdStretchedCinC);
+errorbar(coneXRef, meanStretchedExposedIntercone, stdStretchedExposedIntercone);
+errorbar(coneXRef, meanStretchedInternalIntercone, stdStretchedInternalIntercone);
 
-% do restretch given ring height
-restretchLength_cone = 500;
-coneProfilesStretch = zeros(numCones, restretchLength_cone);
+subplot(1,2,2); hold on
+errorbar(corneaXRef, meanStretchedEpicorneaInner, stdStretchedEpicorneaInner);
 
-restretchLength_cornea = 50;
-corneaProfilesStretch = zeros(numCones,restretchLength_cornea);
-
-for i = 1:numCones
-   tempConeProfile = coneAverage(i,bufferLength+1:round(coneRingHeightMean(i)));
-   tempDepthProfile = depthTests(bufferLength+1:round(coneRingHeightMean(i)));
-   coneProfilesStretch(i,:) = interp1(tempDepthProfile, tempConeProfile, ...
-       tempDepthProfile(1):(tempDepthProfile(end)/(restretchLength_cone-1)):tempDepthProfile(end), 'linear');
-   
-   tempCorneaProfile = corneaAverage(i,bufferLength+1:round(corneaRingHeightMean(i)));
-   tempDepthProfile = depthTests(bufferLength+1:round(corneaRingHeightMean(i)));
-   corneaProfilesStretch(i,:) = interp1(tempDepthProfile, tempCorneaProfile, ...
-       tempDepthProfile(1):(tempDepthProfile(end)/(restretchLength_cornea-1)):tempDepthProfile(end), 'linear');
-end
-
-% Take average and then stretch to current length
-meanStretchedCone = mean(coneProfilesStretch);
-meanStretchedCone = interp1((0:restretchLength_cone-1), meanStretchedCone, ...
-    0:(restretchLength_cone-1)/(round(coneLengthToUse)-1):(restretchLength_cone-1), 'linear');
-
-stdStretchedCone = std(coneProfilesStretch);
-stdStretchedCone = interp1((0:restretchLength_cone-1), stdStretchedCone, ...
-    0:(restretchLength_cone-1)/(round(coneLengthToUse)-1):(restretchLength_cone-1), 'linear');
-
-meanStrechedCornea = mean(corneaProfilesStretch);
-meanStrechedCornea = interp1((0:restretchLength_cornea-1), meanStrechedCornea, ...
-    0:(restretchLength_cornea-1)/(round(innerConeLengthToUse)-1):(restretchLength_cornea-1), 'linear');
-
-stdStrechedCornea = std(corneaProfilesStretch);
-stdStrechedCornea = interp1((0:restretchLength_cornea-1), stdStrechedCornea, ...
-    0:(restretchLength_cornea-1)/(round(innerConeLengthToUse)-1):(restretchLength_cornea-1), 'linear');
 
 coneProfileToUse =  meanStretchedCone + stdStretchedCone*SDMult;
 
-innerConeProfileToUse =  meanStrechedCornea + stdStrechedCornea*SDMult;
+CinCProfileToUse =  meanStretchedCinC + stdStretchedCinC*SDMult;
+
+exposedInterconeProfileToUse = meanStretchedExposedIntercone + stdStretchedExposedIntercone*SDMult;
+
+internalInterconeProfileToUse = meanStretchedInternalIntercone + stdStretchedInternalIntercone*SDMult;
+
+epicorneaProfileToUse = meanStretchedEpicorneaInner + stdStretchedEpicorneaInner*SDMult;
 
 %%% WTF is going on here???
-% Tweaking profiles - set for 0 SD
-    display('Tweaking')
-
-    % Cut first three points from top of cone and lengthen end
-    coneProfileToUse(1:3) = [];
-    coneProfileToUse(end:end+3) = coneProfileToUse(end);
-
-    % adjust radius on first three points of intercone
-    innerConeProfileToUse(1:3) = innerConeProfileToUse(1:3)./[3 1.25 1.1];
-
-% Take from full cover of center cone
-if use3Dintercone
-    coveringProfileToUse = interconeRatio(4,:);
-    coveringProfileToUse = coveringProfileToUse(bufferLength+1:end);
-
-    firstProfileFull = find(coveringProfileToUse == 100);
-    % Use scaling to represent re-streching
-    interConeLengthToUse = round(firstProfileFull(1)/round(coneRingHeightMean(4))*round(coneLengthToUse));
+if 0
+    % Tweaking profiles - set for 0 SD
+        display('Tweaking')
+    
+        % Cut first three points from top of cone and lengthen end
+        coneProfileToUse(1:3) = [];
+        coneProfileToUse(end:end+3) = coneProfileToUse(end);
+    
+        % adjust radius on first three points of intercone
+        innerConeProfileToUse(1:3) = innerConeProfileToUse(1:3)./[3 1.25 1.1];
 end
 
-interConeCover = round(coneLengthToUse) - round(interConeLengthToUse);
-
-
 % Make slice to fit dimensions
-topEpiCornea = tipOffset + round(coneLengthToUse) + round(outerCorneaToUse) + round(epiCorneaToUse);
+topEpiCornea = tipOffset + ceil(coneLengthToUse) + ceil(outerCorneaLengthToUse) + ceil(epicorneaLengthToUse);
 
 sliceSize = round([3*max(coneProfileToUse), topEpiCornea + tipOffset]);
 
 slice = zeros(sliceSize(1), sliceSize(2));
 
+%%% Continue from hear then convert to 3D
 
 slice(:) = outerValue;
 
@@ -233,12 +195,12 @@ end
 
 % Place outer cornea
 bottomOuterCornea = tipOffset + round(coneLengthToUse)+1;
-topOuterCornea = tipOffset + round(coneLengthToUse) + round(outerCorneaToUse);
+topOuterCornea = tipOffset + round(coneLengthToUse) + round(outerCorneaLengthToUse);
 slice(:, bottomOuterCornea:topOuterCornea) = outerCorneaValue;
 
 % Place epi cornea
-bottomEpiCornea = tipOffset + round(coneLengthToUse) + round(outerCorneaToUse) + 1;
-topEpiCornea = tipOffset + round(coneLengthToUse) + round(outerCorneaToUse) + round(epiCorneaToUse);
+bottomEpiCornea = tipOffset + round(coneLengthToUse) + round(outerCorneaLengthToUse) + 1;
+topEpiCornea = tipOffset + round(coneLengthToUse) + round(outerCorneaLengthToUse) + round(epicorneaLengthToUse);
 slice(:, bottomEpiCornea:topEpiCornea) = epiCorneaValue;
 
 subplot(1,3,nPlot)
