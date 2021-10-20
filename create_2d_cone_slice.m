@@ -20,9 +20,11 @@ writeLarge = 0;
 
 % For display
 nPlot = 2;
-tText = 'Mean'; %'-2 SD'; 'Mean'; 
+tText = 'Mean'; %'-2 SD'; 'Mean';
+
 %%% 1 is closest but can currently intrude as intercone defined as radius not distance
-coneStepForIntercone = 1;    
+    coneStepForIntercone = 2;    
+
 SDMult = 0;
 figure
 
@@ -36,7 +38,7 @@ useSlopedIntercone = 0;
 % innerValue = 1;
 % coneValue = 5;
 % outerCorneaValue = 4;
-% epiCorneaValue = 3;
+% epicorneaValue = 3;
 % interconeValue = 2;
 
 % RI values
@@ -44,7 +46,7 @@ outerValue = 1.33;
 innerValue = 1.34;
 coneValue = NaN;
 outerCorneaValue = 1.5;
-epiCorneaValue = 1.53;
+epicorneaValue = 1.53;
 interconeValue = 1.47;
 
 % Change to ring height for cone length
@@ -94,7 +96,6 @@ errorbar(coneXRef, meanStretchedInternalIntercone, stdStretchedInternalIntercone
 subplot(1,2,2); hold on
 errorbar(corneaXRef, meanStretchedEpicorneaInner, stdStretchedEpicorneaInner);
 
-
 coneProfileToUse =  meanStretchedCone + stdStretchedCone*SDMult;
 
 CinCProfileToUse =  meanStretchedCinC + stdStretchedCinC*SDMult;
@@ -119,17 +120,125 @@ if 0
 end
 
 % Make slice to fit dimensions
-topEpiCornea = tipOffset + ceil(coneLengthToUse) + ceil(outerCorneaLengthToUse) + ceil(epicorneaLengthToUse);
+topEpicornea = tipOffset + ceil(coneLengthToUse) + ceil(outerCorneaLengthToUse) + ceil(epicorneaLengthToUse);
 
-sliceSize = round([3*max(coneProfileToUse), topEpiCornea + tipOffset]);
+sliceSize = round([3*max(coneProfileToUse), topEpicornea + tipOffset]);
 
 slice = zeros(sliceSize(1), sliceSize(2));
 
-%%% Continue from hear then convert to 3D
+%%% Continue from here then convert to 3D
+    %%% Need to update profile placment (exposed, internal intercone, epicornea cone)
 
 slice(:) = outerValue;
 
 slice(:,1:tipOffset) = innerValue;
+
+passedExposedCone = 0;
+
+for i = 1:sliceSize(2)
+
+    % Place cone profile
+    if i > tipOffset & i <= coneLengthToUse + tipOffset
+        % avoids gap at end
+        if isnan(coneProfileToUse(i-tipOffset))
+           coneProfileToUse(i-tipOffset) = coneProfileToUse(i-tipOffset-1); 
+        end
+        
+        xPosTop = round(sliceSize(1)/2 + coneProfileToUse(i-tipOffset));
+        xPosBottom = round(sliceSize(1)/2 - coneProfileToUse(i-tipOffset));
+
+        % Fill between top and bottom
+        if ~isnan(coneValue)
+            slice(xPosBottom:xPosTop, i) = coneValue;
+        else
+            % From oliver
+            % rescale relative diameter to be 80
+            tempRI = ((xPosBottom:xPosTop)-sliceSize(1)/2)/coneProfileToUse(i-tipOffset)*80;
+            tempRI = 1.52-0.000004914*tempRI.^2;
+
+            slice(xPosBottom:xPosTop, i) = tempRI;
+        end
+
+        % Place inner value
+        slice(xPosTop+1:end, i) = innerValue;         
+        slice(1:xPosBottom-1, i) = innerValue;
+
+        % Place exposed cone and other cone profile.
+        if i > interconeLengthToUse + tipOffset
+
+            if ~isnan(exposedInterconeProfileToUse(i-tipOffset))
+                % Given exposed cone fill out too its level
+                xPosInterconeTop = round(sliceSize(1)/2 + exposedInterconeProfileToUse(i-tipOffset));
+                xPosInterconeBottom = round(sliceSize(1)/2 - exposedInterconeProfileToUse(i-tipOffset));
+
+                slice(xPosTop+1:xPosInterconeTop, i) = interconeValue;  
+                slice(xPosInterconeBottom:xPosBottom-1, i) = interconeValue;
+
+                % For some the profiles don't start until some distance after the planes...
+                passedExposedCone = 1;
+            elseif passedExposedCone
+
+                % avoids gap at end
+                if isnan(internalInterconeProfileToUse(i-tipOffset))
+                   internalInterconeProfileToUse(i-tipOffset) = internalInterconeProfileToUse(i-tipOffset-1); 
+                end
+
+                %%% Will need to modify when based on distance rather than radius...
+
+                % Fill intercone out to adjacent cone level
+                xPosInterconeTop = round(sliceSize(1)/2 + internalInterconeProfileToUse(i-tipOffset));
+                xPosInterconeBottom = round(sliceSize(1)/2 - internalInterconeProfileToUse(i-tipOffset));
+
+                slice(xPosTop+1:xPosInterconeTop, i) = interconeValue;  
+                slice(xPosInterconeBottom:xPosBottom-1, i) = interconeValue;
+
+                % Add in adjacent cone
+                if ~isnan(coneValue)
+                    slice(xPosInterconeTop+1:end, i) = coneValue;         
+                    slice(1:xPosInterconeBottom-1, i) = coneValue;
+                else
+                    % Copy in RI from current cone
+                    slice(xPosInterconeTop+1:end, i) = tempRI(1:sliceSize(1)-(xPosInterconeTop));         
+                    slice(1:xPosInterconeBottom-1, i) = tempRI(1:xPosInterconeBottom-1);
+                end
+            end
+        end
+
+        % Place cone in cone profile
+        if ~isnan(CinCProfileToUse(i-tipOffset))
+            xPosCinCTop = round(sliceSize(1)/2 + CinCProfileToUse(i-tipOffset));
+            xPosCinCBottom = round(sliceSize(1)/2 - CinCProfileToUse(i-tipOffset));
+
+            slice(xPosCinCBottom:xPosCinCTop, i) = outerCorneaValue;
+        end
+    end
+
+    % Place outer cornea value
+    if i > coneLengthToUse + tipOffset & i <= coneLengthToUse + tipOffset + outerCorneaLengthToUse
+        slice(:, i) = outerCorneaValue;
+    end    
+
+    % Place epicornea value
+    if i > coneLengthToUse + tipOffset + outerCorneaLengthToUse & ...
+            i <= coneLengthToUse + tipOffset + outerCorneaLengthToUse + epicorneaLengthToUse
+        
+        slice(:, i) = epicorneaValue;
+
+        if ~isnan(epicorneaProfileToUse(i-round(coneLengthToUse + tipOffset + outerCorneaLengthToUse)))
+            xPosCorneaTop = round(sliceSize(1)/2 + epicorneaProfileToUse(i-round(coneLengthToUse + tipOffset + outerCorneaLengthToUse)));
+            xPosCorneaBottom = round(sliceSize(1)/2 - epicorneaProfileToUse(i-round(coneLengthToUse + tipOffset + outerCorneaLengthToUse)));
+
+            slice(xPosCorneaBottom:xPosCorneaTop, i) = outerCorneaValue;
+        end
+    end
+end
+
+figure;
+imshow((slice'-1.45)/(1.54-1.45))
+
+%%
+
+%%% Cut down from here - just keep final rescalling and plotting codes...
 
 % Plot cone up to end of cone in cone length
 for i = 1:round(coneLengthToUse)
@@ -201,7 +310,7 @@ slice(:, bottomOuterCornea:topOuterCornea) = outerCorneaValue;
 % Place epi cornea
 bottomEpiCornea = tipOffset + round(coneLengthToUse) + round(outerCorneaLengthToUse) + 1;
 topEpiCornea = tipOffset + round(coneLengthToUse) + round(outerCorneaLengthToUse) + round(epicorneaLengthToUse);
-slice(:, bottomEpiCornea:topEpiCornea) = epiCorneaValue;
+slice(:, bottomEpiCornea:topEpiCornea) = epicorneaValue;
 
 subplot(1,3,nPlot)
 if ~isnan(coneValue)
