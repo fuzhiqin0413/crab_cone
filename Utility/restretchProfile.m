@@ -1,7 +1,12 @@
 function [meanStretchedProfile, stdStretchedProfile, horizReference] = restretchProfile(profiles, numProfiles, xReference, ...
-        originalRadius, originalStart, originalLength, referenceRadius, referenceLength, restretchLength, correctMissing)
+        originalRadius, originalStart, originalLength, referenceRadius, referenceLength, restretchLength, correctMissing, copyToEnd)
 
     profileStretchArray = zeros(numProfiles, restretchLength);
+
+    if copyToEnd
+            figure; subplot(1,2,1)
+            plot(profiles')
+    end
 
     for i = 1:numProfiles
        tempProfile = profiles(i,round(originalStart(i)):round(originalLength(i)));
@@ -18,12 +23,19 @@ function [meanStretchedProfile, stdStretchedProfile, horizReference] = restretch
 
        profileStretchArray(i,:) = interp1(tempXReference, tempProfile, ...
            tempXReference(1):((tempXReference(end)-tempXReference(1))/(restretchLength-1)):tempXReference(end), 'linear')/originalRadius(i);
+    
+      if copyToEnd
+         profileStretchArray(i, copyToEnd:end) = nanmean(profileStretchArray(i, copyToEnd-1:copyToEnd+1));   
+      end
     end
 
-    % Test plot to check alignment
-%     figure; plot(profileStretchArray')
-
     horizReference = 0:(restretchLength-1)/(round(referenceLength)-1):(restretchLength-1);
+
+    % Test plot to check alignment
+    if copyToEnd
+        subplot(1,2,2)
+        plot(profileStretchArray')
+    end
 
     % Take average and then stretch to intended length
     meanStretchedProfile = nanmean(profileStretchArray)*referenceRadius;
