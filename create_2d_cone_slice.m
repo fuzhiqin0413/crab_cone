@@ -29,7 +29,7 @@ SDMult = 0;
 figure
 
 tipOffset = 30; 
-interpTips = 0; % Does not seem to work well due to discritization
+reduceTips = 1; 
 bufferLength = 10;
 
 useSlopedIntercone = 0;
@@ -51,8 +51,8 @@ outerCorneaValue = 1.5;
 epicorneaValue = 1.53;
 interconeValue = 1.47;
 
-if interpTips
-    bufferOffset = 0;
+if reduceTips
+    bufferOffset = 9;
 else
     bufferOffset = 10;
 end
@@ -105,75 +105,42 @@ errorbar(coneXRef, meanStretchedCinC, stdStretchedCinC);
 errorbar(coneXRef, meanStretchedExposedIntercone, stdStretchedExposedIntercone);
 errorbar(coneXRef, meanStretchedInternalIntercone, stdStretchedInternalIntercone);
 
-if interpTips
-    % Interpolate mainCone
+if reduceTips
+    %%% Tried interpolation but didn't work well
+    % decided to add a step with half radius at top so it's not too blunt
+
+    % reduce cone tip
     goodConeInds = find(~isnan(meanStretchedCone));
     
-    % refactor so interpolation is on cone around x-axis
-    radRef = 0:meanStretchedCone(goodConeInds(1));
-    interpInds = interp1([meanStretchedCone(goodConeInds) -meanStretchedCone(goodConeInds)], ...
-        [goodConeInds goodConeInds], radRef,'spline');
-    
-    plot(mean(diff(coneXRef))*(interpInds-1), radRef, 'g-');
-    
-    % Now shift back radius given regular inds
-    indRef = floor(interpInds(1)):goodConeInds(1)-1;
-    interpRad = interp1(interpInds, radRef, indRef, 'linear');
-    indRef(interpRad < 0) = []; interpRad(interpRad < 0) = [];
-    
     % Put in profile - just do nearest for std
-    meanStretchedCone(indRef) = interpRad;
-    stdStretchedCone(indRef) = stdStretchedCone(goodConeInds(1));
+    meanStretchedCone(goodConeInds(1)-1) = meanStretchedCone(goodConeInds(1))/2;
+    stdStretchedCone(goodConeInds(1)-1) = stdStretchedCone(goodConeInds(1));
     
-    plot(coneXRef(indRef), meanStretchedCone(indRef), 'mx');
+    plot(coneXRef(goodConeInds(1)-1), meanStretchedCone(goodConeInds(1)-1), 'mx');
     
-
-    % Interpolate CinC
+    % Reduce CinC tip
     goodCinCInds = find(~isnan(meanStretchedCinC));
     
-    % refactor so interpolation is on cone around x-axis
-    radRef = meanStretchedCinC(goodCinCInds(1))/2:meanStretchedCinC(goodCinCInds(1));
-    interpInds = interp1([meanStretchedCinC(goodCinCInds) -meanStretchedCinC(goodCinCInds)], ...
-        [goodCinCInds goodCinCInds], radRef,'spline');
-    
-    plot(mean(diff(coneXRef))*(interpInds-1), radRef, 'g-');
-    
-    % Now shift back radius given regular inds
-    indRef = floor(interpInds(1)):goodCinCInds(1)-1;
-    interpRad = interp1(interpInds, radRef, indRef, 'linear');
-    indRef(interpRad < 0) = []; interpRad(interpRad < 0) = [];
-    
+    % refactor so interpolation is on cone around x-axis   
     % Put in profile - just do nearest for std
-    meanStretchedCinC(indRef) = interpRad;
-    stdStretchedCinC(indRef) = stdStretchedCinC(goodCinCInds(1));
+    meanStretchedCinC(goodCinCInds(1)-1) = meanStretchedCinC(goodCinCInds(1))/2;
+    stdStretchedCinC(goodCinCInds(1)-1) = stdStretchedCinC(goodCinCInds(1));
     
-    plot(coneXRef(indRef), meanStretchedCinC(indRef), 'mx');
+    plot(coneXRef(goodCinCInds(1)-1), meanStretchedCinC(goodCinCInds(1)-1), 'mx');
 end
 
 subplot(1,2,2); hold on
 errorbar(corneaXRef, meanStretchedEpicorneaInner, stdStretchedEpicorneaInner);
 
-if interpTips
-    % Interpolate epicornea cone
+if reduceTips
+    % reduce epicornea cone tip
     goodEpicorneaInds = find(~isnan(meanStretchedEpicorneaInner));
     
-    % refactor so interpolation is on cone around x-axis
-    radRef = meanStretchedEpicorneaInner(goodEpicorneaInds(end))/2:meanStretchedEpicorneaInner(goodEpicorneaInds(end));
-    interpInds = interp1([meanStretchedEpicorneaInner(goodEpicorneaInds) -meanStretchedEpicorneaInner(goodEpicorneaInds)], ...
-        [goodEpicorneaInds goodEpicorneaInds], radRef,'spline');
-    
-    plot(mean(diff(corneaXRef))*(interpInds-1), radRef, 'g-');
-    
-    % Now shift back radius given regular inds
-    indRef = goodEpicorneaInds(end)+1:ceil(interpInds(1));
-    interpRad = interp1(interpInds, radRef, indRef, 'linear', 'extrap');
-    indRef(interpRad < 0) = []; interpRad(interpRad < 0) = [];
-    
     % Put in profile - just do nearest for std
-    meanStretchedEpicorneaInner(indRef) = interpRad;
-    stdStretchedEpicorneaInner(indRef) = stdStretchedEpicorneaInner(goodEpicorneaInds(end));
+    meanStretchedEpicorneaInner(goodEpicorneaInds(end)+1) = meanStretchedEpicorneaInner(goodEpicorneaInds(end))/2;
+    stdStretchedEpicorneaInner(goodEpicorneaInds(end)+1) = stdStretchedEpicorneaInner(goodEpicorneaInds(end));
     
-    plot(corneaXRef(indRef), meanStretchedEpicorneaInner(indRef), 'mx');
+    plot(corneaXRef(goodEpicorneaInds(end)+1), meanStretchedEpicorneaInner(goodEpicorneaInds(end)+1), 'mx');
 end
 
 % Get profiles to use
