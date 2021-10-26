@@ -29,6 +29,8 @@ SDMult = 0;
 figure
 
 tipOffset = 30; 
+interpTips = 0; % Does not seem to work well due to discritization
+bufferLength = 10;
 
 useSlopedIntercone = 0;
 
@@ -49,24 +51,30 @@ outerCorneaValue = 1.5;
 epicorneaValue = 1.53;
 interconeValue = 1.47;
 
+if interpTips
+    bufferOffset = 0;
+else
+    bufferOffset = 10;
+end
+
+if bufferOffset > bufferLength
+    error('buffer offset to large')
+end
+
 % Change to ring height for cone length
-coneLengthToUse = mean(lengthsToPlanes(:,2)) + std(lengthsToPlanes(:,2))*SDMult;
+coneLengthToUse = (bufferLength - bufferOffset) + mean(lengthsToPlanes(:,2)) + std(lengthsToPlanes(:,2))*SDMult;
 
-interconeLengthToUse = mean(lengthsToPlanes(:,1)) + std(lengthsToPlanes(:,1))*SDMult;
+interconeLengthToUse = (bufferLength - bufferOffset) + mean(lengthsToPlanes(:,1)) + std(lengthsToPlanes(:,1))*SDMult;
 
-outerCorneaLengthToUse = mean(lengthsToPlanes(:,3)) + std(lengthsToPlanes(:,3))*SDMult - coneLengthToUse;
+outerCorneaLengthToUse = (bufferLength - bufferOffset) + mean(lengthsToPlanes(:,3)) + std(lengthsToPlanes(:,3))*SDMult - coneLengthToUse;
 
-epicorneaLengthToUse = mean(lengthsToPlanes(:,4)) + std(lengthsToPlanes(:,4))*SDMult - coneLengthToUse - outerCorneaLengthToUse;
-
-% Trim start of buffer
-bufferLength = 10;
+epicorneaLengthToUse = (bufferLength - bufferOffset) + mean(lengthsToPlanes(:,4)) + std(lengthsToPlanes(:,4))*SDMult - coneLengthToUse - outerCorneaLengthToUse;
 
 restretchLength_cone = ceil(max(lengthsToPlanes(:,2))/100)*100;
 
-% Should ref length be 50??? - Still uses full length???
 restretchLength_cornea = ceil((max(lengthsToPlanes(:,4))-min(lengthsToPlanes(:,3)))/10)*10;
 
-[meanStretchedCone, stdStretchedCone, coneXRef] = restretchProfile(coneAverage(:,bufferLength+1:end), numCones, depthTests(bufferLength+1:end), ...
+[meanStretchedCone, stdStretchedCone, coneXRef] = restretchProfile(coneAverage(:,bufferOffset+1:end), numCones, depthTests(bufferLength+1:end), ...
         coneRefDiameter, ones(numCones,1), ceil(lengthsToPlanes(:,2)), mean(coneRefDiameter), coneLengthToUse, restretchLength_cone, 0, 0, 0);
 
 % Cone in cone now stretched to full cone length
@@ -97,30 +105,76 @@ errorbar(coneXRef, meanStretchedCinC, stdStretchedCinC);
 errorbar(coneXRef, meanStretchedExposedIntercone, stdStretchedExposedIntercone);
 errorbar(coneXRef, meanStretchedInternalIntercone, stdStretchedInternalIntercone);
 
-% Interpolate CinC - shift down to 2 use curves...
-goodCinCInds = find(~isnan(meanStretchedCinC));
+if interpTips
+    % Interpolate mainCone
+    goodConeInds = find(~isnan(meanStretchedCone));
+    
+    % refactor so interpolation is on cone around x-axis
+    radRef = 0:meanStretchedCone(goodConeInds(1));
+    interpInds = interp1([meanStretchedCone(goodConeInds) -meanStretchedCone(goodConeInds)], ...
+        [goodConeInds goodConeInds], radRef,'spline');
+    
+    plot(mean(diff(coneXRef))*(interpInds-1), radRef, 'g-');
+    
+    % Now shift back radius given regular inds
+    indRef = floor(interpInds(1)):goodConeInds(1)-1;
+    interpRad = interp1(interpInds, radRef, indRef, 'linear');
+    indRef(interpRad < 0) = []; interpRad(interpRad < 0) = [];
+    
+    % Put in profile - just do nearest for std
+    meanStretchedCone(indRef) = interpRad;
+    stdStretchedCone(indRef) = stdStretchedCone(goodConeInds(1));
+    
+    plot(coneXRef(indRef), meanStretchedCone(indRef), 'mx');
+    
 
-% refactor so interpolation is on cone around x-axis
-radRef = 1:meanStretchedCinC(goodCinCInds(1));
-interpInds = interp1([meanStretchedCinC(goodCinCInds) -meanStretchedCinC(goodCinCInds)], ...
-    [goodCinCInds goodCinCInds], radRef,'spline');
-
-% meanStretchedCinC(CinCIndsToGet) = tempVals;
-plot(coneXRef(round(interpInds)), radRef, 'g-');
-
-% Now shift back raidus given regular inds
-indRef = floor(interpInds(1)):goodCinCInds(1);
-interpRad = interp1(interpInds, radRef, indRef, 'linear');
-
-indRef(interpRad < 0) = [];
-interpRad(interpRad < 0) = [];
-
-plot(indRef, interpRad, 'mx');
+    % Interpolate CinC
+    goodCinCInds = find(~isnan(meanStretchedCinC));
+    
+    % refactor so interpolation is on cone around x-axis
+    radRef = meanStretchedCinC(goodCinCInds(1))/2:meanStretchedCinC(goodCinCInds(1));
+    interpInds = interp1([meanStretchedCinC(goodCinCInds) -meanStretchedCinC(goodCinCInds)], ...
+        [goodCinCInds goodCinCInds], radRef,'spline');
+    
+    plot(mean(diff(coneXRef))*(interpInds-1), radRef, 'g-');
+    
+    % Now shift back radius given regular inds
+    indRef = floor(interpInds(1)):goodCinCInds(1)-1;
+    interpRad = interp1(interpInds, radRef, indRef, 'linear');
+    indRef(interpRad < 0) = []; interpRad(interpRad < 0) = [];
+    
+    % Put in profile - just do nearest for std
+    meanStretchedCinC(indRef) = interpRad;
+    stdStretchedCinC(indRef) = stdStretchedCinC(goodCinCInds(1));
+    
+    plot(coneXRef(indRef), meanStretchedCinC(indRef), 'mx');
+end
 
 subplot(1,2,2); hold on
 errorbar(corneaXRef, meanStretchedEpicorneaInner, stdStretchedEpicorneaInner);
-ylim([0 60])
 
+if interpTips
+    % Interpolate epicornea cone
+    goodEpicorneaInds = find(~isnan(meanStretchedEpicorneaInner));
+    
+    % refactor so interpolation is on cone around x-axis
+    radRef = meanStretchedEpicorneaInner(goodEpicorneaInds(end))/2:meanStretchedEpicorneaInner(goodEpicorneaInds(end));
+    interpInds = interp1([meanStretchedEpicorneaInner(goodEpicorneaInds) -meanStretchedEpicorneaInner(goodEpicorneaInds)], ...
+        [goodEpicorneaInds goodEpicorneaInds], radRef,'spline');
+    
+    plot(mean(diff(corneaXRef))*(interpInds-1), radRef, 'g-');
+    
+    % Now shift back radius given regular inds
+    indRef = goodEpicorneaInds(end)+1:ceil(interpInds(1));
+    interpRad = interp1(interpInds, radRef, indRef, 'linear', 'extrap');
+    indRef(interpRad < 0) = []; interpRad(interpRad < 0) = [];
+    
+    % Put in profile - just do nearest for std
+    meanStretchedEpicorneaInner(indRef) = interpRad;
+    stdStretchedEpicorneaInner(indRef) = stdStretchedEpicorneaInner(goodEpicorneaInds(end));
+    
+    plot(corneaXRef(indRef), meanStretchedEpicorneaInner(indRef), 'mx');
+end
 
 % Get profiles to use
 coneProfileToUse =  meanStretchedCone + stdStretchedCone*SDMult;
@@ -148,34 +202,42 @@ slice(:) = outerValue;
 slice(:,1:tipOffset) = innerValue;
 
 passedExposedCone = 0;
+passedConeTip = 0;
 
 for i = 1:sliceSize(2)
 
     % Place cone profile
     if i > tipOffset & i <= coneLengthToUse + tipOffset
-        % avoids gap at end
-        if isnan(coneProfileToUse(i-tipOffset))
-           coneProfileToUse(i-tipOffset) = coneProfileToUse(i-tipOffset-1); 
+
+        if ~isnan(coneProfileToUse(i-tipOffset))
+            passedConeTip = 1;
+        end 
+
+        if passedConeTip
+            % avoids gap at end
+            if isnan(coneProfileToUse(i-tipOffset)) 
+               coneProfileToUse(i-tipOffset) = coneProfileToUse(i-tipOffset-1); 
+            end
+            
+            xPosTop = round(sliceSize(1)/2 + coneProfileToUse(i-tipOffset));
+            xPosBottom = round(sliceSize(1)/2 - coneProfileToUse(i-tipOffset));
+    
+            % Fill between top and bottom
+            if ~isnan(coneValue)
+                slice(xPosBottom:xPosTop, i) = coneValue;
+            else
+                % From oliver
+                % rescale relative diameter to be 80
+                tempRI = ((xPosBottom:xPosTop)-sliceSize(1)/2)/coneProfileToUse(i-tipOffset)*80;
+                tempRI = 1.52-0.000004914*tempRI.^2;
+    
+                slice(xPosBottom:xPosTop, i) = tempRI;
+            end
+    
+            % Place inner value
+            slice(xPosTop+1:end, i) = innerValue;         
+            slice(1:xPosBottom-1, i) = innerValue;
         end
-        
-        xPosTop = round(sliceSize(1)/2 + coneProfileToUse(i-tipOffset));
-        xPosBottom = round(sliceSize(1)/2 - coneProfileToUse(i-tipOffset));
-
-        % Fill between top and bottom
-        if ~isnan(coneValue)
-            slice(xPosBottom:xPosTop, i) = coneValue;
-        else
-            % From oliver
-            % rescale relative diameter to be 80
-            tempRI = ((xPosBottom:xPosTop)-sliceSize(1)/2)/coneProfileToUse(i-tipOffset)*80;
-            tempRI = 1.52-0.000004914*tempRI.^2;
-
-            slice(xPosBottom:xPosTop, i) = tempRI;
-        end
-
-        % Place inner value
-        slice(xPosTop+1:end, i) = innerValue;         
-        slice(1:xPosBottom-1, i) = innerValue;
 
         % Place exposed cone and other cone profile.
         if i > interconeLengthToUse + tipOffset

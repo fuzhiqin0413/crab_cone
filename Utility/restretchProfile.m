@@ -78,9 +78,9 @@ function [meanStretchedProfile, stdStretchedProfile, horizReference] = restretch
                 profileStretchArray(i,1:shiftX) = NaN;
            end
 
-           subplot(1,3,2); hold on
-           plot(fittedCurve(:,1), fittedCurve(:,2), 'c')
-           plot(profileStretchArray(i,:), 'm')
+%            subplot(1,3,2); hold on
+%            plot(fittedCurve(:,1), fittedCurve(:,2), 'c')
+%            plot(profileStretchArray(i,:), 'm')
        end
     end
 
