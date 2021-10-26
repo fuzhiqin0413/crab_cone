@@ -61,9 +61,6 @@ epicorneaLengthToUse = mean(lengthsToPlanes(:,4)) + std(lengthsToPlanes(:,4))*SD
 % Trim start of buffer
 bufferLength = 10;
 
-% pixels to copy for intercone to prevent slide in. Set manually...
-copyToEnd = 292;
-
 restretchLength_cone = ceil(max(lengthsToPlanes(:,2))/100)*100;
 
 % Should ref length be 50??? - Still uses full length???
@@ -76,7 +73,7 @@ restretchLength_cornea = ceil((max(lengthsToPlanes(:,4))-min(lengthsToPlanes(:,3
     % Doesn't guarantee that cone tips are x-aligned but should match bases well...
     %%% Add in alignment for profiles
 [meanStretchedCinC, stdStretchedCinC] = restretchProfile(cInCAverage(:,bufferLength+1:end), numCones, depthTests(bufferLength+1:end), ...
-        coneRefDiameter, ones(numCones,1), ceil(lengthsToPlanes(:,2)), mean(coneRefDiameter), coneLengthToUse, restretchLength_cone, 0, 0, 1);
+        coneRefDiameter, ones(numCones,1), ceil(lengthsToPlanes(:,2)), mean(coneRefDiameter), coneLengthToUse, restretchLength_cone, 0, 1, 1);
 
 % normalised from top plane of exposed intercone, would be good to also normalize to base plane of exposed intercone
     % Shift to distance from cone - more sensible given it can start at different heights, which have different radiuses.
@@ -86,12 +83,12 @@ restretchLength_cornea = ceil((max(lengthsToPlanes(:,4))-min(lengthsToPlanes(:,3
 
 % Will switch this to be distance to cone, then it can't interfere
 [meanStretchedInternalIntercone, stdStretchedInternalIntercone] = restretchProfile(internalInterconePaths(:,bufferLength+1:end,coneStepForIntercone), numCones, depthTests(bufferLength+1:end), ...
-        coneRefDiameter, ones(numCones,1), ceil(lengthsToPlanes(:,2)), mean(coneRefDiameter), coneLengthToUse, restretchLength_cone, 1, copyToEnd, 0);
+        coneRefDiameter, ones(numCones,1), ceil(lengthsToPlanes(:,2)), mean(coneRefDiameter), coneLengthToUse, restretchLength_cone, 1, 1, 0);
 
 % epicornea cone stretch to epicornea length
     %%% Add in alignment for profiles
 [meanStretchedEpicorneaInner, stdStretchedEpicorneaInner, corneaXRef] = restretchProfile(epicorneaInnerAverage(:,bufferLength+1:end), numCones, depthTests(bufferLength+1:end), ...
-        coneRefDiameter, floor(lengthsToPlanes(:,3)), ceil(lengthsToPlanes(:,4)), mean(coneRefDiameter), epicorneaLengthToUse, restretchLength_cornea, 0, 0, 1);
+        coneRefDiameter, floor(lengthsToPlanes(:,3)), ceil(lengthsToPlanes(:,4)), mean(coneRefDiameter), epicorneaLengthToUse, restretchLength_cornea, 0, -1, 1);
 
 figure;
 subplot(1,2,1); hold on
@@ -100,9 +97,32 @@ errorbar(coneXRef, meanStretchedCinC, stdStretchedCinC);
 errorbar(coneXRef, meanStretchedExposedIntercone, stdStretchedExposedIntercone);
 errorbar(coneXRef, meanStretchedInternalIntercone, stdStretchedInternalIntercone);
 
+% Interpolate CinC - shift down to 2 use curves...
+goodCinCInds = find(~isnan(meanStretchedCinC));
+
+% refactor so interpolation is on cone around x-axis
+radRef = 1:meanStretchedCinC(goodCinCInds(1));
+interpInds = interp1([meanStretchedCinC(goodCinCInds) -meanStretchedCinC(goodCinCInds)], ...
+    [goodCinCInds goodCinCInds], radRef,'spline');
+
+% meanStretchedCinC(CinCIndsToGet) = tempVals;
+plot(coneXRef(round(interpInds)), radRef, 'g-');
+
+% Now shift back raidus given regular inds
+indRef = floor(interpInds(1)):goodCinCInds(1);
+interpRad = interp1(interpInds, radRef, indRef, 'linear');
+
+indRef(interpRad < 0) = [];
+interpRad(interpRad < 0) = [];
+
+plot(indRef, interpRad, 'mx');
+
 subplot(1,2,2); hold on
 errorbar(corneaXRef, meanStretchedEpicorneaInner, stdStretchedEpicorneaInner);
+ylim([0 60])
 
+
+% Get profiles to use
 coneProfileToUse =  meanStretchedCone + stdStretchedCone*SDMult;
 
 CinCProfileToUse =  meanStretchedCinC + stdStretchedCinC*SDMult;
@@ -112,19 +132,6 @@ exposedInterconeProfileToUse = meanStretchedExposedIntercone + stdStretchedExpos
 internalInterconeProfileToUse = meanStretchedInternalIntercone + stdStretchedInternalIntercone*SDMult;
 
 epicorneaProfileToUse = meanStretchedEpicorneaInner + stdStretchedEpicorneaInner*SDMult;
-
-%%% WTF is going on here???
-if 0
-    % Tweaking profiles - set for 0 SD
-        display('Tweaking')
-    
-        % Cut first three points from top of cone and lengthen end
-        coneProfileToUse(1:3) = [];
-        coneProfileToUse(end:end+3) = coneProfileToUse(end);
-    
-        % adjust radius on first three points of intercone
-        innerConeProfileToUse(1:3) = innerConeProfileToUse(1:3)./[3 1.25 1.1];
-end
 
 % Make slice to fit dimensions
 topEpicornea = tipOffset + ceil(coneLengthToUse) + ceil(outerCorneaLengthToUse) + ceil(epicorneaLengthToUse);
@@ -205,8 +212,8 @@ for i = 1:sliceSize(2)
                     slice(1:xPosInterconeBottom-1, i) = coneValue;
                 else
                     % Copy in RI from current cone
-                    slice(xPosInterconeTop+1:end, i) = tempRI(1:sliceSize(1)-(xPosInterconeTop));         
-                    slice(1:xPosInterconeBottom-1, i) = tempRI(1:xPosInterconeBottom-1);
+                    slice(xPosInterconeTop+1:end, i) = (tempRI(1:sliceSize(1)-(xPosInterconeTop)));         
+                    slice(1:xPosInterconeBottom-1, i) = fliplr(tempRI(1:xPosInterconeBottom-1));
                 end
             end
         end
