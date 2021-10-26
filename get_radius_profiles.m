@@ -7,8 +7,11 @@ clc
 close all
 
 voxSize = 2.18;
-
 numCones = 6; % full segmented, extra 4 not included...
+
+% If on uses distance from cone border to intercone internal and exposed
+    % If off uses distance.
+useDistance = 1;
 
 % Load in angle data
 % dataFolder = '/Users/gavintaylor/Documents/Shared VM Folder/Amira/CT images for full cone profile/Labels';
@@ -371,7 +374,6 @@ for i = 1:numCones
     epicorneaOuterAngles = atan2(rotatedEpicorneaOuter(:,1), rotatedEpicorneaOuter(:,2))+pi;
 
     % Remove radius and angles from each that are beyond limit
-
     tempFlag = zeros(length(interconeExposedRadius),1);
     tempFlag(coneRimInds) = 1;
     tempFlag(interconeExposedRadius > radiusLimit) = [];
@@ -535,7 +537,7 @@ for i = 1:numCones
     plot3(rotatedEpicorneaInner(:,1), rotatedEpicorneaInner(:,2), rotatedEpicorneaInner(:,3), '.', 'color', cols(6,:));
 
     % Get center coords as a reference
-    [~, refInd] = min(rotatedConeExposed(:,3));
+    [~, refInd] = min(rotatedConeExposed(:,3)); 
     pointCoords(i,1,:) = rotatedConeExposed(refInd,1:2);
 
     [~, refInd] = min(rotatedCinCToCone(:,3));
@@ -709,7 +711,7 @@ for i = 1:numCones
 
     % plot cleaned sides 
     figure((fExamples))
-    subplot(2,numCones,numCones+i);
+    subplot(2, numCones, numCones+i);
     for j = 1:numConesForBorder
         plot3(sideProfileSubs(:,j,1), sideProfileSubs(:,j,2), depthTests, ...
             'x', 'color', extraConeCols(j,:));
@@ -776,6 +778,60 @@ for i = 1:numCones
     interconeExposedRadius(~rotatedInterconeExposedIncluded) = [];
     rotatedInterconeExposed(~rotatedInterconeExposedIncluded, :) = [];
 
+    % Trick to carry central inds for debug
+    temp = zeros(length(rotatedInterconeExposedIncluded),1);
+    temp(centralRimInds) = 1;
+    temp(~rotatedInterconeExposedIncluded) = [];
+    centralRimInds = find(temp);
+
+    % Get distances for exposed and internal intercone
+    % firstly make image
+    minImValue = min(rotatedInterconeInternal(:,1:2));
+    tempRange = ceil(max(rotatedInterconeInternal(:,1:2)) - minImValue+1);
+    tempImage = zeros(tempRange, 'logical');
+
+    interconeExposedDistance = zeros(length(interconeExposedRadius),1)*NaN;
+    interconeInternalDistance = zeros(length(interconeInternalRadius),1)*NaN;
+
+    for j = depthTests
+
+        % Get cone inds on this level
+        tempIndsArray = find(rotatedConeExposed(:,3) == j);
+        if ~isempty(tempIndsArray)
+            tempSubs = round(rotatedConeExposed(tempIndsArray,1:2) - minImValue+1);    
+            tempIndsImage = sub2ind(tempRange, tempSubs(:,1), tempSubs(:,2));
+    
+            % Take distance map form them
+            tempImage(:) = 0;
+            tempImage(tempIndsImage) = 1;
+            tempImage = bwdist(tempImage);
+    
+            % Get distances for exposed intercone
+            tempIndsArray = find(rotatedInterconeExposed(:,3) == j);
+            if ~isempty(tempIndsArray)
+                tempSubs = round(rotatedInterconeExposed(tempIndsArray,1:2) - minImValue+1);    
+                tempIndsImage = sub2ind(tempRange, tempSubs(:,1), tempSubs(:,2));
+                interconeExposedDistance(tempIndsArray) = tempImage(tempIndsImage);
+
+%                 figure; imshow(tempImage)
+%                 hold on;
+%                 plot(tempSubs(:,2), tempSubs(:,1),'.')
+            end
+
+            % Get distances for internal intercone
+            tempIndsArray = find(rotatedInterconeInternal(:,3) == j);
+            if ~isempty(tempIndsArray)
+                tempSubs = round(rotatedInterconeInternal(tempIndsArray,1:2) - minImValue+1);    
+                tempIndsImage = sub2ind(tempRange, tempSubs(:,1), tempSubs(:,2));
+                interconeInternalDistance(tempIndsArray) = tempImage(tempIndsImage);
+            end
+        end
+    end
+
+    figure; 
+    subplot(1,2,1); plot(interconeInternalDistance, interconeInternalRadius,'.')    
+    subplot(1,2,2); plot(interconeExposedDistance, interconeExposedRadius,'.')
+
     figure((fExamples))
     subplot(2,numCones,numCones+i);
     plot3(rotatedInterconeExposed(:,1), rotatedInterconeExposed(:,2), rotatedInterconeExposed(:,3), '.', 'color', cols(5,:));
@@ -792,8 +848,13 @@ for i = 1:numCones
         [cInCAverage(i, j-min(depthTests)+1), cInCStandard(i, j-min(depthTests)+1)] = getProfileValue(rotatedCinCToCone(:,3), j, ...
                 cInCtoConeRadius, cInCtoConeAngles, minAngleRange);
 
-        [exposedInterconeAverage(i, j-min(depthTests)+1), exposedInterconeStandard(i, j-min(depthTests)+1)] = getProfileValue(rotatedInterconeExposed(:,3), j, ...
+        if useDistance
+            [exposedInterconeAverage(i, j-min(depthTests)+1), exposedInterconeStandard(i, j-min(depthTests)+1)] = getProfileValue(rotatedInterconeExposed(:,3), j, ...
+                    interconeExposedDistance, interconeExposedAngles, minAngleRange);
+        else
+            [exposedInterconeAverage(i, j-min(depthTests)+1), exposedInterconeStandard(i, j-min(depthTests)+1)] = getProfileValue(rotatedInterconeExposed(:,3), j, ...
                 interconeExposedRadius, interconeExposedAngles, minAngleRange);
+        end
 
         % for internal intercone just average closest point on side profiles
         tempInds = find(rotatedInterconeInternal(:,3) == j);
@@ -801,7 +862,11 @@ for i = 1:numCones
 
         for k = 1:numConesForBorder
             if ~isnan(profileInds)
-                internalInterconePaths(i, j-min(depthTests)+1, k) = interconeInternalRadius( tempInds( profileInds(k))); 
+                if useDistance
+                    internalInterconePaths(i, j-min(depthTests)+1, k) = interconeInternalDistance( tempInds( profileInds(k))); 
+                else
+                    internalInterconePaths(i, j-min(depthTests)+1, k) = interconeInternalRadius( tempInds( profileInds(k))); 
+                end
             end
         end
 
