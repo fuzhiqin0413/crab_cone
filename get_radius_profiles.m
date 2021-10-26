@@ -223,6 +223,7 @@ depth0Ind = find(depthTests == 0);
 numConesForBorder = 3;
 radiusMult = 1.5;
 minAngleRange = pi/2;
+interconeStepUp = 1; % avoids jumps at base, filled up later.
 
 % Storing profile data
 % Assume external epicornea and CinC to intercone is flat
@@ -476,23 +477,45 @@ for i = 1:numCones
 
     % rotating intercone is more complicated as I want to rotate around base and then apply a shear in z 
     % average top and bottom vectors
-    tempRotVec = matrix2rotatevectors([0,0,-1], (normExposedInterconeTop+normCInCBoth)/2);
+    tempRotVec = matrix2rotatevectors([0,0,-1], (normCInCBoth)/2); % +normExposedInterconeTop
     
     % rotate top centre around base centre
     newTopCentre = ([0 0 fExposedInterconeTop.p00] - [0 0 fCInCBoth.p00])*tempRotVec;
-    % Then get shear components
-    shearX = -newTopCentre(1)/newTopCentre(3);
-    shearY = -newTopCentre(2)/newTopCentre(3);
+    % Then get shear (and scale) components
+    shearX = 0; -newTopCentre(1)/newTopCentre(3);
+    shearY = 0; -newTopCentre(2)/newTopCentre(3);
+    scaleZ = 1; (fExposedInterconeTop.p00-fCInCBoth.p00)/newTopCentre(3);
 
     newTopCentre(1) = newTopCentre(1)+shearX*newTopCentre(3);
     newTopCentre(2) = newTopCentre(2)+shearY*newTopCentre(3);
+    newTopCentre(3) = newTopCentre(3)*scaleZ;
     newTopCentre = newTopCentre + [0 0 fCInCBoth.p00];
+
+    % test if rotation about 2 alos occurs - a few degrees...
+    newTopStick = ([1 0 fExposedInterconeTop.p00] - [0 0 fCInCBoth.p00])*tempRotVec;
+    newTopStick(1) = newTopStick(1)+shearX*newTopStick(3);
+    newTopStick(2) = newTopStick(2)+shearY*newTopStick(3);
+    newTopCentre(3) = scaleZ*newTopCentre(3);
+    newTopStick = newTopStick + [0 0 fCInCBoth.p00];
+    atan2(newTopStick(2),newTopStick(1))/pi*180
+
+    % quick get central inds
+    quickCentralRimInds = find(interconeExposedRadius(clippedConeRimInds) < max(coneExposedRadius)*0.8);
+
+    figure; hold on
+    plot3(rotatedConeExposed(:,1), rotatedConeExposed(:,2), rotatedConeExposed(:,3), '.', 'color', cols(1,:));
+    plot3(rotatedInterconeExposed(clippedConeRimInds(quickCentralRimInds),1), ...
+        rotatedInterconeExposed(clippedConeRimInds(quickCentralRimInds),2), rotatedInterconeExposed(clippedConeRimInds(quickCentralRimInds),3), 'xr')
+
+    mean(rotatedInterconeExposed(clippedConeRimInds(quickCentralRimInds),:))
 
     % rotate main intercone
     rotatedInterconeInternal = (rotatedInterconeInternal - [0 0 fCInCBoth.p00])*tempRotVec;
     % apply shear in z
     rotatedInterconeInternal(:,1) = rotatedInterconeInternal(:,1) + shearX*rotatedInterconeInternal(:,3);
     rotatedInterconeInternal(:,2) = rotatedInterconeInternal(:,2) + shearY*rotatedInterconeInternal(:,3);
+    % scale Z
+    rotatedInterconeInternal(:,3) = rotatedInterconeInternal(:,3) * scaleZ;
     % Shift back
     rotatedInterconeInternal = rotatedInterconeInternal + [0 0 fCInCBoth.p00];
 %     plot3(rotatedInterconeInternal(:,1), rotatedInterconeInternal(:,2), rotatedInterconeInternal(:,3), '.', 'color', cols(4,:));
@@ -502,14 +525,20 @@ for i = 1:numCones
     % apply shear in z
     rotatedInterconeExposed(:,1) = rotatedInterconeExposed(:,1) + shearX*rotatedInterconeExposed(:,3);
     rotatedInterconeExposed(:,2) = rotatedInterconeExposed(:,2) + shearY*rotatedInterconeExposed(:,3);
+    % scale Z
+    rotatedInterconeExposed(:,3) = rotatedInterconeExposed(:,3) * scaleZ;
     % Shift back
     rotatedInterconeExposed = rotatedInterconeExposed + [0 0 fCInCBoth.p00];
-%     plot3(rotatedInterconeExposed(:,1), rotatedInterconeExposed(:,2), rotatedInterconeExposed(:,3), '.', 'color', cols(5,:));
+
+    plot3(rotatedInterconeExposed(clippedConeRimInds(quickCentralRimInds),1), ...
+        rotatedInterconeExposed(clippedConeRimInds(quickCentralRimInds),2), rotatedInterconeExposed(clippedConeRimInds(quickCentralRimInds),3), 'xm')
+
+    mean(rotatedInterconeExposed(clippedConeRimInds(quickCentralRimInds),:))
 
     % Clip based on heights to planes - offset by 1 to account for some noise
-    interconeInternalAngles(rotatedInterconeInternal(:,3) > fCInCBoth.p00 - 1) = [];
-    interconeInternalRadius(rotatedInterconeInternal(:,3) > fCInCBoth.p00 - 1) = [];
-    rotatedInterconeInternal(rotatedInterconeInternal(:,3) > fCInCBoth.p00 - 1, :) = [];
+    interconeInternalAngles(rotatedInterconeInternal(:,3) > fCInCBoth.p00 - interconeStepUp) = [];
+    interconeInternalRadius(rotatedInterconeInternal(:,3) > fCInCBoth.p00 - interconeStepUp) = [];
+    rotatedInterconeInternal(rotatedInterconeInternal(:,3) > fCInCBoth.p00 - interconeStepUp, :) = [];
     plot3(rotatedInterconeInternal(:,1), rotatedInterconeInternal(:,2), rotatedInterconeInternal(:,3), '.', 'color', cols(4,:));
 
     orignalRadiusLimit = max(cInCtoConeRadius);
@@ -798,7 +827,15 @@ for i = 1:numCones
         % Get cone inds on this level
         tempIndsArray = find(rotatedConeExposed(:,3) == j);
         if ~isempty(tempIndsArray)
-            tempSubs = round(rotatedConeExposed(tempIndsArray,1:2) - minImValue+1);    
+            % if above middle of internal cone just use current border
+            if j < mean(lengthsToPlanes(i,1:2))
+                tempSubs = round(rotatedConeExposed(tempIndsArray,1:2) - minImValue+1);    
+            else
+                % if below use all border above - idea is to remove prevent jitter on slanted base
+                tempIndsArray = find(rotatedConeExposed(:,3) <= j);
+                tempSubs = round(rotatedConeExposed(tempIndsArray,1:2) - minImValue+1);   
+                warning('improve this')
+            end
             tempIndsImage = sub2ind(tempRange, tempSubs(:,1), tempSubs(:,2));
     
             % Take distance map form them
@@ -807,15 +844,15 @@ for i = 1:numCones
             tempImage = bwdist(tempImage);
     
             % Get distances for exposed intercone
-            tempIndsArray = find(rotatedInterconeExposed(:,3) == j);
+            tempIndsArray = find(rotatedInterconeExposed(centralRimInds,3) == j); % 
             if ~isempty(tempIndsArray)
-                tempSubs = round(rotatedInterconeExposed(tempIndsArray,1:2) - minImValue+1);    
+                tempSubs = round(rotatedInterconeExposed(centralRimInds(tempIndsArray),1:2) - minImValue+1);    
                 tempIndsImage = sub2ind(tempRange, tempSubs(:,1), tempSubs(:,2));
                 interconeExposedDistance(tempIndsArray) = tempImage(tempIndsImage);
 
-%                 figure; imshow(tempImage)
-%                 hold on;
-%                 plot(tempSubs(:,2), tempSubs(:,1),'.')
+                figure; imshow(tempImage)
+                hold on;
+                plot(tempSubs(:,2), tempSubs(:,1),'.')
             end
 
             % Get distances for internal intercone
@@ -828,9 +865,9 @@ for i = 1:numCones
         end
     end
 
-    figure; 
-    subplot(1,2,1); plot(interconeInternalDistance, interconeInternalRadius,'.')    
-    subplot(1,2,2); plot(interconeExposedDistance, interconeExposedRadius,'.')
+%     figure; 
+%     subplot(1,2,1); plot(interconeInternalDistance, interconeInternalRadius,'.')    
+%     subplot(1,2,2); plot(interconeExposedDistance, interconeExposedRadius,'.')
 
     figure((fExamples))
     subplot(2,numCones,numCones+i);

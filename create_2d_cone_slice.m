@@ -23,7 +23,7 @@ nPlot = 2;
 tText = 'Mean'; %'-2 SD'; 'Mean';
 
 %%% 1 is closest but can currently intrude as intercone defined as radius not distance
-    coneStepForIntercone = 2;    
+    coneStepForIntercone = 1;    
 
 SDMult = 0;
 figure
@@ -99,11 +99,9 @@ restretchLength_cornea = ceil((max(lengthsToPlanes(:,4))-min(lengthsToPlanes(:,3
         coneRefDiameter, floor(lengthsToPlanes(:,3)), ceil(lengthsToPlanes(:,4)), mean(coneRefDiameter), epicorneaLengthToUse, restretchLength_cornea, 0, -1, 1);
 
 figure;
-subplot(1,2,1); hold on
+subplot(1,3,1); hold on
 errorbar(coneXRef, meanStretchedCone, stdStretchedCone);
 errorbar(coneXRef, meanStretchedCinC, stdStretchedCinC);
-errorbar(coneXRef, meanStretchedExposedIntercone, stdStretchedExposedIntercone);
-errorbar(coneXRef, meanStretchedInternalIntercone, stdStretchedInternalIntercone);
 
 if reduceTips
     %%% Tried interpolation but didn't work well
@@ -112,33 +110,33 @@ if reduceTips
     % reduce cone tip
     goodConeInds = find(~isnan(meanStretchedCone));
     
-    % Put in profile - just do nearest for std
     meanStretchedCone(goodConeInds(1)-1) = meanStretchedCone(goodConeInds(1))/2;
-    stdStretchedCone(goodConeInds(1)-1) = stdStretchedCone(goodConeInds(1));
+    stdStretchedCone(goodConeInds(1)-1) = stdStretchedCone(goodConeInds(1))/2;
     
     plot(coneXRef(goodConeInds(1)-1), meanStretchedCone(goodConeInds(1)-1), 'mx');
     
     % Reduce CinC tip
     goodCinCInds = find(~isnan(meanStretchedCinC));
     
-    % refactor so interpolation is on cone around x-axis   
-    % Put in profile - just do nearest for std
     meanStretchedCinC(goodCinCInds(1)-1) = meanStretchedCinC(goodCinCInds(1))/2;
-    stdStretchedCinC(goodCinCInds(1)-1) = stdStretchedCinC(goodCinCInds(1));
+    stdStretchedCinC(goodCinCInds(1)-1) = stdStretchedCinC(goodCinCInds(1))/2;
     
     plot(coneXRef(goodCinCInds(1)-1), meanStretchedCinC(goodCinCInds(1)-1), 'mx');
 end
 
-subplot(1,2,2); hold on
+subplot(1,3,2); hold on
+errorbar(coneXRef, meanStretchedExposedIntercone, stdStretchedExposedIntercone);
+errorbar(coneXRef, meanStretchedInternalIntercone, stdStretchedInternalIntercone);
+
+subplot(1,3,3); hold on
 errorbar(corneaXRef, meanStretchedEpicorneaInner, stdStretchedEpicorneaInner);
 
 if reduceTips
     % reduce epicornea cone tip
     goodEpicorneaInds = find(~isnan(meanStretchedEpicorneaInner));
     
-    % Put in profile - just do nearest for std
     meanStretchedEpicorneaInner(goodEpicorneaInds(end)+1) = meanStretchedEpicorneaInner(goodEpicorneaInds(end))/2;
-    stdStretchedEpicorneaInner(goodEpicorneaInds(end)+1) = stdStretchedEpicorneaInner(goodEpicorneaInds(end));
+    stdStretchedEpicorneaInner(goodEpicorneaInds(end)+1) = stdStretchedEpicorneaInner(goodEpicorneaInds(end))/2;
     
     plot(corneaXRef(goodEpicorneaInds(end)+1), meanStretchedEpicorneaInner(goodEpicorneaInds(end)+1), 'mx');
 end
@@ -153,6 +151,19 @@ exposedInterconeProfileToUse = meanStretchedExposedIntercone + stdStretchedExpos
 internalInterconeProfileToUse = meanStretchedInternalIntercone + stdStretchedInternalIntercone*SDMult;
 
 epicorneaProfileToUse = meanStretchedEpicorneaInner + stdStretchedEpicorneaInner*SDMult;
+
+
+% Clip top of exposed cone
+for i = 1:length(internalInterconeProfileToUse)
+    if ~isnan(exposedInterconeProfileToUse(i)) & ~isnan(internalInterconeProfileToUse(i))
+
+        if exposedInterconeProfileToUse(i) > internalInterconeProfileToUse(i)
+            exposedInterconeProfileToUse(i:end) = NaN;
+            break
+        end
+    end
+end
+
 
 % Make slice to fit dimensions
 topEpicornea = tipOffset + ceil(coneLengthToUse) + ceil(outerCorneaLengthToUse) + ceil(epicorneaLengthToUse);
@@ -211,11 +222,11 @@ for i = 1:sliceSize(2)
 
             if ~isnan(exposedInterconeProfileToUse(i-tipOffset))
                 % Given exposed cone fill out too its level
-                xPosInterconeTop = round(sliceSize(1)/2 + exposedInterconeProfileToUse(i-tipOffset));
-                xPosInterconeBottom = round(sliceSize(1)/2 - exposedInterconeProfileToUse(i-tipOffset));
+                xPosInterconeTop = round(exposedInterconeProfileToUse(i-tipOffset));
+                xPosInterconeBottom = round(exposedInterconeProfileToUse(i-tipOffset));
 
-                slice(xPosTop+1:xPosInterconeTop, i) = interconeValue;  
-                slice(xPosInterconeBottom:xPosBottom-1, i) = interconeValue;
+                slice(xPosTop+1:xPosTop+xPosInterconeTop, i) = interconeValue;  
+                slice(xPosBottom-xPosInterconeBottom:xPosBottom-1, i) = interconeValue;
 
                 % For some the profiles don't start until some distance after the planes...
                 passedExposedCone = 1;
@@ -226,23 +237,21 @@ for i = 1:sliceSize(2)
                    internalInterconeProfileToUse(i-tipOffset) = internalInterconeProfileToUse(i-tipOffset-1); 
                 end
 
-                %%% Will need to modify when based on distance rather than radius...
-
                 % Fill intercone out to adjacent cone level
-                xPosInterconeTop = round(sliceSize(1)/2 + internalInterconeProfileToUse(i-tipOffset));
-                xPosInterconeBottom = round(sliceSize(1)/2 - internalInterconeProfileToUse(i-tipOffset));
+                xPosInterconeTop = round(internalInterconeProfileToUse(i-tipOffset));
+                xPosInterconeBottom = round(internalInterconeProfileToUse(i-tipOffset));
 
-                slice(xPosTop+1:xPosInterconeTop, i) = interconeValue;  
-                slice(xPosInterconeBottom:xPosBottom-1, i) = interconeValue;
+                slice(xPosTop+1:xPosTop+xPosInterconeTop, i) = interconeValue;  
+                slice(xPosBottom-xPosInterconeBottom:xPosBottom-1, i) = interconeValue;
 
                 % Add in adjacent cone
                 if ~isnan(coneValue)
-                    slice(xPosInterconeTop+1:end, i) = coneValue;         
-                    slice(1:xPosInterconeBottom-1, i) = coneValue;
+                    slice(xPosTop+xPosInterconeTop+1:end, i) = coneValue;         
+                    slice(1:xPosBottom-xPosInterconeBottom-1, i) = coneValue;
                 else
                     % Copy in RI from current cone
-                    slice(xPosInterconeTop+1:end, i) = (tempRI(1:sliceSize(1)-(xPosInterconeTop)));         
-                    slice(1:xPosInterconeBottom-1, i) = fliplr(tempRI(1:xPosInterconeBottom-1));
+                    slice(xPosTop+xPosInterconeTop+1:end, i) = tempRI(1:sliceSize(1)-(xPosTop+xPosInterconeTop));         
+                    slice(1:xPosBottom-xPosInterconeBottom-1, i) = fliplr(tempRI(1:xPosBottom-xPosInterconeBottom-1));
                 end
             end
         end
