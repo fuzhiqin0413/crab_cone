@@ -23,7 +23,7 @@ nPlot = 2;
 tText = 'Mean'; %'-2 SD'; 'Mean';
 
 %%% 1 is closest but can currently intrude as intercone defined as radius not distance
-    coneStepForIntercone = 1;    
+    coneStepForIntercone = 2;    
 
 SDMult = 0;
 figure

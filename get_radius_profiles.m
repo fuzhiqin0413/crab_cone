@@ -220,7 +220,7 @@ grid3D.maxBound = [volumeSize(1), volumeSize(2), volumeSize(3)]';
 depthTests = (-10:1000);
 depth0Ind = find(depthTests == 0);
 
-numConesForBorder = 3;
+numConesForBorder = 4;
 radiusMult = 1.5;
 minAngleRange = pi/2;
 interconeStepUp = 1; % avoids jumps at base, filled up later.
@@ -332,16 +332,13 @@ for i = 1:numCones
     %%% Note, this doesn't guarantee that rotational axes (ie. yaw) is kept constant between cones
     rotatedConeExposed = (tempConeVoxels - originalConeTip)*rotVec;
     
-    % Round height and take radius
+    % Get radius and limit
     coneExposedRadius = sqrt(rotatedConeExposed(:,1).^2 + rotatedConeExposed(:,2).^2);
-    coneExposedAngles = atan2(rotatedConeExposed(:,1), rotatedConeExposed(:,2))+pi;
-        
     radiusLimit = radiusMult*max(coneExposedRadius);
 
     % Do for other surfaces.
     rotatedInterconeExposed = (interconeExposedSubs - originalConeTip)*rotVec;
     interconeExposedRadius = sqrt(rotatedInterconeExposed(:,1).^2 + rotatedInterconeExposed(:,2).^2);
-    interconeExposedAngles = atan2(rotatedInterconeExposed(:,1), rotatedInterconeExposed(:,2))+pi;
     
     % Merge main internal intercone with borders of labelled cones.
     tempList = 1:numCones; tempList(i) = [];
@@ -354,25 +351,20 @@ for i = 1:numCones
     
     rotatedInterconeInternal = (rotatedInterconeInternal - originalConeTip)*rotVec;
     interconeInternalRadius = sqrt(rotatedInterconeInternal(:,1).^2 + rotatedInterconeInternal(:,2).^2);
-    interconeInternalAngles = atan2(rotatedInterconeInternal(:,1), rotatedInterconeInternal(:,2))+pi;
 
     % CinC is already matched pair
     rotatedCinCToCone = cInCtoConeParam(i,:).VoxelList{1}; 
     rotatedCinCToCone = (rotatedCinCToCone(:, [2 1 3]) - originalConeTip)*rotVec;
     cInCtoConeRadius = sqrt(rotatedCinCToCone(:,1).^2 + rotatedCinCToCone(:,2).^2);
-    cInCtoConeAngles = atan2(rotatedCinCToCone(:,1), rotatedCinCToCone(:,2))+pi;
 
     rotatedCInCtoIntercone = (cInCtoInterconeSubs - originalConeTip)*rotVec;
     cInCtoInterconeRadius = sqrt(rotatedCInCtoIntercone(:,1).^2 + rotatedCInCtoIntercone(:,2).^2);
-    cInCtoInterconeAngles = atan2(rotatedCInCtoIntercone(:,1), rotatedCInCtoIntercone(:,2))+pi;
     
     rotatedEpicorneaInner = (epicorneaInnerSubs - originalConeTip)*rotVec;
     epicorneaInnerRadius = sqrt(rotatedEpicorneaInner(:,1).^2 + rotatedEpicorneaInner(:,2).^2);
-    epicorneaInnerAngles = atan2(rotatedEpicorneaInner(:,1), rotatedEpicorneaInner(:,2))+pi;
-    
+
     rotatedEpicorneaOuter = (epicorneaOuterSubs - originalConeTip)*rotVec;
     epicorneaOuterRadius = sqrt(rotatedEpicorneaOuter(:,1).^2 + rotatedEpicorneaOuter(:,2).^2);
-    epicorneaOuterAngles = atan2(rotatedEpicorneaOuter(:,1), rotatedEpicorneaOuter(:,2))+pi;
 
     % Remove radius and angles from each that are beyond limit
     tempFlag = zeros(length(interconeExposedRadius),1);
@@ -380,23 +372,18 @@ for i = 1:numCones
     tempFlag(interconeExposedRadius > radiusLimit) = [];
     clippedConeRimInds = find(tempFlag);
 
-    interconeExposedAngles(interconeExposedRadius > radiusLimit) = [];
     rotatedInterconeExposed(interconeExposedRadius > radiusLimit, :) = [];
     interconeExposedRadius(interconeExposedRadius > radiusLimit) = [];
 
-    interconeInternalAngles(interconeInternalRadius > radiusLimit) = [];
     rotatedInterconeInternal(interconeInternalRadius > radiusLimit, :) = [];
     interconeInternalRadius(interconeInternalRadius > radiusLimit) = [];
     
-    cInCtoInterconeAngles(cInCtoInterconeRadius > radiusLimit) = [];
     rotatedCInCtoIntercone(cInCtoInterconeRadius > radiusLimit, :) = [];
     cInCtoInterconeRadius(cInCtoInterconeRadius > radiusLimit) = [];
     
-    epicorneaInnerAngles(epicorneaInnerRadius > radiusLimit) = [];
     rotatedEpicorneaInner(epicorneaInnerRadius > radiusLimit, :) = [];
     epicorneaInnerRadius(epicorneaInnerRadius > radiusLimit) = [];
 
-    epicorneaOuterAngles(epicorneaOuterRadius > radiusLimit) = [];
     rotatedEpicorneaOuter(epicorneaOuterRadius > radiusLimit, :) = [];
     epicorneaOuterRadius(epicorneaOuterRadius > radiusLimit) = [];
     
@@ -476,15 +463,15 @@ for i = 1:numCones
     line([0 0],[0 0],[0 300], 'color', coneCols(i,:))
 
     % rotating intercone is more complicated as I want to rotate around base and then apply a shear in z 
-    % average top and bottom vectors
+    % use CinC vector (was using exposed cones as well)
     tempRotVec = matrix2rotatevectors([0,0,-1], (normCInCBoth)/2); % +normExposedInterconeTop
     
     % rotate top centre around base centre
     newTopCentre = ([0 0 fExposedInterconeTop.p00] - [0 0 fCInCBoth.p00])*tempRotVec;
     % Then get shear (and scale) components
-    shearX = 0; -newTopCentre(1)/newTopCentre(3);
-    shearY = 0; -newTopCentre(2)/newTopCentre(3);
-    scaleZ = 1; (fExposedInterconeTop.p00-fCInCBoth.p00)/newTopCentre(3);
+    shearX = -newTopCentre(1)/newTopCentre(3);
+    shearY = -newTopCentre(2)/newTopCentre(3);
+    scaleZ = (fExposedInterconeTop.p00-fCInCBoth.p00)/newTopCentre(3);
 
     newTopCentre(1) = newTopCentre(1)+shearX*newTopCentre(3);
     newTopCentre(2) = newTopCentre(2)+shearY*newTopCentre(3);
@@ -498,16 +485,6 @@ for i = 1:numCones
     newTopCentre(3) = scaleZ*newTopCentre(3);
     newTopStick = newTopStick + [0 0 fCInCBoth.p00];
     atan2(newTopStick(2),newTopStick(1))/pi*180
-
-    % quick get central inds
-    quickCentralRimInds = find(interconeExposedRadius(clippedConeRimInds) < max(coneExposedRadius)*0.8);
-
-    figure; hold on
-    plot3(rotatedConeExposed(:,1), rotatedConeExposed(:,2), rotatedConeExposed(:,3), '.', 'color', cols(1,:));
-    plot3(rotatedInterconeExposed(clippedConeRimInds(quickCentralRimInds),1), ...
-        rotatedInterconeExposed(clippedConeRimInds(quickCentralRimInds),2), rotatedInterconeExposed(clippedConeRimInds(quickCentralRimInds),3), 'xr')
-
-    mean(rotatedInterconeExposed(clippedConeRimInds(quickCentralRimInds),:))
 
     % rotate main intercone
     rotatedInterconeInternal = (rotatedInterconeInternal - [0 0 fCInCBoth.p00])*tempRotVec;
@@ -530,37 +507,24 @@ for i = 1:numCones
     % Shift back
     rotatedInterconeExposed = rotatedInterconeExposed + [0 0 fCInCBoth.p00];
 
-    plot3(rotatedInterconeExposed(clippedConeRimInds(quickCentralRimInds),1), ...
-        rotatedInterconeExposed(clippedConeRimInds(quickCentralRimInds),2), rotatedInterconeExposed(clippedConeRimInds(quickCentralRimInds),3), 'xm')
+    % Because of shear, exposed intercone no longer fits tightly on cone    
+        % When we get central cone inds later on use those to register back
 
-    mean(rotatedInterconeExposed(clippedConeRimInds(quickCentralRimInds),:))
-
-    % Clip based on heights to planes - offset by 1 to account for some noise
-    interconeInternalAngles(rotatedInterconeInternal(:,3) > fCInCBoth.p00 - interconeStepUp) = [];
+    % Clip based on heights to planes - offset up to account for some noise
     interconeInternalRadius(rotatedInterconeInternal(:,3) > fCInCBoth.p00 - interconeStepUp) = [];
     rotatedInterconeInternal(rotatedInterconeInternal(:,3) > fCInCBoth.p00 - interconeStepUp, :) = [];
     plot3(rotatedInterconeInternal(:,1), rotatedInterconeInternal(:,2), rotatedInterconeInternal(:,3), '.', 'color', cols(4,:));
 
     orignalRadiusLimit = max(cInCtoConeRadius);
 
-%     cInCtoConeRadius(rotatedCinCToCone(:,3) > fCInCBoth.p00 - 1) = [];
-%     cInCtoConeAngles(rotatedCinCToCone(:,3) > fCInCBoth.p00 - 1) = [];
-%     rotatedCinCToCone(rotatedCinCToCone(:,3) > fCInCBoth.p00 - 1, :) = [];
-
     % can leave straggelers on border of cone in cone - also clip based on original radius
-    cInCtoConeAngles(cInCtoConeRadius > orignalRadiusLimit*0.5) = [];
     rotatedCinCToCone(cInCtoConeRadius > orignalRadiusLimit*0.5, :) = [];
     cInCtoConeRadius(cInCtoConeRadius > orignalRadiusLimit*0.5) = [];
 
     maxCinCRadius = max(cInCtoConeRadius);
     plot3(rotatedCinCToCone(:,1), rotatedCinCToCone(:,2), rotatedCinCToCone(:,3), '.', 'color', cols(2,:))
 
-%     epicorneaInnerRadius(rotatedEpicorneaInner(:,3) < fEpicorneaInner.p00 ) = [];
-%     epicorneaInnerAngles(rotatedEpicorneaInner(:,3) < fEpicorneaInner.p00 ) = [];
-%     rotatedEpicorneaInner(rotatedEpicorneaInner(:,3) < fEpicorneaInner.p00, :) = [];
-
     % now clip epicornea by max of cone in cone 
-    epicorneaInnerAngles(epicorneaInnerRadius > orignalRadiusLimit*0.75) = [];
     rotatedEpicorneaInner(epicorneaInnerRadius > orignalRadiusLimit*0.75, :) = [];
     epicorneaInnerRadius(epicorneaInnerRadius > orignalRadiusLimit*0.75) = [];
     plot3(rotatedEpicorneaInner(:,1), rotatedEpicorneaInner(:,2), rotatedEpicorneaInner(:,3), '.', 'color', cols(6,:));
@@ -574,16 +538,6 @@ for i = 1:numCones
 
     [~, refInd] = max(rotatedEpicorneaInner(:,3));
     pointCoords(i,3,:) = rotatedEpicorneaInner(refInd,1:2);
-
-    % Do z rounding 
-    rotatedConeExposed(:,3) = round(rotatedConeExposed(:,3));
-    rotatedCinCToCone(:,3) = round(rotatedCinCToCone(:,3));
-    rotatedInterconeInternal(:,3) = round(rotatedInterconeInternal(:,3));
-    rotatedInterconeExposed(:,3) = round(rotatedInterconeExposed(:,3));
-    rotatedEpicorneaInner(:,3) = round(rotatedEpicorneaInner(:,3));
-    % These two are not used
-%     rotatedCInCtoIntercone(:,3) = round(rotatedCInCtoIntercone(:,3));
-%     rotatedEpicorneaOuter(:,3) = round(rotatedEpicorneaOuter(:,3));
 
     % Split internal intercone points by cone
     % First split to indvidual cones - w/ unkown number it's easiest to do from image rather than clustering...
@@ -657,6 +611,38 @@ for i = 1:numCones
     plot(centroids(:,2) - minImValue(1) + 1, centroids(:,1) - minImValue(2) + 1, 'ro');
     numExtraCones = numConesForBorder;
 
+    % Get central rim inds by matching image region to original subscripts
+    [~, centralRimInds] = intersect(tempRimSubs, fliplr(centralRimParam.PixelList), 'rows');
+
+    centralRimInds = clippedConeRimInds(centralRimInds);
+
+    % Now we can do registration to correct for shear offset on rim and exposed intercone
+
+    figure(fIms);
+    subplot(2,numCones,i+numCones); hold on; axis equal
+    plot3(rotatedInterconeExposed(centralRimInds,1), rotatedInterconeExposed(centralRimInds,2), rotatedInterconeExposed(centralRimInds,3), 'xm')
+
+    % Do registration to main cone
+    opts.Verbose = 0;
+    opts.Registration = 'translate';
+    [~, M] = ICP_finite(rotatedConeExposed, rotatedInterconeExposed(centralRimInds,:), opts);
+    
+    % Apply translation to all exposed cone
+    rotatedInterconeExposed = rotatedInterconeExposed + M(1:3,4)';
+
+    % Lower by 1 so that the exposed intercone sits 'above' cone pixels
+    rotatedInterconeExposed(:,3) = rotatedInterconeExposed(:,3) - 1;
+
+    % Do z rounding 
+    rotatedConeExposed(:,3) = round(rotatedConeExposed(:,3));
+    rotatedCinCToCone(:,3) = round(rotatedCinCToCone(:,3));
+    rotatedInterconeInternal(:,3) = round(rotatedInterconeInternal(:,3));
+    rotatedInterconeExposed(:,3) = round(rotatedInterconeExposed(:,3));
+    rotatedEpicorneaInner(:,3) = round(rotatedEpicorneaInner(:,3));
+    % These two are not used
+%     rotatedCInCtoIntercone(:,3) = round(rotatedCInCtoIntercone(:,3));
+%     rotatedEpicorneaOuter(:,3) = round(rotatedEpicorneaOuter(:,3));
+
     % Get closest point at each depth level on each cone
     internalInterconeID = zeros(length(depthTests),numExtraCones)*NaN;
     sideProfileSubs = zeros(length(depthTests),numExtraCones,2)*NaN;
@@ -690,9 +676,6 @@ for i = 1:numCones
             end
         end
     end
-    
-    figure(fIms);
-    subplot(2,numCones,i+numCones); hold on
 
     % check for continuity in side profiles
     for j = 1:numExtraCones
@@ -747,12 +730,6 @@ for i = 1:numCones
     end
 
     % Catch exposed intercone associated with this cone
-    
-    % Firstly match image region to original subscripts
-    [~, centralRimInds] = intersect(tempRimSubs, fliplr(centralRimParam.PixelList), 'rows');
-
-    centralRimInds = clippedConeRimInds(centralRimInds);
-
     rotatedInterconeExposedIncluded = zeros(size(rotatedInterconeExposed,1),1);
     previousLevelInds = [];
 
@@ -803,7 +780,6 @@ for i = 1:numCones
     end
 
     % Remove non-flagged
-    interconeExposedAngles(~rotatedInterconeExposedIncluded) = [];
     interconeExposedRadius(~rotatedInterconeExposedIncluded) = [];
     rotatedInterconeExposed(~rotatedInterconeExposedIncluded, :) = [];
 
@@ -812,6 +788,15 @@ for i = 1:numCones
     temp(centralRimInds) = 1;
     temp(~rotatedInterconeExposedIncluded) = [];
     centralRimInds = find(temp);
+
+    % Calculate angle for all
+    coneExposedAngles = atan2(rotatedConeExposed(:,1), rotatedConeExposed(:,2))+pi;
+    interconeExposedAngles = atan2(rotatedInterconeExposed(:,1), rotatedInterconeExposed(:,2))+pi;
+    cInCtoConeAngles = atan2(rotatedCinCToCone(:,1), rotatedCinCToCone(:,2))+pi;
+    epicorneaInnerAngles = atan2(rotatedEpicorneaInner(:,1), rotatedEpicorneaInner(:,2))+pi;
+%     interconeInternalAngles = atan2(rotatedInterconeInternal(:,1), rotatedInterconeInternal(:,2))+pi
+%     cInCtoInterconeAngles = atan2(rotatedCInCtoIntercone(:,1), rotatedCInCtoIntercone(:,2))+pi;
+%     epicorneaOuterAngles = atan2(rotatedEpicorneaOuter(:,1), rotatedEpicorneaOuter(:,2))+pi;
 
     % Get distances for exposed and internal intercone
     % firstly make image
@@ -827,32 +812,51 @@ for i = 1:numCones
         % Get cone inds on this level
         tempIndsArray = find(rotatedConeExposed(:,3) == j);
         if ~isempty(tempIndsArray)
-            % if above middle of internal cone just use current border
-            if j < mean(lengthsToPlanes(i,1:2))
-                tempSubs = round(rotatedConeExposed(tempIndsArray,1:2) - minImValue+1);    
-            else
-                % if below use all border above - idea is to remove prevent jitter on slanted base
-                tempIndsArray = find(rotatedConeExposed(:,3) <= j);
-                tempSubs = round(rotatedConeExposed(tempIndsArray,1:2) - minImValue+1);   
-                warning('improve this')
-            end
+            tempSubs = round(rotatedConeExposed(tempIndsArray,1:2) - minImValue+1);  
             tempIndsImage = sub2ind(tempRange, tempSubs(:,1), tempSubs(:,2));
     
-            % Take distance map form them
+            % Put inds into image
             tempImage(:) = 0;
             tempImage(tempIndsImage) = 1;
+
+            % if past half way in embedded, start fitting ellipse and putting points in
+                %%% Helps avoid jump inon side, at least for first two cones...
+            if j > mean(lengthsToPlanes(i,1:2)) & length(tempIndsImage) > 10
+                tempEllipse = fit_ellipse(tempSubs(:,1), tempSubs(:,2));
+
+                % Check ellipse is found and it's not crazy big...
+                if ~isempty(tempEllipse.a) & ...
+                    (all(tempRange/3 > tempEllipse.a) & all(tempRange/3 > tempEllipse.b))
+
+                    R = [ cos(tempEllipse.phi) sin(tempEllipse.phi); -sin(tempEllipse.phi) cos(tempEllipse.phi) ];
+                    theta_r         = linspace(0,2*pi);
+                    ellipse_x_r     = tempEllipse.X0 + (tempEllipse.a-1)*cos( theta_r );
+                    ellipse_y_r     = tempEllipse.Y0 + (tempEllipse.b-1)*sin( theta_r );
+                    rotated_ellipse = round(R * [ellipse_x_r;ellipse_y_r]);
+    
+                    tempIndsEllipse = sub2ind(tempRange, rotated_ellipse(1,:), rotated_ellipse(2,:));
+    
+                    tempImage(tempIndsEllipse) = 1;
+    
+%                     figure;
+%                     imshow(tempImage); hold on
+%                     plot(rotated_ellipse(2,:), rotated_ellipse(1,:),'m')
+                end
+            end
+
+            % Then take distance map
             tempImage = bwdist(tempImage);
     
             % Get distances for exposed intercone
-            tempIndsArray = find(rotatedInterconeExposed(centralRimInds,3) == j); % 
+            tempIndsArray = find(rotatedInterconeExposed(:,3) == j); % centralRimInds
             if ~isempty(tempIndsArray)
-                tempSubs = round(rotatedInterconeExposed(centralRimInds(tempIndsArray),1:2) - minImValue+1);    
+                tempSubs = round(rotatedInterconeExposed((tempIndsArray),1:2) - minImValue+1);    
                 tempIndsImage = sub2ind(tempRange, tempSubs(:,1), tempSubs(:,2));
                 interconeExposedDistance(tempIndsArray) = tempImage(tempIndsImage);
 
-                figure; imshow(tempImage)
-                hold on;
-                plot(tempSubs(:,2), tempSubs(:,1),'.')
+%                 figure; imshow(tempImage)
+%                 hold on;
+%                 plot(tempSubs(:,2), tempSubs(:,1),'.')
             end
 
             % Get distances for internal intercone
@@ -872,6 +876,15 @@ for i = 1:numCones
     figure((fExamples))
     subplot(2,numCones,numCones+i);
     plot3(rotatedInterconeExposed(:,1), rotatedInterconeExposed(:,2), rotatedInterconeExposed(:,3), '.', 'color', cols(5,:));
+
+    % Recalc radius for all that are shifted (only cone isn't...)
+    cInCtoConeRadius = sqrt(rotatedCinCToCone(:,1).^2 + rotatedCinCToCone(:,2).^2);
+    interconeExposedRadius = sqrt(rotatedInterconeExposed(:,1).^2 + rotatedInterconeExposed(:,2).^2);
+    interconeInternalRadius = sqrt(rotatedInterconeInternal(:,1).^2 + rotatedInterconeInternal(:,2).^2);
+    
+%     epicorneaInnerRadius = sqrt(rotatedEpicorneaInner(:,1).^2 + rotatedEpicorneaInner(:,2).^2);
+%     epicorneaOuterRadius = sqrt(rotatedEpicorneaOuter(:,1).^2 + rotatedEpicorneaOuter(:,2).^2);
+%     cInCtoInterconeRadius = sqrt(rotatedCInCtoIntercone(:,1).^2 + rotatedCInCtoIntercone(:,2).^2);
 
     % Get profile of all features along and past cone
     for j = depthTests

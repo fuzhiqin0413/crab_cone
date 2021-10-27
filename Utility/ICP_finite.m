@@ -18,7 +18,8 @@ function [Points_Moved,M]=ICP_finite(Points_Static, Points_Moving, Options)
 %       Points_Moving : An M x 3 array with XYZ points which will move and
 %                           be registered on the static points.
 %       Options : A struct with registration options:
-%           Options.Registration: 'X', Just translation in X, no other translation or rotation
+%           Options.Registration: 'X', Just translation on X axis
+%                                 'Translate', Just translation on all axes
 %                                 'Rigid', Translation and Rotation (default)
 %                                 'Size', Rigid + Resize
 %                                 'Affine', Translation, Rotation, Resize
@@ -68,6 +69,7 @@ function [Points_Moved,M]=ICP_finite(Points_Static, Points_Moving, Options)
 
 %%% Change by Gavin Taylor Oct 2021
     % Added X option to just solve registration of X translation.
+    % Added Translate option to just solve with XYZ translations
 
 defaultoptions=struct('Registration','Rigid','TolX',0.001,'TolP',0.001,'Optimizer','fminlbfgs','Verbose', true);
 if(~exist('Options','var')),
@@ -105,6 +107,12 @@ switch (lower(Options.Registration(1)))
         scale=[1];
         % Set initial rigid parameters
         par=[0];
+    case 't',
+        if(Options.Verbose), disp('Start Rigid registration'); drawnow; end
+        % Parameter scaling of X
+        scale=[1 1 1];
+        % Set initial rigid parameters
+        par=[0 0 0];
     case 'r',
         if(Options.Verbose), disp('Start Rigid registration'); drawnow; end
         % Parameter scaling of the Translation and Rotation
@@ -300,6 +308,8 @@ par=par.*scale;
 switch(length(par))
     case 1 % X translation only
         M=make_transformation_matrix([par 0 0]);
+    case 3 % Translation only
+        M=make_transformation_matrix(par);
     case 6  % Translation and Rotation
         M=make_transformation_matrix(par(1:3),par(4:6));
     case 9  % Translation, Rotation and Resize
