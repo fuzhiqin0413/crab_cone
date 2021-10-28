@@ -22,8 +22,9 @@ writeLarge = 0;
 nPlot = 2;
 tText = 'Mean'; %'-2 SD'; 'Mean';
 
-%%% 1 is closest but can currently intrude as intercone defined as radius not distance
-    coneStepForIntercone = 2;    
+%Can be from 1 - 4, can also be equal
+interconeOnLeft = 1;
+interconeOnRight = 4;
 
 SDMult = 0;
 figure
@@ -79,22 +80,20 @@ restretchLength_cornea = ceil((max(lengthsToPlanes(:,4))-min(lengthsToPlanes(:,3
 
 % Cone in cone now stretched to full cone length
     % Doesn't guarantee that cone tips are x-aligned but should match bases well...
-    %%% Add in alignment for profiles
 [meanStretchedCinC, stdStretchedCinC] = restretchProfile(cInCAverage(:,bufferLength+1:end), numCones, depthTests(bufferLength+1:end), ...
         coneRefDiameter, ones(numCones,1), ceil(lengthsToPlanes(:,2)), mean(coneRefDiameter), coneLengthToUse, restretchLength_cone, 0, 1, 1);
 
 % normalised from top plane of exposed intercone, would be good to also normalize to base plane of exposed intercone
-    % Shift to distance from cone - more sensible given it can start at different heights, which have different radiuses.
-    %%% Add in alignment for profiles
 [meanStretchedExposedIntercone, stdStretchedExposedIntercone] = restretchProfile(exposedInterconeAverage(:,bufferLength+1:end), numCones, depthTests(bufferLength+1:end), ...
         coneRefDiameter, ones(numCones,1), ceil(lengthsToPlanes(:,2)), mean(coneRefDiameter), coneLengthToUse, restretchLength_cone, 0, 0, 1);
 
-% Will switch this to be distance to cone, then it can't interfere
-[meanStretchedInternalIntercone, stdStretchedInternalIntercone] = restretchProfile(internalInterconePaths(:,bufferLength+1:end,coneStepForIntercone), numCones, depthTests(bufferLength+1:end), ...
+[meanStretchedInternalInterconeLeft, stdStretchedInternalInterconeLeft] = restretchProfile(internalInterconePaths(:,bufferLength+1:end,interconeOnLeft), numCones, depthTests(bufferLength+1:end), ...
         coneRefDiameter, ones(numCones,1), ceil(lengthsToPlanes(:,2)), mean(coneRefDiameter), coneLengthToUse, restretchLength_cone, 1, 1, 0);
 
+[meanStretchedInternalInterconeRight, stdStretchedInternalInterconeRight] = restretchProfile(internalInterconePaths(:,bufferLength+1:end,interconeOnRight), numCones, depthTests(bufferLength+1:end), ...
+        coneRefDiameter, ones(numCones,1), ceil(lengthsToPlanes(:,2)), mean(coneRefDiameter), coneLengthToUse, restretchLength_cone, 1, 1, 0);
+    
 % epicornea cone stretch to epicornea length
-    %%% Add in alignment for profiles
 [meanStretchedEpicorneaInner, stdStretchedEpicorneaInner, corneaXRef] = restretchProfile(epicorneaInnerAverage(:,bufferLength+1:end), numCones, depthTests(bufferLength+1:end), ...
         coneRefDiameter, floor(lengthsToPlanes(:,3)), ceil(lengthsToPlanes(:,4)), mean(coneRefDiameter), epicorneaLengthToUse, restretchLength_cornea, 0, -1, 1);
 
@@ -126,7 +125,8 @@ end
 
 subplot(1,3,2); hold on
 errorbar(coneXRef, meanStretchedExposedIntercone, stdStretchedExposedIntercone);
-errorbar(coneXRef, meanStretchedInternalIntercone, stdStretchedInternalIntercone);
+errorbar(coneXRef, meanStretchedInternalInterconeLeft, stdStretchedInternalInterconeLeft);
+errorbar(coneXRef, meanStretchedInternalInterconeRight, stdStretchedInternalInterconeRight);
 
 subplot(1,3,3); hold on
 errorbar(corneaXRef, meanStretchedEpicorneaInner, stdStretchedEpicorneaInner);
@@ -148,22 +148,36 @@ CinCProfileToUse =  meanStretchedCinC + stdStretchedCinC*SDMult;
 
 exposedInterconeProfileToUse = meanStretchedExposedIntercone + stdStretchedExposedIntercone*SDMult;
 
-internalInterconeProfileToUse = meanStretchedInternalIntercone + stdStretchedInternalIntercone*SDMult;
+internalInterconeProfileToUseLeft = meanStretchedInternalInterconeLeft + stdStretchedInternalInterconeLeft*SDMult;
+
+internalInterconeProfileToUseRight = meanStretchedInternalInterconeRight + stdStretchedInternalInterconeRight*SDMult;
 
 epicorneaProfileToUse = meanStretchedEpicorneaInner + stdStretchedEpicorneaInner*SDMult;
 
+% Clip top of exposed cone on both sides
+exposedInterconeProfileToUseLeft = exposedInterconeProfileToUse;
 
-% Clip top of exposed cone
-for i = 1:length(internalInterconeProfileToUse)
-    if ~isnan(exposedInterconeProfileToUse(i)) & ~isnan(internalInterconeProfileToUse(i))
+for i = 1:length(internalInterconeProfileToUseLeft)
+    if ~isnan(exposedInterconeProfileToUseLeft(i)) & ~isnan(internalInterconeProfileToUseLeft(i))
 
-        if exposedInterconeProfileToUse(i) > internalInterconeProfileToUse(i)
-            exposedInterconeProfileToUse(i:end) = NaN;
+        if exposedInterconeProfileToUseLeft(i) > internalInterconeProfileToUseLeft(i)
+            exposedInterconeProfileToUseLeft(i:end) = NaN;
             break
         end
     end
 end
 
+exposedInterconeProfileToUseRight = exposedInterconeProfileToUse;
+
+for i = 1:length(internalInterconeProfileToUseRight)
+    if ~isnan(exposedInterconeProfileToUseRight(i)) & ~isnan(internalInterconeProfileToUseRight(i))
+
+        if exposedInterconeProfileToUseRight(i) > internalInterconeProfileToUseRight(i)
+            exposedInterconeProfileToUseRight(i:end) = NaN;
+            break
+        end
+    end
+end
 
 % Make slice to fit dimensions
 topEpicornea = tipOffset + ceil(coneLengthToUse) + ceil(outerCorneaLengthToUse) + ceil(epicorneaLengthToUse);
@@ -179,7 +193,8 @@ slice(:) = outerValue;
 
 slice(:,1:tipOffset) = innerValue;
 
-passedExposedCone = 0;
+passedExposedConeLeft = 0;
+passedExposedConeRight = 0;
 passedConeTip = 0;
 
 for i = 1:sliceSize(2)
@@ -220,38 +235,59 @@ for i = 1:sliceSize(2)
         % Place exposed cone and other cone profile.
         if i > interconeLengthToUse + tipOffset
 
-            if ~isnan(exposedInterconeProfileToUse(i-tipOffset))
+            %left
+            if ~isnan(exposedInterconeProfileToUseLeft(i-tipOffset))
                 % Given exposed cone fill out too its level
-                xPosInterconeTop = round(exposedInterconeProfileToUse(i-tipOffset));
-                xPosInterconeBottom = round(exposedInterconeProfileToUse(i-tipOffset));
-
-                slice(xPosTop+1:xPosTop+xPosInterconeTop, i) = interconeValue;  
+                xPosInterconeBottom = round(exposedInterconeProfileToUseLeft(i-tipOffset));
                 slice(xPosBottom-xPosInterconeBottom:xPosBottom-1, i) = interconeValue;
 
                 % For some the profiles don't start until some distance after the planes...
-                passedExposedCone = 1;
-            elseif passedExposedCone
-
+                passedExposedConeLeft = 1;
+                
+            elseif passedExposedConeLeft
                 % avoids gap at end
-                if isnan(internalInterconeProfileToUse(i-tipOffset))
-                   internalInterconeProfileToUse(i-tipOffset) = internalInterconeProfileToUse(i-tipOffset-1); 
+                if isnan(internalInterconeProfileToUseLeft(i-tipOffset))
+                   internalInterconeProfileToUseLeft(i-tipOffset) = internalInterconeProfileToUseLeft(i-tipOffset-1); 
                 end
 
                 % Fill intercone out to adjacent cone level
-                xPosInterconeTop = round(internalInterconeProfileToUse(i-tipOffset));
-                xPosInterconeBottom = round(internalInterconeProfileToUse(i-tipOffset));
-
-                slice(xPosTop+1:xPosTop+xPosInterconeTop, i) = interconeValue;  
+                xPosInterconeBottom = round(internalInterconeProfileToUseLeft(i-tipOffset));
                 slice(xPosBottom-xPosInterconeBottom:xPosBottom-1, i) = interconeValue;
+
+                % Add in adjacent cone
+                if ~isnan(coneValue)      
+                    slice(1:xPosBottom-xPosInterconeBottom-1, i) = coneValue;
+                else
+                    % Copy in RI from current cone     
+                    slice(1:xPosBottom-xPosInterconeBottom-1, i) = fliplr(tempRI(1:xPosBottom-xPosInterconeBottom-1));
+                end
+            end
+            
+            %right
+            if ~isnan(exposedInterconeProfileToUseRight(i-tipOffset))
+                % Given exposed cone fill out too its level
+                xPosInterconeTop = round(exposedInterconeProfileToUseRight(i-tipOffset));
+                slice(xPosTop+1:xPosTop+xPosInterconeTop, i) = interconeValue;  
+
+                % For some the profiles don't start until some distance after the planes...
+                passedExposedConeRight = 1;
+            elseif passedExposedConeRight
+                
+                % avoids gap at end
+                if isnan(meanStretchedInternalInterconeRight(i-tipOffset))
+                   meanStretchedInternalInterconeRight(i-tipOffset) = meanStretchedInternalInterconeRight(i-tipOffset-1); 
+                end
+
+                % Fill intercone out to adjacent cone level
+                xPosInterconeTop = round(meanStretchedInternalInterconeRight(i-tipOffset));
+                slice(xPosTop+1:xPosTop+xPosInterconeTop, i) = interconeValue;  
 
                 % Add in adjacent cone
                 if ~isnan(coneValue)
                     slice(xPosTop+xPosInterconeTop+1:end, i) = coneValue;         
-                    slice(1:xPosBottom-xPosInterconeBottom-1, i) = coneValue;
                 else
                     % Copy in RI from current cone
                     slice(xPosTop+xPosInterconeTop+1:end, i) = tempRI(1:sliceSize(1)-(xPosTop+xPosInterconeTop));         
-                    slice(1:xPosBottom-xPosInterconeBottom-1, i) = fliplr(tempRI(1:xPosBottom-xPosInterconeBottom-1));
                 end
             end
         end

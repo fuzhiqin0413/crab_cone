@@ -229,6 +229,8 @@ distToConeLine = 2; % for selecting intercone
 useEllipseCorrection = 0; % Tried to correct for jumpy intercone embedded profile, usually not useful
 checkInterconeProfileContinuity = 0; % could be discontinuities but now avoided
 
+offsetToNeck = 1; % offsests x to narrowest point on cone tip
+
 % Storing profile data
 % Assume external epicornea and CinC to intercone is flat
 coneAverage = zeros(numCones,length(depthTests))*NaN;
@@ -258,6 +260,7 @@ lengthsToPlanes = zeros(numCones,4);
 % Lowest point on main cone and cone in cone, highest point on epicornea cone
     % Could use these to adjust radial position so tip is centered, but adds assumption what is center of shape
 pointCoords = zeros(numCones, 3, 2);
+pointCoordsAdjusted = zeros(numCones, 3, 2);
 
 angleToCornea = zeros(numCones,1);
 
@@ -538,11 +541,23 @@ for i = 1:numCones
     [~, refInd] = min(rotatedConeExposed(:,3)); 
     pointCoords(i,1,:) = rotatedConeExposed(refInd,1:2);
 
-    [~, refInd] = min(rotatedCinCToCone(:,3));
-    pointCoords(i,2,:) = rotatedCinCToCone(refInd,1:2);
+    [minZCinC, refIndCinC] = min(rotatedCinCToCone(:,3));
+    pointCoords(i,2,:) = rotatedCinCToCone(refIndCinC,1:2);
 
-    [~, refInd] = max(rotatedEpicorneaInner(:,3));
-    pointCoords(i,3,:) = rotatedEpicorneaInner(refInd,1:2);
+    [maxZEpicornea, refIndEpicornea] = max(rotatedEpicorneaInner(:,3));
+    pointCoords(i,3,:) = rotatedEpicorneaInner(refIndEpicornea,1:2);
+    
+    % Tip of CinC or cornea cone may not lie on axis
+        % As no useful optical axis to use, adjust to height IDW average position
+    weights = 1./abs(rotatedCinCToCone(:,3)-minZCinC).^1.5; weights(refIndCinC) = 1;
+    
+    rotatedCinCToCone(:,1:2) = rotatedCinCToCone(:,1:2) - wmean(rotatedCinCToCone(:,1:2), weights*[1 1]);    
+    pointCoordsAdjusted(i,2,:) = rotatedCinCToCone(refIndCinC,1:2);
+      
+    weights = 1./abs(rotatedEpicorneaInner(:,3)-maxZEpicornea).^1.5; weights(refIndEpicornea) = 1;
+    
+    rotatedEpicorneaInner(:,1:2) = rotatedEpicorneaInner(:,1:2) - wmean(rotatedEpicorneaInner(:,1:2), weights*[1 1]);    
+    pointCoordsAdjusted(i,3,:) = rotatedEpicorneaInner(refIndEpicornea,1:2);
 
     % Split internal intercone points by cone
     % First split to indvidual cones - w/ unkown number it's easiest to do from image rather than clustering...
@@ -968,39 +983,41 @@ for i = 1:numCones
     internalInterconePaths(i,:,:) = internalInterconePaths(i,:,tempInds);
 
     % Adjust offset to narrow point
-    [narrowVal] = min(coneAverage(i,1:depth0Ind));
-    
-    % Add just for duplicates
-    narrowInd = find(coneAverage(i,1:depth0Ind) == narrowVal);
-    narrowInd = narrowInd(end);
-    
-    % Shift all back to make start point 
-    coneAverage(i, depth0Ind:end) = coneAverage(i, narrowInd:end-(depth0Ind-narrowInd));
-    coneStandard(i, depth0Ind:end) = coneStandard(i, narrowInd:end-(depth0Ind-narrowInd));
-    cInCAverage(i, depth0Ind:end) = cInCAverage(i, narrowInd:end-(depth0Ind-narrowInd));
-    cInCStandard(i, depth0Ind:end) = cInCStandard(i, narrowInd:end-(depth0Ind-narrowInd));
-    exposedInterconeAverage(i, depth0Ind:end) = exposedInterconeAverage(i, narrowInd:end-(depth0Ind-narrowInd));
-    exposedInterconeStandard(i, depth0Ind:end) = exposedInterconeStandard(i, narrowInd:end-(depth0Ind-narrowInd));
-    interconeRatio(i, depth0Ind:end) = interconeRatio(i, narrowInd:end-(depth0Ind-narrowInd));
-    for j = 1:numConesForBorder
-        internalInterconePaths(i, depth0Ind:end,j) = internalInterconePaths(i, narrowInd:end-(depth0Ind-narrowInd),j);
-    end
-    epicorneaInnerAverage(i, depth0Ind:end) = epicorneaInnerAverage(i, narrowInd:end-(depth0Ind-narrowInd));
-    epicorneaInnerStandard(i, depth0Ind:end) = epicorneaInnerStandard(i, narrowInd:end-(depth0Ind-narrowInd));
+    if offsetToNeck
+        [narrowVal] = min(coneAverage(i,1:depth0Ind));
 
-    % Remove part above narrow point
-    coneAverage(i, 1:depth0Ind-1) = NaN;
-    coneStandard(i, 1:depth0Ind-1) = NaN;
-    cInCAverage(i, 1:depth0Ind-1) = NaN;
-    cInCStandard(i, 1:depth0Ind-1) = NaN;
-    exposedInterconeAverage(i, 1:depth0Ind-1) = NaN;
-    exposedInterconeStandard(i, 1:depth0Ind-1) = NaN;
-    interconeRatio(i, 1:depth0Ind-1) = NaN;
-    for j = 1:numConesForBorder
-        internalInterconePaths(i, 1:depth0Ind-1,:) = NaN;
+        % Add just for duplicates
+        narrowInd = find(coneAverage(i,1:depth0Ind) == narrowVal);
+        narrowInd = narrowInd(end);
+
+        % Shift all back to make start point 
+        coneAverage(i, depth0Ind:end) = coneAverage(i, narrowInd:end-(depth0Ind-narrowInd));
+        coneStandard(i, depth0Ind:end) = coneStandard(i, narrowInd:end-(depth0Ind-narrowInd));
+        cInCAverage(i, depth0Ind:end) = cInCAverage(i, narrowInd:end-(depth0Ind-narrowInd));
+        cInCStandard(i, depth0Ind:end) = cInCStandard(i, narrowInd:end-(depth0Ind-narrowInd));
+        exposedInterconeAverage(i, depth0Ind:end) = exposedInterconeAverage(i, narrowInd:end-(depth0Ind-narrowInd));
+        exposedInterconeStandard(i, depth0Ind:end) = exposedInterconeStandard(i, narrowInd:end-(depth0Ind-narrowInd));
+        interconeRatio(i, depth0Ind:end) = interconeRatio(i, narrowInd:end-(depth0Ind-narrowInd));
+        for j = 1:numConesForBorder
+            internalInterconePaths(i, depth0Ind:end,j) = internalInterconePaths(i, narrowInd:end-(depth0Ind-narrowInd),j);
+        end
+        epicorneaInnerAverage(i, depth0Ind:end) = epicorneaInnerAverage(i, narrowInd:end-(depth0Ind-narrowInd));
+        epicorneaInnerStandard(i, depth0Ind:end) = epicorneaInnerStandard(i, narrowInd:end-(depth0Ind-narrowInd));
+
+        % Remove part above narrow point
+        coneAverage(i, 1:depth0Ind-1) = NaN;
+        coneStandard(i, 1:depth0Ind-1) = NaN;
+        cInCAverage(i, 1:depth0Ind-1) = NaN;
+        cInCStandard(i, 1:depth0Ind-1) = NaN;
+        exposedInterconeAverage(i, 1:depth0Ind-1) = NaN;
+        exposedInterconeStandard(i, 1:depth0Ind-1) = NaN;
+        interconeRatio(i, 1:depth0Ind-1) = NaN;
+        for j = 1:numConesForBorder
+            internalInterconePaths(i, 1:depth0Ind-1,:) = NaN;
+        end
+        epicorneaInnerAverage(i, 1:depth0Ind-1) = NaN;
+        epicorneaInnerStandard(i, 1:depth0Ind-1) = NaN;
     end
-    epicorneaInnerAverage(i, 1:depth0Ind-1) = NaN;
-    epicorneaInnerStandard(i, 1:depth0Ind-1) = NaN;
 
     % plot indvidual
     figure(fSummary)
@@ -1131,13 +1148,27 @@ title('Inner epicornea profile')
 xlabel('Distance from tip')
 ylabel('Radius')
 
-% Just check how shifted heigh pts are from origion
+%% Just check how shifted heigh pts are from origion
 figure; hold on; axis equal
 for i = 1:numCones
     plot(pointCoords(i,1,1), pointCoords(i,1,2),'o', 'color', coneCols(i,:))
     plot(pointCoords(i,2,1), pointCoords(i,2,2),'x', 'color', coneCols(i,:))
     plot(pointCoords(i,3,1), pointCoords(i,3,2),'*', 'color', coneCols(i,:))
+    
+    line([pointCoordsAdjusted(i,2,1) pointCoords(i,2,1)], [pointCoordsAdjusted(i,2,2) pointCoords(i,2,2)], 'color', coneCols(i,:))
+    line([pointCoordsAdjusted(i,3,1) pointCoords(i,3,1)], [pointCoordsAdjusted(i,3,2) pointCoords(i,3,2)], 'color', coneCols(i,:))
 end
-plot(mean(pointCoords(:,1,1)), mean(pointCoords(:,1,2)), 'ko')
-plot(mean(pointCoords(:,2,1)), mean(pointCoords(:,2,2)), 'kx')
-plot(mean(pointCoords(:,3,1)), mean(pointCoords(:,3,2)), 'k*')
+plot(0,0, 'dk', 'markersize', 10)
+
+h1 = plot(mean(pointCoords(:,1,1)), mean(pointCoords(:,1,2)), 'ko');
+
+h2 = plot(mean(pointCoords(:,2,1)), mean(pointCoords(:,2,2)), 'kx');
+line([mean(pointCoordsAdjusted(:,2,1)) mean(pointCoords(:,2,1))], ...
+    [mean(pointCoordsAdjusted(:,2,2)) mean(pointCoords(:,2,2))], 'color', 'k')
+
+h3 = plot(mean(pointCoords(:,3,1)), mean(pointCoords(:,3,2)), 'k*');
+line([mean(pointCoordsAdjusted(:,3,1)) mean(pointCoords(:,3,1))], ...
+    [mean(pointCoordsAdjusted(:,3,2)) mean(pointCoords(:,3,2))], 'color', 'k')
+
+legend([h1, h2, h3], 'Cone', 'CinC', 'CorneaCone')
+xlim([-10 10]); ylim([-10 10])
