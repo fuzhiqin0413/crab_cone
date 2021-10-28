@@ -65,7 +65,7 @@ function [meanStretchedProfile, stdStretchedProfile, horizReference] = restretch
            tempStretchedCurve = [stretchedXReference(tempInds)', profileStretchArray(i,tempInds)',  zeros(length(tempInds),1)];
 
         
-           [fittedCurve, shiftX] = ICP_finite(tempRefCurve, tempStretchedCurve, opts);
+           [fittedCurve, shiftX] = ICP_finite_extra(tempRefCurve, tempStretchedCurve, opts);
 
            shiftX = -round(shiftX(1,4));
 

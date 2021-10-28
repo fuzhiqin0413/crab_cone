@@ -1,4 +1,4 @@
-function [Points_Moved,M]=ICP_finite(Points_Static, Points_Moving, Options)
+function [Points_Moved,M]=ICP_finite_extra(Points_Static, Points_Moving, Options)
 %  This function ICP_FINITE is an kind of Iterative Closest Point
 %  registration algorithm for point clouds (vertice data) using finite
 %  difference methods.
