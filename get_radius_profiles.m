@@ -230,6 +230,7 @@ useEllipseCorrection = 0; % Tried to correct for jumpy intercone embedded profil
 checkInterconeProfileContinuity = 0; % could be discontinuities but now avoided
 
 offsetToNeck = 1; % offsests x to narrowest point on cone tip
+adjustTipCentres = 1;
 
 % Storing profile data
 % Assume external epicornea and CinC to intercone is flat
@@ -549,16 +550,20 @@ for i = 1:numCones
     
     % Tip of CinC or cornea cone may not lie on axis
         % As no useful optical axis to use, adjust to height IDW average position
-    weights = 1./abs(rotatedCinCToCone(:,3)-minZCinC).^1.5; weights(refIndCinC) = 1;
-    
-    rotatedCinCToCone(:,1:2) = rotatedCinCToCone(:,1:2) - wmean(rotatedCinCToCone(:,1:2), weights*[1 1]);    
-    pointCoordsAdjusted(i,2,:) = rotatedCinCToCone(refIndCinC,1:2);
-      
-    weights = 1./abs(rotatedEpicorneaInner(:,3)-maxZEpicornea).^1.5; weights(refIndEpicornea) = 1;
-    
-    rotatedEpicorneaInner(:,1:2) = rotatedEpicorneaInner(:,1:2) - wmean(rotatedEpicorneaInner(:,1:2), weights*[1 1]);    
-    pointCoordsAdjusted(i,3,:) = rotatedEpicorneaInner(refIndEpicornea,1:2);
+    if adjustTipCentres    
+        weights = 1./abs(rotatedCinCToCone(:,3)-minZCinC).^1.5; weights(refIndCinC) = 1;
 
+        rotatedCinCToCone(:,1:2) = rotatedCinCToCone(:,1:2) - wmean(rotatedCinCToCone(:,1:2), weights*[1 1]);    
+        pointCoordsAdjusted(i,2,:) = rotatedCinCToCone(refIndCinC,1:2);
+
+        weights = 1./abs(rotatedEpicorneaInner(:,3)-maxZEpicornea).^1.5; weights(refIndEpicornea) = 1;
+
+        rotatedEpicorneaInner(:,1:2) = rotatedEpicorneaInner(:,1:2) - wmean(rotatedEpicorneaInner(:,1:2), weights*[1 1]);    
+        pointCoordsAdjusted(i,3,:) = rotatedEpicorneaInner(refIndEpicornea,1:2);
+    else
+        pointCoordsAdjusted(i,2,:) = pointCoords(i,2,:);
+        pointCoordsAdjusted(i,3,:) = pointCoords(i,3,:);
+    end
     % Split internal intercone points by cone
     % First split to indvidual cones - w/ unkown number it's easiest to do from image rather than clustering...
     minImValue = min(rotatedInterconeExposed(clippedConeRimInds,1:2));
