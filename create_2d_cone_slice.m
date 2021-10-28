@@ -6,34 +6,20 @@ get_radius_profiles
 voxScale = 4; % Scale up factor on image for FDTD
 writeLarge = 0;
 
-%%% Switch to use profiles from CT
-% Parameters from oliver
-% interCone = 356.79/voxSize;
-% interConeSD = 24.31/voxSize;
-% use3Dintercone = 1;
-% 
-% outerCornea = 104.84/voxSize;
-% outerCorneaSD = 6.59/voxSize;
-% 
-% epiCornea = 32.68/voxSize;
-% epiCorneaSD = 2.21/voxSize;
-
 % For display
-nPlot = 2;
-tText = 'Mean'; %'-2 SD'; 'Mean';
-
-%Can be from 1 - 4, can also be equal
-interconeOnLeft = 1;
-interconeOnRight = 4;
+nPlot = 6;
+tText = '3rd X'; %'-2 SD'; 'Mean';
 
 SDMult = 0;
-figure
+% mainFig = figure;
+
+%Can be from 1 - 4, can also be equal
+interconeOnLeft = 3;
+interconeOnRight = NaN;
 
 tipOffset = 30; 
 reduceTips = 1; 
 bufferLength = 10;
-
-useSlopedIntercone = 0;
 
 % Set up parameters
 % Labels
@@ -87,10 +73,12 @@ restretchLength_cornea = ceil((max(lengthsToPlanes(:,4))-min(lengthsToPlanes(:,3
 [meanStretchedExposedIntercone, stdStretchedExposedIntercone] = restretchProfile(exposedInterconeAverage(:,bufferLength+1:end), numCones, depthTests(bufferLength+1:end), ...
         coneRefDiameter, ones(numCones,1), ceil(lengthsToPlanes(:,2)), mean(coneRefDiameter), coneLengthToUse, restretchLength_cone, 0, 0, 1);
 
-[meanStretchedInternalInterconeLeft, stdStretchedInternalInterconeLeft] = restretchProfile(internalInterconePaths(:,bufferLength+1:end,interconeOnLeft), numCones, depthTests(bufferLength+1:end), ...
+if isnan(interconeOnLeft); tempVal = 1; else; tempVal = interconeOnLeft; end
+[meanStretchedInternalInterconeLeft, stdStretchedInternalInterconeLeft] = restretchProfile(internalInterconePaths(:,bufferLength+1:end,tempVal), numCones, depthTests(bufferLength+1:end), ...
         coneRefDiameter, ones(numCones,1), ceil(lengthsToPlanes(:,2)), mean(coneRefDiameter), coneLengthToUse, restretchLength_cone, 1, 1, 0);
 
-[meanStretchedInternalInterconeRight, stdStretchedInternalInterconeRight] = restretchProfile(internalInterconePaths(:,bufferLength+1:end,interconeOnRight), numCones, depthTests(bufferLength+1:end), ...
+if isnan(interconeOnRight); tempVal = 1; else; tempVal = interconeOnRight; end
+[meanStretchedInternalInterconeRight, stdStretchedInternalInterconeRight] = restretchProfile(internalInterconePaths(:,bufferLength+1:end,tempVal), numCones, depthTests(bufferLength+1:end), ...
         coneRefDiameter, ones(numCones,1), ceil(lengthsToPlanes(:,2)), mean(coneRefDiameter), coneLengthToUse, restretchLength_cone, 1, 1, 0);
     
 % epicornea cone stretch to epicornea length
@@ -157,24 +145,28 @@ epicorneaProfileToUse = meanStretchedEpicorneaInner + stdStretchedEpicorneaInner
 % Clip top of exposed cone on both sides
 exposedInterconeProfileToUseLeft = exposedInterconeProfileToUse;
 
-for i = 1:length(internalInterconeProfileToUseLeft)
-    if ~isnan(exposedInterconeProfileToUseLeft(i)) & ~isnan(internalInterconeProfileToUseLeft(i))
+if ~isnan(interconeOnLeft)
+    for i = 1:length(internalInterconeProfileToUseLeft)
+        if ~isnan(exposedInterconeProfileToUseLeft(i)) & ~isnan(internalInterconeProfileToUseLeft(i))
 
-        if exposedInterconeProfileToUseLeft(i) > internalInterconeProfileToUseLeft(i)
-            exposedInterconeProfileToUseLeft(i:end) = NaN;
-            break
+            if exposedInterconeProfileToUseLeft(i) > internalInterconeProfileToUseLeft(i)
+                exposedInterconeProfileToUseLeft(i:end) = NaN;
+                break
+            end
         end
     end
 end
 
 exposedInterconeProfileToUseRight = exposedInterconeProfileToUse;
 
-for i = 1:length(internalInterconeProfileToUseRight)
-    if ~isnan(exposedInterconeProfileToUseRight(i)) & ~isnan(internalInterconeProfileToUseRight(i))
+if ~isnan(interconeOnRight)
+    for i = 1:length(internalInterconeProfileToUseRight)
+        if ~isnan(exposedInterconeProfileToUseRight(i)) & ~isnan(internalInterconeProfileToUseRight(i))
 
-        if exposedInterconeProfileToUseRight(i) > internalInterconeProfileToUseRight(i)
-            exposedInterconeProfileToUseRight(i:end) = NaN;
-            break
+            if exposedInterconeProfileToUseRight(i) > internalInterconeProfileToUseRight(i)
+                exposedInterconeProfileToUseRight(i:end) = NaN;
+                break
+            end
         end
     end
 end
@@ -200,7 +192,7 @@ passedConeTip = 0;
 for i = 1:sliceSize(2)
 
     % Place cone profile
-    if i > tipOffset & i <= coneLengthToUse + tipOffset
+    if i > tipOffset & i <= round(coneLengthToUse) + tipOffset
 
         if ~isnan(coneProfileToUse(i-tipOffset))
             passedConeTip = 1;
@@ -233,7 +225,7 @@ for i = 1:sliceSize(2)
         end
 
         % Place exposed cone and other cone profile.
-        if i > interconeLengthToUse + tipOffset
+        if i > round(interconeLengthToUse) + tipOffset
 
             %left
             if ~isnan(exposedInterconeProfileToUseLeft(i-tipOffset))
@@ -245,21 +237,30 @@ for i = 1:sliceSize(2)
                 passedExposedConeLeft = 1;
                 
             elseif passedExposedConeLeft
-                % avoids gap at end
-                if isnan(internalInterconeProfileToUseLeft(i-tipOffset))
-                   internalInterconeProfileToUseLeft(i-tipOffset) = internalInterconeProfileToUseLeft(i-tipOffset-1); 
-                end
+                if ~isnan(interconeOnLeft)
+                    % avoids gap at end
+                    if isnan(internalInterconeProfileToUseLeft(i-tipOffset))
+                       internalInterconeProfileToUseLeft(i-tipOffset) = internalInterconeProfileToUseLeft(i-tipOffset-1); 
+                    end
 
-                % Fill intercone out to adjacent cone level
-                xPosInterconeBottom = round(internalInterconeProfileToUseLeft(i-tipOffset));
-                slice(xPosBottom-xPosInterconeBottom:xPosBottom-1, i) = interconeValue;
+                    % Fill intercone out to adjacent cone level
+                    xPosInterconeBottom = round(internalInterconeProfileToUseLeft(i-tipOffset));
 
-                % Add in adjacent cone
-                if ~isnan(coneValue)      
-                    slice(1:xPosBottom-xPosInterconeBottom-1, i) = coneValue;
+                    % Add in adjacent cone
+                    if xPosBottom-xPosInterconeBottom-1 >= 1
+                        slice(xPosBottom-xPosInterconeBottom:xPosBottom-1, i) = interconeValue;
+
+                        if ~isnan(coneValue)      
+                            slice(1:xPosBottom-xPosInterconeBottom-1, i) = coneValue;
+                        else
+                            % Copy in RI from current cone     
+                            slice(1:xPosBottom-xPosInterconeBottom-1, i) = fliplr(tempRI(1:xPosBottom-xPosInterconeBottom-1));
+                        end
+                    else
+                        slice(1:xPosBottom-1, i) = interconeValue;
+                    end
                 else
-                    % Copy in RI from current cone     
-                    slice(1:xPosBottom-xPosInterconeBottom-1, i) = fliplr(tempRI(1:xPosBottom-xPosInterconeBottom-1));
+                    slice(1:xPosBottom-1, i) = interconeValue;
                 end
             end
             
@@ -272,22 +273,30 @@ for i = 1:sliceSize(2)
                 % For some the profiles don't start until some distance after the planes...
                 passedExposedConeRight = 1;
             elseif passedExposedConeRight
-                
-                % avoids gap at end
-                if isnan(meanStretchedInternalInterconeRight(i-tipOffset))
-                   meanStretchedInternalInterconeRight(i-tipOffset) = meanStretchedInternalInterconeRight(i-tipOffset-1); 
-                end
+                if ~isnan(interconeOnRight)
+                    % avoids gap at end
+                    if isnan(internalInterconeProfileToUseRight(i-tipOffset))
+                       internalInterconeProfileToUseRight(i-tipOffset) = internalInterconeProfileToUseRight(i-tipOffset-1); 
+                    end
 
-                % Fill intercone out to adjacent cone level
-                xPosInterconeTop = round(meanStretchedInternalInterconeRight(i-tipOffset));
-                slice(xPosTop+1:xPosTop+xPosInterconeTop, i) = interconeValue;  
+                    % Fill intercone out to adjacent cone level
+                    xPosInterconeTop = round(internalInterconeProfileToUseRight(i-tipOffset));
 
-                % Add in adjacent cone
-                if ~isnan(coneValue)
-                    slice(xPosTop+xPosInterconeTop+1:end, i) = coneValue;         
+                    % Add in adjacent cone
+                    if xPosTop+xPosInterconeTop+1 <= sliceSize(1)
+                        slice(xPosTop+1:xPosTop+xPosInterconeTop, i) = interconeValue;  
+
+                        if ~isnan(coneValue)
+                            slice(xPosTop+xPosInterconeTop+1:end, i) = coneValue;         
+                        else
+                            % Copy in RI from current cone
+                            slice(xPosTop+xPosInterconeTop+1:end, i) = tempRI(1:sliceSize(1)-(xPosTop+xPosInterconeTop));         
+                        end
+                    else
+                        slice(xPosTop+1:end, i) = interconeValue;  
+                    end
                 else
-                    % Copy in RI from current cone
-                    slice(xPosTop+xPosInterconeTop+1:end, i) = tempRI(1:sliceSize(1)-(xPosTop+xPosInterconeTop));         
+                    slice(xPosTop+1:end, i) = interconeValue; 
                 end
             end
         end
@@ -302,13 +311,13 @@ for i = 1:sliceSize(2)
     end
 
     % Place outer cornea value
-    if i > coneLengthToUse + tipOffset & i <= coneLengthToUse + tipOffset + outerCorneaLengthToUse
+    if i > round(coneLengthToUse) + tipOffset & i <= round(coneLengthToUse + outerCorneaLengthToUse) + tipOffset
         slice(:, i) = outerCorneaValue;
     end    
 
     % Place epicornea value
-    if i > coneLengthToUse + tipOffset + outerCorneaLengthToUse & ...
-            i <= coneLengthToUse + tipOffset + outerCorneaLengthToUse + epicorneaLengthToUse
+    if i > round(coneLengthToUse + outerCorneaLengthToUse) + tipOffset & ...
+            i <= round(coneLengthToUse + outerCorneaLengthToUse + epicorneaLengthToUse) + tipOffset
         
         slice(:, i) = epicorneaValue;
 
@@ -321,30 +330,27 @@ for i = 1:sliceSize(2)
     end
 end
 
-figure;
-imshow((slice'-1.45)/(1.54-1.45))
+figure(mainFig);
 
-if 0
-    subplot(1,3,nPlot)
-    if ~isnan(coneValue)
-        imshow(slice'/(max(slice(:))+1))
-    else
-        imshow((slice'-1.45)/(1.54-1.45))
-    end
-        title(tText);
-        
+subplot(2,3,nPlot)
+if ~isnan(coneValue)
+    imshow(slice'/(max(slice(:))+1))
+else
+    imshow((slice'-1.45)/(1.54-1.45))
+end
+title(tText);
+
+if writeLarge
     largerImg = imresize(slice, voxScale,'nearest'); 
     
-    if writeLarge 
-        currentDirectory = pwd; 
-        cd('/Users/gavintaylor/Desktop')
-    
-        warning('check names are correct')
-    
-        writematrix(largerImg,'500_average_cone_0_sd.csv') 
-        cd(pwd)
+    currentDirectory = pwd; 
+    cd('/Users/gavintaylor/Desktop')
 
-        figure;
-        imshow((largerImg'-1.45)/(1.54-1.45))
-    end
+    warning('check names are correct')
+
+    writematrix(largerImg,'500_average_cone_0_sd.csv') 
+    cd(pwd)
+
+    figure;
+    imshow((largerImg'-1.45)/(1.54-1.45))
 end

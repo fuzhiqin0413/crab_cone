@@ -3,7 +3,7 @@ function [meanStretchedProfile, stdStretchedProfile, horizReference] = restretch
 
     profileStretchArray = zeros(numProfiles, restretchLength);
 
-    testPlot = 1;
+    testPlot = 0;
 
     if alignProfiles & testPlot
          figure; subplot(1,3,1); hold on
