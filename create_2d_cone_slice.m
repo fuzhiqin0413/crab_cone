@@ -3,24 +3,31 @@ get_radius_profiles
 %% 
 %  close all
 
-voxScale = 4; % Scale up factor on image for FDTD
+voxScale = voxSize/0.5; % Scale up factor on image for FDTD
 writeLarge = 0;
 
 % For display
-nPlot = 6;
-tText = '3rd X'; %'-2 SD'; 'Mean';
+nPlot = 2;
+tText = ''; %'-2 SD'; 'Mean';
 
 SDMult = 0;
-% mainFig = figure;
+mainFig = figure;
 
 %Can be from 1 - 4, can also be equal
-interconeOnLeft = 3;
+interconeOnLeft = NaN;
 interconeOnRight = NaN;
 
 tipOffset = 30; 
-reduceTips = 1; 
 bufferLength = 10;
+ 
+reduceTipsCone = 1;
+reduceTipsCinC = 1;
+reduceTipsCornea = 1;
 
+smoothProfiles = 1;
+    smoothLength = 5;
+    smoothLengthIntercone = 20;
+    
 % Set up parameters
 % Labels
 % outerValue = 0;
@@ -33,12 +40,13 @@ bufferLength = 10;
 % RI values
 outerValue = 1.33;
 innerValue = 1.34;
-coneValue = NaN;
+coneValue = 'radial'; %'radial', 'linear' 'both'
+    changeConeTip = 1;
 outerCorneaValue = 1.5;
 epicorneaValue = 1.53;
 interconeValue = 1.47;
 
-if reduceTips
+if reduceTipsCone
     bufferOffset = 9;
 else
     bufferOffset = 10;
@@ -90,7 +98,7 @@ subplot(1,3,1); hold on
 errorbar(coneXRef, meanStretchedCone, stdStretchedCone);
 errorbar(coneXRef, meanStretchedCinC, stdStretchedCinC);
 
-if reduceTips
+if reduceTipsCone
     %%% Tried interpolation but didn't work well
     % decided to add a step with half radius at top so it's not too blunt
 
@@ -101,7 +109,9 @@ if reduceTips
     stdStretchedCone(goodConeInds(1)-1) = stdStretchedCone(goodConeInds(1))/2;
     
     plot(coneXRef(goodConeInds(1)-1), meanStretchedCone(goodConeInds(1)-1), 'mx');
-    
+end
+
+if reduceTipsCinC
     % Reduce CinC tip
     goodCinCInds = find(~isnan(meanStretchedCinC));
     
@@ -119,7 +129,7 @@ errorbar(coneXRef, meanStretchedInternalInterconeRight, stdStretchedInternalInte
 subplot(1,3,3); hold on
 errorbar(corneaXRef, meanStretchedEpicorneaInner, stdStretchedEpicorneaInner);
 
-if reduceTips
+if reduceTipsCornea
     % reduce epicornea cone tip
     goodEpicorneaInds = find(~isnan(meanStretchedEpicorneaInner));
     
@@ -131,16 +141,22 @@ end
 
 % Get profiles to use
 coneProfileToUse =  meanStretchedCone + stdStretchedCone*SDMult;
+coneProfileToUse(coneProfileToUse < 0) = NaN;
 
 CinCProfileToUse =  meanStretchedCinC + stdStretchedCinC*SDMult;
+CinCProfileToUse(CinCProfileToUse < 0) = NaN;
 
 exposedInterconeProfileToUse = meanStretchedExposedIntercone + stdStretchedExposedIntercone*SDMult;
+exposedInterconeProfileToUse(exposedInterconeProfileToUse < 0) = 0;
 
 internalInterconeProfileToUseLeft = meanStretchedInternalInterconeLeft + stdStretchedInternalInterconeLeft*SDMult;
+internalInterconeProfileToUseLeft(internalInterconeProfileToUseLeft < 0) = 0;
 
 internalInterconeProfileToUseRight = meanStretchedInternalInterconeRight + stdStretchedInternalInterconeRight*SDMult;
+internalInterconeProfileToUseRight(internalInterconeProfileToUseRight < 0) = 0;
 
 epicorneaProfileToUse = meanStretchedEpicorneaInner + stdStretchedEpicorneaInner*SDMult;
+epicorneaProfileToUse(epicorneaProfileToUse < 0) = 0;
 
 % Clip top of exposed cone on both sides
 exposedInterconeProfileToUseLeft = exposedInterconeProfileToUse;
@@ -171,12 +187,58 @@ if ~isnan(interconeOnRight)
     end
 end
 
+if smoothProfiles
+    
+    temp = isnan(coneProfileToUse);
+    coneProfileToUse = smooth(coneXRef, coneProfileToUse, smoothLength);
+    coneProfileToUse(temp) = NaN;
+    
+    temp = isnan(CinCProfileToUse);
+    CinCProfileToUse = smooth(coneXRef, CinCProfileToUse, smoothLength);
+    CinCProfileToUse(temp) = NaN;
+    
+    temp = isnan(exposedInterconeProfileToUseLeft);
+    exposedInterconeProfileToUseLeft = smooth(coneXRef, exposedInterconeProfileToUseLeft, smoothLength);
+    exposedInterconeProfileToUseLeft(temp) = NaN;
+    
+    temp = isnan(exposedInterconeProfileToUseRight);
+    exposedInterconeProfileToUseRight = smooth(coneXRef, exposedInterconeProfileToUseRight, smoothLength);
+    exposedInterconeProfileToUseRight(temp) = NaN;
+    
+    temp = isnan(internalInterconeProfileToUseLeft);
+    internalInterconeProfileToUseLeft = smooth(coneXRef, internalInterconeProfileToUseLeft, smoothLengthIntercone);
+    internalInterconeProfileToUseLeft(temp) = NaN;
+    
+    temp = isnan(internalInterconeProfileToUseRight);
+    internalInterconeProfileToUseRight = smooth(coneXRef, internalInterconeProfileToUseRight, smoothLengthIntercone);
+    internalInterconeProfileToUseRight(temp) = NaN;
+    
+    temp = isnan(epicorneaProfileToUse);
+    epicorneaProfileToUse = smooth(corneaXRef, epicorneaProfileToUse, smoothLength);
+    epicorneaProfileToUse(temp) = NaN;
+end
+
+subplot(1,3,1); hold on
+plot(coneXRef, coneProfileToUse);
+plot(coneXRef, CinCProfileToUse);
+
+subplot(1,3,2); hold on
+plot(coneXRef, exposedInterconeProfileToUseLeft);
+plot(coneXRef, exposedInterconeProfileToUseRight);
+plot(coneXRef, internalInterconeProfileToUseLeft);
+plot(coneXRef, internalInterconeProfileToUseRight);
+
+subplot(1,3,3); hold on
+plot(corneaXRef, epicorneaProfileToUse);
+
 % Make slice to fit dimensions
 topEpicornea = tipOffset + ceil(coneLengthToUse) + ceil(outerCorneaLengthToUse) + ceil(epicorneaLengthToUse);
 
 sliceSize = round([3*max(coneProfileToUse), topEpicornea + tipOffset]);
 
 slice = zeros(sliceSize(1), sliceSize(2));
+coneMap = zeros(sliceSize(1), sliceSize(2));
+distMap = zeros(sliceSize(1), sliceSize(2), 'logical');
 
 %%% Continue from here then convert to 3D
     %%% Need to update profile placment (exposed, internal intercone, epicornea cone)
@@ -189,6 +251,37 @@ passedExposedConeLeft = 0;
 passedExposedConeRight = 0;
 passedConeTip = 0;
 
+% Get distance map of cone shape
+distMap(:,1:tipOffset) = 1;
+
+for i = 1:sliceSize(2)
+    if i > tipOffset & i <= round(coneLengthToUse) + tipOffset
+
+        if ~isnan(coneProfileToUse(i-tipOffset))
+            passedConeTip = 1;
+        else
+            distMap(:,i) = 1;
+        end
+        
+        % avoids gap at end
+        if passedConeTip
+            if isnan(coneProfileToUse(i-tipOffset)) 
+               coneProfileToUse(i-tipOffset) = coneProfileToUse(i-tipOffset-1); 
+            end
+
+            xPosTop = round(sliceSize(1)/2 + coneProfileToUse(i-tipOffset));
+            xPosBottom = round(sliceSize(1)/2 - coneProfileToUse(i-tipOffset));
+                        
+            distMap(xPosTop+1:end, i) = 1;
+            distMap(1:xPosBottom-1, i) = 1;
+        end
+    end
+end
+
+distMap = bwdist(distMap,'chessboard');
+
+passedConeTip = 0;
+
 for i = 1:sliceSize(2)
 
     % Place cone profile
@@ -196,29 +289,59 @@ for i = 1:sliceSize(2)
 
         if ~isnan(coneProfileToUse(i-tipOffset))
             passedConeTip = 1;
-        end 
+        end
 
         if passedConeTip
-            % avoids gap at end
-            if isnan(coneProfileToUse(i-tipOffset)) 
-               coneProfileToUse(i-tipOffset) = coneProfileToUse(i-tipOffset-1); 
-            end
-            
             xPosTop = round(sliceSize(1)/2 + coneProfileToUse(i-tipOffset));
             xPosBottom = round(sliceSize(1)/2 - coneProfileToUse(i-tipOffset));
-    
+        
             % Fill between top and bottom
-            if ~isnan(coneValue)
+            if isnumeric(coneValue)
                 slice(xPosBottom:xPosTop, i) = coneValue;
-            else
-                % From oliver
+            elseif ischar(coneValue)
                 % rescale relative diameter to be 80
-                tempRI = ((xPosBottom:xPosTop)-sliceSize(1)/2)/coneProfileToUse(i-tipOffset)*80;
-                tempRI = 1.52-0.000004914*tempRI.^2;
+%                 tempRadius = abs((xPosBottom:xPosTop)-sliceSize(1)/2)/coneProfileToUse(i-tipOffset)*80;
+                
+                tempRadius = distMap(xPosBottom:xPosTop,i);
+
+                %%% Adjust this correction
+                if max(tempRadius) < coneProfileToUse(i-tipOffset)/4
+                    tempRadius = (1-(tempRadius/max(tempRadius))+1)/(max(tempRadius)+1);
+                    
+                    tempRadius = tempRadius/max(tempRadius);
+                else
+%                     tempRadius = tempRadius/coneProfileToUse(i-tipOffset);
+%                     tempRadius = -(tempRadius - max(tempRadius));
+                    
+                    tempRadius = abs((xPosBottom:xPosTop)-sliceSize(1)/2)/coneProfileToUse(i-tipOffset);
+                end
+                
+                tempRadius = tempRadius*80;
+                
+                % rescale length relative to full cone
+                tempZ = (coneLengthToUse-(i-tipOffset))/coneLengthToUse;
+                
+                switch coneValue
+                    case 'radial'
+                        % Original
+%                         tempRI = 1.52-0.000004914*tempRadius.^2;
+                        
+                        % For for linear contribution
+                        tempRI = 1.5+(0.01)-0.00000612*tempRadius.^2;
+                        
+                    case 'linear'
+                        tempRI = 1.5+(tempZ*0.01+0.01);
+                        
+                    case 'both'
+                        tempRI = 1.5+(tempZ*0.01+0.01)-0.00000612*tempRadius.^2;
+                        
+                end
     
                 slice(xPosBottom:xPosTop, i) = tempRI;
             end
     
+            coneMap(xPosBottom:xPosTop, i) = (coneLengthToUse-(i-tipOffset))/coneLengthToUse;
+            
             % Place inner value
             slice(xPosTop+1:end, i) = innerValue;         
             slice(1:xPosBottom-1, i) = innerValue;
@@ -307,6 +430,8 @@ for i = 1:sliceSize(2)
             xPosCinCBottom = round(sliceSize(1)/2 - CinCProfileToUse(i-tipOffset));
 
             slice(xPosCinCBottom:xPosCinCTop, i) = outerCorneaValue;
+            
+            coneMap(xPosCinCBottom:xPosCinCTop, i) = 0;
         end
     end
 
@@ -330,14 +455,22 @@ for i = 1:sliceSize(2)
     end
 end
 
+if 0 %changeConeTip
+    indsToPlot = find(coneMap);
+    
+    figure;
+    plot3(distMap(indsToPlot), slice(indsToPlot), coneMap(indsToPlot), '.')
+end
+
 figure(mainFig);
 
-subplot(2,3,nPlot)
-if ~isnan(coneValue)
-    imshow(slice'/(max(slice(:))+1))
+subplot(1,3,nPlot)
+if ~ischar(coneValue)
+    imshow(slice'/~(max(slice(:))+1))
 else
     imshow((slice'-1.45)/(1.54-1.45))
 end
+
 title(tText);
 
 if writeLarge
