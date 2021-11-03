@@ -7,11 +7,11 @@ voxScale = voxSize/0.5; % Scale up factor on image for FDTD
 writeLarge = 0;
 
 % For display
-nPlot = 2;
-tText = ''; %'-2 SD'; 'Mean';
+nPlot = 4;
+tText = 'Mix x1'; %'-2 SD'; 'Mean';
 
 SDMult = 0;
-mainFig = figure;
+% mainFig = figure;
 
 %Can be from 1 - 4, can also be equal
 interconeOnLeft = NaN;
@@ -27,6 +27,10 @@ reduceTipsCornea = 1;
 smoothProfiles = 1;
     smoothLength = 5;
     smoothLengthIntercone = 20;
+
+tipGradientCorrection = 1;    
+    correctionType = 'both'; %'distance', 'height', 'both'
+    correctionScale = 1;
     
 % Set up parameters
 % Labels
@@ -278,9 +282,11 @@ for i = 1:sliceSize(2)
     end
 end
 
-distMap = bwdist(distMap,'chessboard');
+distMap = bwdist(distMap,'quasi-euclidean');
 
 passedConeTip = 0;
+firstGoodConeInd = Inf;
+minDifDist = 0;
 
 for i = 1:sliceSize(2)
 
@@ -289,6 +295,10 @@ for i = 1:sliceSize(2)
 
         if ~isnan(coneProfileToUse(i-tipOffset))
             passedConeTip = 1;
+            
+            if i < firstGoodConeInd
+                firstGoodConeInd = i;
+            end
         end
 
         if passedConeTip
@@ -299,24 +309,30 @@ for i = 1:sliceSize(2)
             if isnumeric(coneValue)
                 slice(xPosBottom:xPosTop, i) = coneValue;
             elseif ischar(coneValue)
-                % rescale relative diameter to be 80
-%                 tempRadius = abs((xPosBottom:xPosTop)-sliceSize(1)/2)/coneProfileToUse(i-tipOffset)*80;
                 
-                tempRadius = distMap(xPosBottom:xPosTop,i);
+                tempRadius = abs((xPosBottom:xPosTop)-sliceSize(1)/2);
+                
+                if tipGradientCorrection
+                    tempDist = distMap(xPosBottom:xPosTop,i);
 
-                %%% Adjust this correction
-                if max(tempRadius) < coneProfileToUse(i-tipOffset)/4
-                    tempRadius = (1-(tempRadius/max(tempRadius))+1)/(max(tempRadius)+1);
+                    switch correctionType
+                        case 'distance'
+                            tempDist = max(tempRadius) - (tempDist' - 1)*correctionScale;
+                            tempRadius(tempRadius < tempDist) = tempDist(tempRadius < tempDist);
+                            
+                        case 'height'
+                            tempDist = max(tempRadius) - (i-firstGoodConeInd)*correctionScale;
+                            tempRadius(tempRadius < tempDist) = tempDist;
+                            
+                        case 'both'
+                            tempDist = max(tempRadius) - (((tempDist' - 1) + (i-firstGoodConeInd))/2)*correctionScale;
+                            tempRadius(tempRadius < tempDist) = tempDist(tempRadius < tempDist);
+                    end
                     
-                    tempRadius = tempRadius/max(tempRadius);
-                else
-%                     tempRadius = tempRadius/coneProfileToUse(i-tipOffset);
-%                     tempRadius = -(tempRadius - max(tempRadius));
-                    
-                    tempRadius = abs((xPosBottom:xPosTop)-sliceSize(1)/2)/coneProfileToUse(i-tipOffset);
                 end
                 
-                tempRadius = tempRadius*80;
+                % rescale relative diameter to be 80
+                tempRadius = tempRadius/coneProfileToUse(i-tipOffset)*80;
                 
                 % rescale length relative to full cone
                 tempZ = (coneLengthToUse-(i-tipOffset))/coneLengthToUse;
@@ -464,11 +480,11 @@ end
 
 figure(mainFig);
 
-subplot(1,3,nPlot)
+subplot(2,4,nPlot)
 if ~ischar(coneValue)
     imshow(slice'/~(max(slice(:))+1))
 else
-    imshow((slice'-1.45)/(1.54-1.45))
+    imshow((slice(40:100,20:80)'-1.45)/(1.54-1.45))
 end
 
 title(tText);
