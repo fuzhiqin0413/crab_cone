@@ -18,7 +18,7 @@ nPlot = 4;
 tText = 'Smooth - 2.18 um'; %'-2 SD'; 'Mean';
 
 SDMult = 0;
-% mainFig = figure;
+mainFig = figure;
 
 %Can be from 1 - 4, can also be equal
 interconeOnLeft = NaN;
@@ -350,6 +350,9 @@ for i = 1:sliceSize(2)
                 if tipGradientCorrection
                     tempDist = distMap(xPosBottom:xPosTop,i);
 
+                    warning('Final layer seems too low relative to rest of border')
+                    %%% Maybe remove the -1?
+                    
                     switch correctionType
                         case 'distance'
                             tempDist = max(tempRadius) - (tempDist' - 1)*correctionScale;
@@ -375,6 +378,7 @@ for i = 1:sliceSize(2)
                 switch coneValue
                     case 'radial'
                         % Original
+                        error('switch back to original profile')
 %                         tempRI = 1.52-0.000004914*tempRadius.^2;
                         
                         % For for linear contribution
