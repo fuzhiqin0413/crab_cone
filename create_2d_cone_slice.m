@@ -5,13 +5,13 @@ get_radius_profiles
 voxSize = 2.18;
 
 scaleUpVoxels = 1;
-    newVoxSize = 2;
+    newVoxSize = 0.5;
     voxScale = voxSize/newVoxSize; % Scale up factor on image for FDTD
     
-writeImage = 0;
-    fileNameBase = 'Cone';
+writeImage = 1;
+    fileNameBase = 'Cone_EC'; %'Cylinder' 'Cone_EC' 'Cone_CinC' 'Cone_CinC_EC'
     
-create3D = 1;
+create3D = 0;
     % Seems a bit smoother to scale up here than just set desired size in image
         % E.g. To get voxSize 2, a bit better to have newVoxSize as 1 and resize3DRatio 2 
         % than newVoxSize as 2 directly because of radial interpolant    
@@ -37,7 +37,7 @@ SDMult.InternalInterconeProfile = 0;
 SDMult.EpicorneaProfile = 0;
 
 displayProfiles.CinC = 0;
-displayProfiles.EpicorneaCone = 0;
+displayProfiles.EpicorneaCone = 1;
 
 %Can be from 1 - 4, can also be equal
 interconeOnLeft = NaN;
@@ -59,13 +59,13 @@ tipGradientCorrection = 0;
     correctionScale = 2;
     
 createCylinder = 0; % instead of a cone   
-    cylinderRILength = 600; % if nan it uses actual length measured (~470) should be in um
+    cylinderRILength = NaN; % if nan it uses actual length measured (~470) should be in um
     % if createCylinder set then cone value should usually also be set to 'cylinder'
 
 if ~makeLabels
     outerValue = 1.33;
     innerValue = 1.34;
-    coneValue = 'radial'; %'cylinder', 'radial', 'linear' 'both'
+    coneValue = 1.52; %1.52 'cylinder', 'radial', 'linear' 'both'
     outerCorneaValue = 1.5;
     epicorneaValue = 1.53;
     interconeValue = -1; 1.47;
@@ -434,19 +434,30 @@ for i = 1:sliceSize(2)
                         % rescale relative diameter to 80
                         tempRadius = tempRadius/fullRad*80;
                                         
-                        tempRI = 1.52-0.000004914*tempRadius.^2;
+                        % for original w/o linear contribution
+%                         tempRI = 1.52-0.000004914*tempRadius.^2;
                         
-                        % For for linear contribution
+                        % For for original linear contribution
 %                       tempRI = 1.5+(0.02)-0.00000612*tempRadius.^2;
                         
+                        % New linear contribution
+                        tempRI = 1.5+(1*0.01+0.01)-(0.5*1+0.8)*0.00000612*tempRadius.^2;
+
                     case 'linear'
+                        % For for original linear contribution
+%                         tempRI = 1.5+(tempZ*0.01+0.01);
+                        
+                         % New linear contribution
                         tempRI = 1.5+(tempZ*0.01+0.01);
                         
                     case 'both'
                         tempRadius = tempRadius/fullRad*80;
                         
-                        tempRI = 1.5+(tempZ*0.01+0.01)-0.00000612*tempRadius.^2;
+                        % For for original linear contribution
+%                         tempRI = 1.5+(tempZ*0.01+0.01)-0.00000612*tempRadius.^2;
                         
+                        % New linear contribution
+                        tempRI = 1.5+(tempZ*0.01+0.01)-(0.5*tempZ+0.8)*0.00000612*tempRadius.^2;
                 end
     
                 slice(xPosBottom:xPosTop, i) = tempRI;
@@ -569,7 +580,7 @@ for i = 1:sliceSize(2)
     end
 end
 
-figure; 
+sliceFig = figure; 
 subplot(1,2,1); imshow((slice'-1.45)/(1.54-1.45))
 
 tempRange = round(sliceSize(1)/2-endTipWidth*1.5):round(sliceSize(1)/2+endTipWidth*1.5);
@@ -594,14 +605,23 @@ currentDirectory = pwd;
 
 if writeImage | write3D
     if ischar(coneValue)
-        fileName = sprintf('%s_%i_nm_%i_SD_GRIN',fileNameBase, round(voxSize*1000), SDMult.ConeProfile);
+        if ~tipGradientCorrection
+            fileName = sprintf('%s_%i_nm_Cone_%i_SD_GRIN_%s',fileNameBase, round(voxSize*1000), SDMult.ConeProfile, coneValue);
+        else
+            fileName = sprintf('%s_%i_nm_Cone_%i_SD_GRIN_%s_TipCorrection',fileNameBase, round(voxSize*1000), SDMult.ConeProfile, coneValue);
+        end
     else
-        fileName = sprintf('%s_%i_nm_%i_SD_Uniform',fileNameBase, round(voxSize*1000), SDMult.ConeProfile);
+        if ~tipGradientCorrection
+            fileName = sprintf('%s_%i_nm_Cone_%i_SD_Uniform_%.2f',fileNameBase, round(voxSize*1000), SDMult.ConeProfile, coneValue);
+        else
+            error('Tip correction on unfirom')
+        end
     end
     
     cd('/Users/gavintaylor/Desktop/AnalysisImages')
     
-    save(fileName, 'voxSize', 'voxSize3D', 'resize3DRatio', 'SDMult', 'displayProfiles', 'tipOffset', 'bufferLength', 'reduceTips', ...
+    save(sprintf('%s.mat', fileName), 'voxSize', 'newVoxSize', 'voxSize3D', 'resize3DRatio', ...
+        'SDMult', 'displayProfiles', 'tipOffset', 'bufferLength', 'reduceTips', ...
         'smoothProfiles', 'smoothLength', 'smoothLengthIntercone', 'tipGradientCorrection', 'correctionType', 'correctionScale', ...
         'outerValue', 'innerValue', 'coneValue', 'outerCorneaValue', 'epicorneaValue', 'interconeValue', ...
         'coneLengthToUse', 'outerCorneaLengthToUse', 'epicorneaLengthToUse', ...
@@ -614,6 +634,8 @@ if writeImage
     writematrix(slice,sprintf('%s.csv', fileName)) 
     
     writematrix(sliceTip,sprintf('Tip_%s.csv', fileName)) 
+    
+    saveas(sliceFig, sprintf('%s.tif', fileName))
 end
 
 if create3D
