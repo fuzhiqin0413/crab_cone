@@ -1,13 +1,6 @@
 % Set up to do both tracing on data and have testing mode on either
 % lundaberg lens or graded fibre, as in nishdate 2011 papers
     
-    % If variable angle: test on smoothed RI map calculated from 200 nm maps
-        % May also want to smooth
-        % Start with fixed on axis RI but could recalc with angle dependence
-        % Note grin was basically only in trasition area, so can skip calc if all values in region are equal
-  
-error('Check if voxel sizing is used correctly')        
-        
 clear; 
 clc; close all
 
@@ -15,9 +8,12 @@ clc; close all
 
 useRealData = 1;
 if useRealData
-    dataFile = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/Data/Matlab RI Volumes/Test1_SD0_vox2.mat';
-    voxelSize = 2*0.16; % mm
-
+    dataFile = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/AnalysisVolumes/Volume_Cone_1000_nm_Cone_0_SD_GRIN_radial.mat';
+    metaFile = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/AnalysisVolumes/Cone_1000_nm_Cone_0_SD_GRIN_radial.mat';
+    
+    % Usually saved pointing down
+    flipVolume = 1;
+    
     createGradedFiber = 0;
     createLunebergLens = 0;
     plotReferenceFiber = 0;
@@ -75,23 +71,93 @@ if useRealData
     lensRIVolume = temp.volume;
     clear temp
     
-    warning('Flip volume to correct axis in original data (then image will show upside down)')
+    metaData = load(metaFile);
+    voxelSize = metaData.voxSize3D;
     
     % Flip to change z direction
-    lensRIVolume = permute(flipud(permute(lensRIVolume,[3 1 2])), [2 3 1]);
+    if flipVolume
+        lensRIVolume = permute(flipud(permute(lensRIVolume,[3 1 2])), [2 3 1]);
+    end
     
     volumeSize = size(lensRIVolume);
     
     % Using negative coding for GRIN
-    goodVolume = lensRIVolume < 0;
+    RIFlagVolume = lensRIVolume < 0;
     
-    lensRIVolume(goodVolume) = -lensRIVolume(goodVolume);
+    lensRIVolume(RIFlagVolume) = -lensRIVolume(RIFlagVolume);
     
-    figure;
-    imshow(flipud(permute(lensRIVolume(round(volumeSize(1)/2),:,:), [2 3 1])'-1.45)/(1.54-1.45));
-    hold on
-
+    % Make meshes for intersects
+    meshAngles = (0:2:360)/180*pi;
     
+    % for cone - note voxSize is actually 2D pixel size
+    tempProfile = metaData.coneProfileToUse*metaData.voxSize/voxelSize;
+    tempZ = metaData.coneXRef*metaData.voxSize/voxelSize;
+    
+    tempZ(isnan(tempProfile)) = [];
+    tempProfile(isnan(tempProfile)) = [];
+    
+    %%% Could be good to pad front and back with grid, has degenerate faces
+    
+    tempVertices = zeros(length(tempProfile)*length(meshAngles),3);
+    for i = 1:length(tempProfile)
+        for j = 1:length(meshAngles)
+            tempVertices((i-1)*length(meshAngles)+j,:) = [tempProfile(i)*sin(meshAngles(j)), ...
+                tempProfile(i)*cos(meshAngles(j)), tempZ(i)];
+        end
+    end
+    
+    tempVertices(:,1) = tempVertices(:,1) + volumeSize(1)/2;
+    tempVertices(:,2) = tempVertices(:,2) + volumeSize(2)/2;
+    tempVertices(:,3) = tempVertices(:,3) + metaData.tipOffset*metaData.voxSize/voxelSize;
+    
+    tempTriangulation = delaunayTriangulation(tempVertices);
+    [coneTriangulation,coneVertices] = freeBoundary(tempTriangulation);
+    
+    %%% Need surfaces for
+    % intercone exposed - clip top onto closest points on cone and grid to edge
+    
+    % intercone to outercone - clip onto lowest border of cone and grid to edge
+    
+    % epicornea to outcone - need profile and grid to edge (and across inner)
+    
+    % epicornea - grid to edge
+    
+%     figure;
+%     subplot(3,2,1)
+%     imshow(flipud(permute(lensRIVolume(round(volumeSize(1)/2),:,:), [2 3 1])'-1.45)/(1.54-1.45));
+%     hold on
+%     
+%     plot(tempVertices(:,1), tempVertices(:,3), '.')
+%     plot(tempVertices(:,2), tempVertices(:,3), '.')
+%     
+%     subplot(3,2,2)
+%     imshow(flipud(permute(lensRIVolume(round(volumeSize(1)/2),:,:), [2 3 1])'-1.45)/(1.54-1.45));
+%     hold on
+%     plot(P(:,1), P(:,3), '.')
+%     plot(P(:,2), P(:,3), '.')
+%    
+%    subplot(3,2,3)
+%    imshow((lensRIVolume(:,:,round(volumeSize(3)/3))-1.45)/(1.54-1.45))
+%    hold on; plot(tempVertices(:,1), tempVertices(:,2), '.')
+%    
+%    subplot(3,2,4)
+%    imshow((lensRIVolume(:,:,round(volumeSize(3)/3))-1.45)/(1.54-1.45))
+%    hold on; plot(P(:,1), P(:,2), '.')
+%    
+%    subplot(3,2,5)
+%    imshow((lensRIVolume(:,:,round(volumeSize(3)/1.5))-1.45)/(1.54-1.45))
+%    hold on; plot(tempVertices(:,1), tempVertices(:,2), '.')
+%    
+%    subplot(3,2,6)
+%    imshow((lensRIVolume(:,:,round(volumeSize(3)/1.5))-1.45)/(1.54-1.45))
+%    hold on; plot(P(:,1), P(:,2), '.')
+%    
+%    figure;
+%     plot3(tempVertices(:,1), tempVertices(:,2), tempVertices(:,3), '.')
+%     hold on; axis equal
+%     trisurf(F,P(:,1),P(:,2),P(:,3), ...
+%        'FaceColor','cyan','FaceAlpha',0.8);
+   
 elseif useTestData
     if ~xor(createLunebergLens, createGradedFiber)
         error('Both or neither lens/fiber flags set. Check.')
@@ -108,7 +174,7 @@ elseif useTestData
             n0, alpha, voxelSize);
     end
     
-    goodVolume = ~isnan(lensRIVolume);
+    RIFlagVolume = ~isnan(lensRIVolume);
 
     lensRIVolume(isnan(lensRIVolume)) = exteriorRI;
 end
@@ -116,7 +182,7 @@ end
 %% Do general set up
 
 % Get surface voxels
-borderVolume = imdilate(~goodVolume, strel('Sphere',1)) & goodVolume;
+borderVolume = imdilate(~RIFlagVolume, strel('Sphere',1)) & RIFlagVolume;
 
 surfaceInds = find(borderVolume);
 
@@ -126,87 +192,90 @@ bottomZ = min(surfaceZ);
 
 topZ = max(surfaceZ);
 
-
-% Compute trigulation
-%%% Move to other file later - replace surface points with exact values...
-grinSurface = isosurface(goodVolume, 0.5);
-grinSurface.vertices = grinSurface.vertices*voxelSize;
-
-%%% Can I get only externally directed faces? Could be faster...
-grinNormals = meshFaceNormals(grinSurface.vertices, grinSurface.faces);
-
-% Connect faces to an exterior RI 
-faceExteriorRI = zeros(size(grinSurface.faces,1),1);
-
-% Firstly grow exterior RI map into border volume
-tempRIVolume = lensRIVolume;
-
-tempRIVolume(goodVolume) = 0;
-
-tempRIVolume = imdilate(tempRIVolume, strel('Sphere',1));
-
-vertexIndexes = sub2ind(volumeSize, round(grinSurface.vertices(:,1)/voxelSize), round(grinSurface.vertices(:,2)/voxelSize), ...
-    round(grinSurface.vertices(:,3)/voxelSize));
-
-vertexExteriorRI = tempRIVolume(vertexIndexes);
-
-%%% should get all voxels that meshes passes through for intersection test
-    %%% For now, just dilate border volume
-borderVolume = imdilate(borderVolume, strel('Sphere',1));
-
-if sum(borderVolume(vertexIndexes) == 0) ~= 0
-    error('Not all indexes contained in border volume')
-end
+if useTestData    
+    %%% Maybe be able to remove most of this...
     
-% Interface distances between layers
-tempRIVolume = lensRIVolume;
-tempRIVolume(goodVolume) = 0;
+    % Compute trigulation
+    %%% Move to other file later - replace surface points with exact values...
+    grinSurface = isosurface(RIFlagVolume, 0.5);
+    grinSurface.vertices = grinSurface.vertices*voxelSize;
 
-uniqueRI = unique(tempRIVolume(tempRIVolume > 0))
+    %%% Can I get only externally directed faces? Could be faster...
+    grinNormals = meshFaceNormals(grinSurface.vertices, grinSurface.faces);
 
-if length(uniqueRI) > 1
-    zLevelsRI = zeros(length(uniqueRI),1);
+    % Connect faces to an exterior RI 
+    faceExteriorRI = zeros(size(grinSurface.faces,1),1);
 
-    % First get order of RI (assumes they are fairly gross layers - wont work on nuanced structures)
-    for i = 1:length(uniqueRI)
-        [~, ~, tempZ] = ind2sub(volumeSize, find(tempRIVolume == uniqueRI(i) ));
+    % Firstly grow exterior RI map into border volume
+    tempRIVolume = lensRIVolume;
 
-        zLevelsRI(i) = mean(tempZ);
+    tempRIVolume(RIFlagVolume) = 0;
+
+    tempRIVolume = imdilate(tempRIVolume, strel('Sphere',1));
+
+    vertexIndexes = sub2ind(volumeSize, round(grinSurface.vertices(:,1)/voxelSize), round(grinSurface.vertices(:,2)/voxelSize), ...
+        round(grinSurface.vertices(:,3)/voxelSize));
+
+    vertexExteriorRI = tempRIVolume(vertexIndexes);
+
+    %%% should get all voxels that meshes passes through for intersection test
+        %%% For now, just dilate border volume
+    borderVolume = imdilate(borderVolume, strel('Sphere',1));
+
+    if sum(borderVolume(vertexIndexes) == 0) ~= 0
+        error('Not all indexes contained in border volume')
     end
 
-    [zLevelsRI, zInds] = sort(zLevelsRI);
-    uniqueRI = uniqueRI(zInds);
+    % Interface distances between layers
+    tempRIVolume = lensRIVolume;
+    tempRIVolume(RIFlagVolume) = 0;
 
-    % There will be nRI-1 interfaces
-    zInterfaceRI = zeros(length(uniqueRI)-1, 1);
-    
-    for i = 1:length(uniqueRI)-1
-        % Get mask for each volume
-        tempRIVolumeBottom = tempRIVolume;
-        tempRIVolumeBottom(tempRIVolumeBottom ~= uniqueRI(i)) = 0;
-        
-        tempRIVolumeTop = tempRIVolume;
-        tempRIVolumeTop(tempRIVolumeTop ~= uniqueRI(i+1)) = 0;
+    uniqueRI = unique(tempRIVolume(tempRIVolume > 0))
 
-        % Find overlap
-        tempLayerVolume = imdilate(tempRIVolumeBottom, strel('Sphere',1)) & imdilate(tempRIVolumeTop, strel('Sphere',1));
-        tempLayerVolume(goodVolume) = 0;
+    if length(uniqueRI) > 1
+        zLevelsRI = zeros(length(uniqueRI),1);
 
-        % Take average Z
-        [~, ~, tempZ] = ind2sub(volumeSize, find(tempLayerVolume));
+        % First get order of RI (assumes they are fairly gross layers - wont work on nuanced structures)
+        for i = 1:length(uniqueRI)
+            [~, ~, tempZ] = ind2sub(volumeSize, find(tempRIVolume == uniqueRI(i) ));
 
-        zInterfaceRI(i) = mean(tempZ); 
-        plot(10, volumeSize(3)-zInterfaceRI(i), 'rx')
+            zLevelsRI(i) = mean(tempZ);
+        end
+
+        [zLevelsRI, zInds] = sort(zLevelsRI);
+        uniqueRI = uniqueRI(zInds);
+
+        % There will be nRI-1 interfaces
+        zInterfaceRI = zeros(length(uniqueRI)-1, 1);
+
+        for i = 1:length(uniqueRI)-1
+            % Get mask for each volume
+            tempRIVolumeBottom = tempRIVolume;
+            tempRIVolumeBottom(tempRIVolumeBottom ~= uniqueRI(i)) = 0;
+
+            tempRIVolumeTop = tempRIVolume;
+            tempRIVolumeTop(tempRIVolumeTop ~= uniqueRI(i+1)) = 0;
+
+            % Find overlap
+            tempLayerVolume = imdilate(tempRIVolumeBottom, strel('Sphere',1)) & imdilate(tempRIVolumeTop, strel('Sphere',1));
+            tempLayerVolume(RIFlagVolume) = 0;
+
+            % Take average Z
+            [~, ~, tempZ] = ind2sub(volumeSize, find(tempLayerVolume));
+
+            zInterfaceRI(i) = mean(tempZ); 
+            plot(10, volumeSize(3)-zInterfaceRI(i), 'rx')
+        end
+
+        zInterfaceRI = zInterfaceRI*voxelSize;
+
+        clear tempRIVolumeBottom tempRIVolumeTop
     end
 
-    zInterfaceRI = zInterfaceRI*voxelSize;
+    clear tempRIVolume
 
-    clear tempRIVolumeBottom tempRIVolumeTop
-end
-
-clear tempRIVolume
-
-if useTestData
+    % Do plotting - for test volume
+    
     figure;
     subplot(1,3,1);
     imshow((lensRIVolume(:,:,round(volumeSize(3)/2)))/(max(lensRIVolume(:))))
@@ -218,7 +287,7 @@ if useTestData
     subplot(1,3,3); hold on
     plot(lensRIVolume(:,round(volumeSize(2)/2),bottomZ),'b');
     
-    centreLine = find(goodVolume(:,round(volumeSize(2)/2),bottomZ));
+    centreLine = find(RIFlagVolume(:,round(volumeSize(2)/2),bottomZ));
     tempRadius = sqrt((centreLine - volumeSize(1)/2).^2 + ...
         (round(volumeSize(2)/2) - volumeSize(2)/2)^2 );
     
@@ -231,7 +300,7 @@ if useTestData
 end
 
 % Search is limited to good in points
-goodInds = find(goodVolume);
+RIFlagInds = find(RIFlagVolume);
 
 if useRealData
     plotInds = 1:50:length(surfaceX);
@@ -293,7 +362,7 @@ volumeCenter = volumeSize/2*voxelSize;
 if useRealData
     % Calculating inpolyhedron is very slow, so test on volume first
     % Note inverted, zero if inside volume
-    intersectionFn = @(x1, x0)(~surfaceIntersectFunction(goodVolume, borderVolume, x1, x0, voxelSize, grinSurface));
+    intersectionFn = @(x1, x0)(~surfaceIntersectFunction(RIFlagVolume, borderVolume, x1, x0, voxelSize, grinSurface));
        
     %%% Correctly calculated as ray distance
     lambdaFn = @(x1, x0)surfaceLambdaFunction(x1, x0, grinSurface);
@@ -469,7 +538,7 @@ for iOrigin = 1:nOrigins
             
             if interfaceRefraction
                 % Get interior RI at entry point
-                [~, rOut] = numerical_dT_dt(rayX, volCoords(goodInds,:), goodInds, lensRIVolume, []);
+                [~, rOut] = numerical_dT_dt(rayX, volCoords(RIFlagInds,:), RIFlagInds, lensRIVolume, []);
 
                 % Get surface normal and exterior RI at entry point
                 if useRealData
@@ -557,7 +626,7 @@ for iOrigin = 1:nOrigins
             testInds = sub2ind(volumeSize, testCoords(:,1), testCoords(:,2), testCoords(:,3));
             
             % check for intersect with good volume
-            [testInds, tempInds] = intersect(testInds, goodInds);
+            [testInds, tempInds] = intersect(testInds, RIFlagInds);
             
             testCoords = testCoords(tempInds,:)*voxelSize;
             
@@ -690,7 +759,7 @@ for iOrigin = 1:nOrigins
             testInds = sub2ind(volumeSize, testCoords(:,1), testCoords(:,2), testCoords(:,3));
             
             % check for intersect with good volume
-            [testInds, tempInds] = intersect(testInds, goodInds);
+            [testInds, tempInds] = intersect(testInds, RIFlagInds);
             
             testCoords = testCoords(tempInds,:)*voxelSize;
             
@@ -806,7 +875,7 @@ for iOrigin = 1:nOrigins
             % Do refraction at border
             if interfaceRefraction
                 % Get surface normal and RI at exit point
-                [~, rIn] = numerical_dT_dt(rayX, volCoords(goodInds,:), goodInds, lensRIVolume, []); 
+                [~, rIn] = numerical_dT_dt(rayX, volCoords(RIFlagInds,:), RIFlagInds, lensRIVolume, []); 
 
                 if useRealData
                     lineDef = [rayX rayT];
@@ -1038,7 +1107,7 @@ elseif useTestData
             if abs(rayOrigins(iOrigin,1)-lensCentre(1)) < radius
 
                 %Find first pixel in lens for ray
-                startZ = find(goodVolume(round(rayOrigins(iOrigin,1)/voxelSize),...
+                startZ = find(RIFlagVolume(round(rayOrigins(iOrigin,1)/voxelSize),...
                     round(rayOrigins(iOrigin,2)/voxelSize), :));
 
                 startZ = startZ(1);
@@ -1241,7 +1310,7 @@ elseif useTestData
                 finalX = tempRayPath(1,bottomZ)*cos(fiberLength*beta);
                 finalCoord = [finalX + fiberCentre(1), fiberCentre(2), fiberCentre(3) + fiberLength/2];
                 
-                [~, rIn] = numerical_dT_dt(finalCoord, volCoords(goodInds,:), goodInds, lensRIVolume, []);  
+                [~, rIn] = numerical_dT_dt(finalCoord, volCoords(RIFlagInds,:), RIFlagInds, lensRIVolume, []);  
 
                 % Get final vector and normalize
                 finalP = -beta*tempRayPath(1,bottomZ)*sin(fiberLength*beta);

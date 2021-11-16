@@ -5,18 +5,21 @@ get_radius_profiles
 voxSize = 2.18;
 
 scaleUpVoxels = 1;
-    newVoxSize = 0.5;
+    newVoxSize = 1;
     voxScale = voxSize/newVoxSize; % Scale up factor on image for FDTD
     
-writeImage = 1;
-    fileNameBase = 'Cone_EC'; %'Cylinder' 'Cone_EC' 'Cone_CinC' 'Cone_CinC_EC'
-    
-create3D = 0;
+writeImage = 0;
+    fileNameBase = 'Cone'; %'Cylinder' 'Cone_EC' 'Cone_CinC' 'Cone_CinC_EC'
+
+% targetFolder = '/Users/gavintaylor/Desktop/AnalysisImages';    
+targetFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/AnalysisVolumes';    
+
+create3D = 1;
     % Seems a bit smoother to scale up here than just set desired size in image
         % E.g. To get voxSize 2, a bit better to have newVoxSize as 1 and resize3DRatio 2 
         % than newVoxSize as 2 directly because of radial interpolant    
-    resize3DRatio = 1; % scales up from image, should be integer > 1
-    write3D = 0;
+    resize3DRatio = 2; % scales up from image, should be integer > 1
+    write3D = 1;
     
 % For display
 plotMulti = 0;
@@ -37,22 +40,11 @@ SDMult.InternalInterconeProfile = 0;
 SDMult.EpicorneaProfile = 0;
 
 displayProfiles.CinC = 0;
-displayProfiles.EpicorneaCone = 1;
+displayProfiles.EpicorneaCone = 0;
 
 %Can be from 1 - 4, can also be equal
 interconeOnLeft = NaN;
 interconeOnRight = NaN;
-
-tipOffset = 30; 
-bufferLength = 10;
- 
-reduceTips.Cone = 1;
-reduceTips.CinC = 1;
-reduceTips.Cornea = 1;
-
-smoothProfiles = 1;
-    smoothLength = 5;
-    smoothLengthIntercone = 20;
 
 tipGradientCorrection = 0;    
     correctionType = 'distance'; %'distance', 'height', 'both'
@@ -65,7 +57,7 @@ createCylinder = 0; % instead of a cone
 if ~makeLabels
     outerValue = 1.33;
     innerValue = 1.34;
-    coneValue = 1.52; %1.52 'cylinder', 'radial', 'linear' 'both'
+    coneValue = 'radial'; %1.52 'cylinder', 'radial', 'linear' 'both'
     outerCorneaValue = 1.5;
     epicorneaValue = 1.53;
     interconeValue = -1; 1.47;
@@ -78,6 +70,17 @@ else
     epicorneaValue = 3;
     interconeValue = 2;
 end
+
+tipOffset = 30; 
+bufferLength = 10;
+ 
+reduceTips.Cone = 1;
+reduceTips.CinC = 1;
+reduceTips.Cornea = 1;
+
+smoothProfiles = 1;
+smoothLength = 5;
+smoothLengthIntercone = 20;
 
 if reduceTips.Cone
     bufferOffset = 9;
@@ -618,7 +621,7 @@ if writeImage | write3D
         end
     end
     
-    cd('/Users/gavintaylor/Desktop/AnalysisImages')
+    cd(targetFolder)
     
     save(sprintf('%s.mat', fileName), 'voxSize', 'newVoxSize', 'voxSize3D', 'resize3DRatio', ...
         'SDMult', 'displayProfiles', 'tipOffset', 'bufferLength', 'reduceTips', ...
@@ -628,14 +631,14 @@ if writeImage | write3D
         'coneProfileToUse', 'CinCProfileToUse', 'exposedInterconeProfileToUseLeft', 'exposedInterconeProfileToUseRight', 'internalInterconeProfileToUseLeft', 'internalInterconeProfileToUseRight', 'epicorneaProfileToUse', ...
         'coneXRef', 'corneaXRef', 'concentratorAcceptance', 'sliceSize', ...
         'createCylinder', 'cylinderRILength')
+    
+    saveas(sliceFig, sprintf('%s.tif', fileName))
 end
 
 if writeImage
     writematrix(slice,sprintf('%s.csv', fileName)) 
     
     writematrix(sliceTip,sprintf('Tip_%s.csv', fileName)) 
-    
-    saveas(sliceFig, sprintf('%s.tif', fileName))
 end
 
 if create3D
@@ -664,6 +667,10 @@ if create3D
    sliceRadius = sliceRadius(:) - sliceSize(1)/2;
    sliceZ = sliceZ(:);
    
+   % Invert slice values
+   tempInds = find(coneMap);
+   slice(tempInds) = -slice(tempInds);
+   
    %step down each slice and interpolate based on radius
    for i = 1:sliceSize(2)
       volInds = find(volZ == i);
@@ -680,22 +687,25 @@ if create3D
         volume = imresize3(volume, 'Scale', [1 1 1/resize3DRatio], 'method', 'nearest');
    end
    
+   tempVolume = volume;
+   tempVolume(tempVolume < 0) = -tempVolume(tempVolume < 0);
+   
    figure;
    subplot(2,2,1);
-   imshow((permute(volume(:,round(volumeSize(1)/2),:), [1 3 2])-1.45)'/(1.54-1.45))
+   imshow((permute(tempVolume(:,round(volumeSize(1)/2),:), [1 3 2])-1.45)'/(1.54-1.45))
    
    subplot(2,2,2);
-   imshow((permute(volume(round(volumeSize(2)/2),:,:), [2 3 1])-1.45)'/(1.54-1.45))
+   imshow((permute(tempVolume(round(volumeSize(2)/2),:,:), [2 3 1])-1.45)'/(1.54-1.45))
    
    subplot(2,2,3);
-   imshow((volume(:,:,round(volumeSize(3)/4/resize3DRatio))-1.45)/(1.54-1.45))
+   imshow((tempVolume(:,:,round(volumeSize(3)/4/resize3DRatio))-1.45)/(1.54-1.45))
    
    subplot(2,2,4);
-   imshow((volume(:,:,round(volumeSize(3)/2/resize3DRatio))-1.45)/(1.54-1.45))
+   imshow((tempVolume(:,:,round(volumeSize(3)/2/resize3DRatio))-1.45)/(1.54-1.45))
    
    if write3D
-       writematrix(volume,sprintf('Volume_%s.csv', fileName)) 
+       save(sprintf('Volume_%s.mat', fileName), 'volume') 
    end
 end
 
-cd(pwd)
+cd(currentDirectory)
