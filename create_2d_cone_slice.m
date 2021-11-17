@@ -60,7 +60,7 @@ if ~makeLabels
     coneValue = 'radial'; %1.52 'cylinder', 'radial', 'linear' 'both'
     outerCorneaValue = 1.5;
     epicorneaValue = 1.53;
-    interconeValue = -1; 1.47;
+    interconeValue = 1.47; -1; 
 else
 % Labels
     outerValue = 0;
