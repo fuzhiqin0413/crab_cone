@@ -9,7 +9,7 @@ scaleUpVoxels = 1;
     voxScale = voxSize/newVoxSize; % Scale up factor on image for FDTD
     
 writeImage = 0;
-    fileNameBase = 'Cone'; %'Cylinder' 'Cone_EC' 'Cone_CinC' 'Cone_CinC_EC'
+    fileNameBase = 'Cone_Slab'; %'Cylinder' 'Cone_EC' 'Cone_CinC' 'Cone_CinC_EC'
 
 % targetFolder = '/Users/gavintaylor/Desktop/AnalysisImages';    
 targetFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/AnalysisVolumes';    
@@ -18,8 +18,9 @@ create3D = 1;
     % Seems a bit smoother to scale up here than just set desired size in image
         % E.g. To get voxSize 2, a bit better to have newVoxSize as 1 and resize3DRatio 2 
         % than newVoxSize as 2 directly because of radial interpolant    
-    resize3DRatio = 2; % scales up from image, should be integer > 1
-    write3D = 1;
+    resize3DRatio = 5; % scales up from image, should be integer > 1
+    makeSlab = 0; % Should indicate in file name
+    write3D = 0;
     
 % For display
 plotMulti = 0;
@@ -650,46 +651,61 @@ if create3D
    if resize3DRatio < 1
       error('Ratio should downsize') 
    end
-   
-   % Note that this starts of as anisotropic 
-   volumeSize = [round(sliceSize(1)/resize3DRatio), round(sliceSize(1)/resize3DRatio), sliceSize(2)]; 
-   volume = zeros(volumeSize);
-   
-   % set up to rotate around center
-   [volX, volY, volZ] = meshgrid(1:volumeSize(1), 1:volumeSize(2), 1:volumeSize(3));
-   volX = volX(:) - volumeSize(1)/2;
-   volY = volY(:) - volumeSize(2)/2;
-   volZ = volZ(:);
-   
-   volRadius = sqrt(volX.^2 + volY.^2)*resize3DRatio;
-   
-   [sliceZ, sliceRadius] = meshgrid(1:sliceSize(2), 1:sliceSize(1));
-   sliceRadius = sliceRadius(:) - sliceSize(1)/2;
-   sliceZ = sliceZ(:);
-   
+ 
    % Invert slice values
    tempInds = find(coneMap);
    slice(tempInds) = -slice(tempInds);
-   
-   %step down each slice and interpolate based on radius
-   for i = 1:sliceSize(2)
-      volInds = find(volZ == i);
-      
-      sliceInds = find(sliceZ == i & sliceRadius >= 0);
-      
-      % folds left side back... not ideal
-      volume(volInds) = interp1(sliceRadius(sliceInds), slice(sliceInds), volRadius(volInds), ...
-        'nearest', 'extrap');
+
+   if ~makeSlab
+       % Note that this starts of as anisotropic 
+       volumeSize = [round(sliceSize(1)/resize3DRatio), round(sliceSize(1)/resize3DRatio), sliceSize(2)]; 
+       volume = zeros(volumeSize);
+
+       % set up to rotate around center
+       [volX, volY, volZ] = meshgrid(1:volumeSize(1), 1:volumeSize(2), 1:volumeSize(3));
+       volX = volX(:) - volumeSize(1)/2;
+       volY = volY(:) - volumeSize(2)/2;
+       volZ = volZ(:);
+
+       volRadius = sqrt(volX.^2 + volY.^2)*resize3DRatio;
+
+       [sliceZ, sliceRadius] = meshgrid(1:sliceSize(2), 1:sliceSize(1));
+       sliceRadius = sliceRadius(:) - sliceSize(1)/2;
+       sliceZ = sliceZ(:);
+
+       %step down each slice and interpolate based on radius
+       for i = 1:sliceSize(2)
+          volInds = find(volZ == i);
+
+          sliceInds = find(sliceZ == i & sliceRadius >= 0);
+
+          % folds left side back... not ideal
+          volume(volInds) = interp1(sliceRadius(sliceInds), slice(sliceInds), volRadius(volInds), ...
+            'nearest', 'extrap');
+       end
+
+       % Removes anistropy by compressing Z down
+       if resize3DRatio > 1
+            volume = imresize3(volume, 'Scale', [1 1 1/resize3DRatio], 'method', 'nearest');
+       end
+   else
+       % Test as slab
+       volumeSize = [sliceSize(1), sliceSize(1), sliceSize(2)]; 
+       volume = zeros(volumeSize);
+       for i = 1:sliceSize(1)
+           volume(i,:,:) = slice;
+       end
+
+       volume = permute(volume, [2 1 3]);
+
+       volume = imresize3(volume, 'Scale', [1 1 1]/resize3DRatio, 'method', 'nearest');
    end
-   
-   % Removes anistropy by compressing Z down
-   if resize3DRatio > 1
-        volume = imresize3(volume, 'Scale', [1 1 1/resize3DRatio], 'method', 'nearest');
-   end
-   
+    
    tempVolume = volume;
    tempVolume(tempVolume < 0) = -tempVolume(tempVolume < 0);
    
+   volumeSize = size(volume);
+
    figure;
    subplot(2,2,1);
    imshow((permute(tempVolume(:,round(volumeSize(1)/2),:), [1 3 2])-1.45)'/(1.54-1.45))
@@ -698,10 +714,10 @@ if create3D
    imshow((permute(tempVolume(round(volumeSize(2)/2),:,:), [2 3 1])-1.45)'/(1.54-1.45))
    
    subplot(2,2,3);
-   imshow((tempVolume(:,:,round(volumeSize(3)/4/resize3DRatio))-1.45)/(1.54-1.45))
+   imshow((tempVolume(:,:,round(volumeSize(3)/4))-1.45)/(1.54-1.45))
    
    subplot(2,2,4);
-   imshow((tempVolume(:,:,round(volumeSize(3)/2/resize3DRatio))-1.45)/(1.54-1.45))
+   imshow((tempVolume(:,:,round(volumeSize(3)/2))-1.45)/(1.54-1.45))
    
    if write3D
        save(sprintf('Volume_%s.mat', fileName), 'volume') 

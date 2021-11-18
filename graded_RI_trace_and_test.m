@@ -6,11 +6,29 @@ clc; close all
 
 %% Set parameters
 
-useRealData = 1;
+useRealData = 0;
+
 if useRealData
-    dataFile = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/AnalysisVolumes/Volume_Cone_1000_nm_Cone_0_SD_GRIN_radial.mat';
-    metaFile = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/AnalysisVolumes/Cone_1000_nm_Cone_0_SD_GRIN_radial.mat';
+    dataFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/AnalysisVolumes/';
     
+    % New radial
+%     dataFile = 'Volume_Cone_1000_nm_Cone_0_SD_GRIN_radial.mat';
+%     metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_radial.mat';
+    
+    % Cylinder
+    dataFile = 'Volume_Cylinder_1000_nm_Cone_0_SD_GRIN_cylinder.mat';
+    metaFile = 'Cylinder_1000_nm_Cone_0_SD_GRIN_cylinder.mat';
+    
+%     dataFile = 'Volume_Cylinder_1000_nm_Cone_0_SD_GRIN_cylinder.mat';
+%     metaFile = 'Cylinder_1000_nm_Cone_0_SD_GRIN_cylinder.mat';
+    
+    % Orignal Radial
+%     dataFile = 'Volume_ConeOriginal_1000_nm_Cone_0_SD_GRIN_radial.mat';
+%     metaFile = 'ConeOriginal_1000_nm_Cone_0_SD_GRIN_radial.mat';
+    
+    useSlab = 0;
+        flipSlab = 0;
+
     % Usually saved pointing down
     flipVolume = 1;
     
@@ -19,31 +37,33 @@ if useRealData
     plotReferenceFiber = 0;
     useTestData = 0;
     
+    xSpacing = 10;
     testOrigin = []; [5 6 7 8];
 else
     useTestData = 1;
     
-    radius = 1; %mm - used for both lens and fiber
-    voxelSize = 0.065; % mm
+    radius = 1; 0.1; 1; %mm - used for both lens and fiber
+    voxelSize = 0.065; 0.005; 0.065; % mm
 
     exteriorRI = 1;
 
     createLunebergLens = 0;
         
     createGradedFiber = 1;
-        fiberLength = 10;
-        n0 = sqrt(2.5);
+        fiberLength = 10; 0.47; 10;
+        n0 = sqrt(2.5); 1.52; %sqrt(2.5);
         %%% 1/sqrt(2.5) matches refractive index profile described, 1/(2.5) gives curve similar to result shown
-        alpha = 1/(2.5); 
+        alpha = 1/sqrt(2.5); 3.25; %2.2; %1/(2.5); 
+        beta = alpha*n0;
         plotReferenceFiber = 0; % will plot data from Nishidate and only trace 0.5
 end
 
 % Options, 1, 4S, 4RKN, 5RKN, 45RKN 
 % Difference 4 to 5 is quite small
-interpType = '4S';
+interpType = '1'; %'4S';
     %This doesn't have big effect on error < 10^-9, ok even at 10^-6 but then collapses
         % May effect peripheral rays more
-    tolerance = 10^-6; % Nishidate uses 10^-12, seems a bit too tight
+    tolerance = 10^-9; % Nishidate uses 10^-12, seems a bit too tight
     
     % Seems good to start a bit lower than the general deltaS
         % in fixed step, 10^-3 vs. 10^-4 gives rough order of magnitude error
@@ -67,12 +87,17 @@ extendRayLength = 2; % mm
 testPlot = 1;
 %% Load or create test data     
 if useRealData
-    temp = load(dataFile);
+    temp = load(sprintf('%s%s',dataFolder, dataFile));
     lensRIVolume = temp.volume;
+    
+    if flipSlab & useSlab
+        lensRIVolume = permute(lensRIVolume, [2 1 3]);
+    end
+    
     clear temp
     
-    metaData = load(metaFile);
-    voxelSize = metaData.voxSize3D;
+    metaData = load(sprintf('%s%s',dataFolder, metaFile));
+    voxelSize = metaData.voxSize3D/1000; %um to mm
     
     % Flip to change z direction
     if flipVolume
@@ -92,34 +117,71 @@ if useRealData
     end
     
     lensRIVolume(RIFlagVolume) = -lensRIVolume(RIFlagVolume);
-    
-    % Make meshes for intersects
-    meshAngles = (0:2:360)/180*pi;
-    
+
     % for cone - note voxSize is actually 2D pixel size
-    tempProfile = metaData.coneProfileToUse*metaData.voxSize/voxelSize;
-    tempZ = metaData.coneXRef*metaData.voxSize/voxelSize;
-    
+    tempProfile = metaData.coneProfileToUse*metaData.voxSize/metaData.voxSize3D;
+    tempZ = metaData.coneXRef*metaData.voxSize/metaData.voxSize3D;
+
     tempZ(isnan(tempProfile)) = [];
     tempProfile(isnan(tempProfile)) = [];
     
-    %%% Could be good to pad front and back with grid, has degenerate faces
+    profileMax = max(tempProfile);
+
     
-    originalVertices = zeros(length(tempProfile)*length(meshAngles),3);
-    for i = 1:length(tempProfile)
-        for j = 1:length(meshAngles)
-            originalVertices((i-1)*length(meshAngles)+j,:) = [tempProfile(i)*sin(meshAngles(j)), ...
-                tempProfile(i)*cos(meshAngles(j)), tempZ(i)];
+    if ~useSlab
+        %%% Could be good to pad front and back with grid, has degenerate faces
+        % Make meshes for intersects
+        meshAngles = (0:2:360)/180*pi;
+
+        originalVertices = zeros(length(tempProfile)*length(meshAngles),3);
+        
+        for i = 1:length(tempProfile)
+            for j = 1:length(meshAngles)
+                if ~metaData.createCylinder
+                    originalVertices((i-1)*length(meshAngles)+j,:) = [tempProfile(i)*sin(meshAngles(j)), ...
+                        tempProfile(i)*cos(meshAngles(j)), tempZ(i)];
+                else
+                    originalVertices((i-1)*length(meshAngles)+j,:) = [profileMax*sin(meshAngles(j)), ...
+                        profileMax*cos(meshAngles(j)), tempZ(i)];
+                end
+            end
         end
+        
+    else
+        %%% Could probably just do this with mesh grid.
+        
+        originalVertices = zeros(length(tempProfile)*volumeSize(2),3);
+        profileMax = max(tempProfile);
+
+        for i = 1:length(tempProfile)
+            for j = 1:volumeSize(2)
+                if ~flipSlab
+                    originalVertices((i-1)*volumeSize(2)+j,:) = [j-volumeSize(1)/2,...
+                        profileMax, tempZ(i)];
+                else
+                    originalVertices((i-1)*volumeSize(2)+j,:) = [profileMax, ...
+                        j-volumeSize(1)/2, tempZ(i)];
+                end
+            end
+        end
+        
+        % Duplicate to other side
+        tempVertices = originalVertices;
+        if ~flipSlab
+            tempVertices(:,2) = -tempVertices(:,2);
+        else
+            tempVertices(:,1) = -tempVertices(:,1);
+        end
+        originalVertices = [originalVertices' tempVertices']';
     end
-    
+
     originalVertices(:,1) = originalVertices(:,1) + volumeSize(1)/2;
     originalVertices(:,2) = originalVertices(:,2) + volumeSize(2)/2;
-    originalVertices(:,3) = originalVertices(:,3) + metaData.tipOffset*metaData.voxSize/voxelSize;
-    
+    originalVertices(:,3) = originalVertices(:,3) + metaData.tipOffset*metaData.voxSize/metaData.voxSize3D;
+
     tempTriangulation = delaunayTriangulation(originalVertices);
     [coneFaces, coneVertices] = freeBoundary(tempTriangulation);
-    
+
     grinSurface.faces = coneFaces;
     % Flip Z around center
     grinSurface.vertices = coneVertices;
@@ -199,10 +261,9 @@ elseif useTestData
 
     lensRIVolume(isnan(lensRIVolume)) = exteriorRI;
     
-    %%% Note convert to mesh based calculation for comparison to border above
     borderVolume = imdilate(~RIFlagVolume, strel('sphere', 1)) & RIFlagVolume;
     
-    %%% may need to add - mesh calculation
+    %%% Should add option for mesh based calcuation and refraction as in real data
 end
 
 %% Do general set up
@@ -218,35 +279,39 @@ topZ = max(surfaceZ);
 
 
 % Modify surface we got previously
-vertexIndexes = sub2ind(volumeSize, round(grinSurface.vertices(:,1)), round(grinSurface.vertices(:,2)), round(grinSurface.vertices(:,3)));
+if useRealData
+    vertexIndexes = sub2ind(volumeSize, round(grinSurface.vertices(:,1)), round(grinSurface.vertices(:,2)), round(grinSurface.vertices(:,3)));
 
-grinSurface.vertices = grinSurface.vertices*voxelSize;
+    grinSurface.vertices = grinSurface.vertices*voxelSize;
 
-grinNormals = meshFaceNormals(grinSurface.vertices, grinSurface.faces);
+    grinNormals = meshFaceNormals(grinSurface.vertices, grinSurface.faces);
 
-% Test obrder volume is ok
-if any(borderVolume(vertexIndexes) == 0)
-    error('Not all indexes contained in border volume')
-end
+    % Test border volume is ok
+%     if any(borderVolume(vertexIndexes) == 0)
+%         error('Not all indexes contained in border volume')
+%     end
 
 
-% Connect vertexes to an exterior RI
-tempRIVolume = lensRIVolume;
+    % Connect vertexes to an exterior RI
+    tempRIVolume = lensRIVolume;
 
-tempRIVolume(RIFlagVolume) = 0;
+    tempRIVolume(RIFlagVolume) = 0;
 
-tempRIVolume = imdilate(tempRIVolume, strel('Sphere',1));
-
-vertexExteriorRI = tempRIVolume(vertexIndexes);
-
-% If any are missing loop until they are caught
-while any(vertexExteriorRI == 0)
     tempRIVolume = imdilate(tempRIVolume, strel('Sphere',1));
-    
-    vertexExteriorRI(vertexExteriorRI == 0) = tempRIVolume(vertexIndexes(vertexExteriorRI == 0));
-end
 
+    vertexExteriorRI = tempRIVolume(vertexIndexes);
+
+    % If any are missing loop until they are caught
+    while any(vertexExteriorRI == 0)
+        tempRIVolume = imdilate(tempRIVolume, strel('Sphere',1));
+
+        vertexExteriorRI(vertexExteriorRI == 0) = tempRIVolume(vertexIndexes(vertexExteriorRI == 0));
+    end
+else
+   warning('should have option to use vertices on test cases') 
+end
     
+uniqueRI = 0;
 %     % Interface distances between layers
 %     tempRIVolume = lensRIVolume;
 %     tempRIVolume(RIFlagVolume) = 0;
@@ -345,7 +410,7 @@ zSteps = (1:volumeSize(3))*voxelSize;
 
 if useRealData
     %%% Replace with meshgrid later on
-    xStartPoints = 1:20:volumeSize(1); 
+    xStartPoints = 1:xSpacing:volumeSize(1); 
     
     if ~isempty(testOrigin)
         xStartPoints = xStartPoints(testOrigin);
@@ -448,7 +513,8 @@ finalRayTRefract = zeros(nOrigins, 3);
 
 if createGradedFiber
    % Change to half period as focus points are actually at 1/4 and 3/4 points
-   halfPeriodInFiber = 2*pi/(n0*alpha)*0.5;   
+   halfPeriodInFiber = 2*pi/beta*0.5;   
+   %%% From 5.69 in Merchland this should be 2*pi*n0/beta
    
    numPeriods = floor(fiberLength/halfPeriodInFiber);
    
@@ -678,7 +744,7 @@ for iOrigin = 1:nOrigins
             
             rayX = rayX + rayT*voxelSize/3;
             
-            if interfaceRefraction
+            if interfaceRefraction 
                 if length(uniqueRI) > 1
 
                     % Check if z level of any intersect is passed
@@ -722,8 +788,6 @@ for iOrigin = 1:nOrigins
                 end
             end
             
-            intersectResult = intersectionFn(rayX, x0);
-            
             %%% Could also draw voxelaized line until intersect reached, as in original surface ray-tracer
                 %%% Or check for mesh intersection using intersectLineMesh3d
         else
@@ -757,10 +821,9 @@ for iOrigin = 1:nOrigins
                     currentPeriod = currentPeriod + 1;
                 end
             end
-            
-            intersectResult = intersectionFn(rayX, x0);
         end 
         
+        intersectResult = intersectionFn(rayX, x0);
         
         % Test if leaving a GRIN area
         if intersectResult & inGraded & ~exitedFlag
@@ -1325,10 +1388,9 @@ elseif useTestData
 
                 end
                 
-                % Gives correct result From Merchland 5.41 and other refs, 
-                % I think this should be sqrt(alpha) from book, but only works if alpha = 1/n0^2
-                beta = alpha*n0;
-                tempRayPath(1, bottomZ:topZ) = tempRayPath(1,bottomZ)*cos(tempRayPath(3,bottomZ:topZ)*beta);
+                % Gives correct result From Merchland 5.41 and other refs 
+                    %%% Was previously not dividing by n0
+                tempRayPath(1, bottomZ:topZ) = tempRayPath(1,bottomZ)*cos(tempRayPath(3,bottomZ:topZ)*beta/n0);
                 
                 % Analytic expresion for ray after exit
                 % Get final Coord and RI
@@ -1453,21 +1515,24 @@ end
 function  intersect = surfaceIntersectFunction(volumeFull, volumeBorder, x, x0, scale, surface) 
     % Return 1 if inside
 
+    %%% Revise this to return flag of 1 just when intersection is passed
+        %%% Will also need to revise how this is flagged on test cases
+    
     voxelX = round(x/scale);
     
    if ~( any(voxelX > size(volumeFull)) | any(voxelX < 1) )
         % Check if on border voxel and fine test required
         if volumeBorder(voxelX(1), voxelX(2), voxelX(3))
-            % This is really slow!
-            % Also causes problems as intersectLineMesh3d tends to shift intersect backwards...
-            
-            %%% Can this be used in place of some of the logic?
-            % intersect = inpolyhedron(surface, x);
+            % inpolyhedron is really slow!
+%             intersect = inpolyhedron(surface, x);
 
+            % Faster but also causes problems as intersectLineMesh3d tends to shift intersect backwards...
+                % Note sure what the above comment meant?
+                
             lineDef = [x (x-x0)];  
 
             [~, intersectDistance] = intersectLineMesh3d(lineDef, surface.vertices, surface.faces);  
-
+            
             backInds = find(intersectDistance < 0);
             frontInds = find(intersectDistance > 0);
 

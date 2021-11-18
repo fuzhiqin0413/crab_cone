@@ -7,7 +7,7 @@ function [sampling_inds, sampling_coords, point_dists] = getsamplingpoints(vol_c
 
     sampling_inds = sampling_inds(1:128);
 
-    point_dists = point_dists/max(point_dists);
+%%%     point_dists = point_dists/max(point_dists);
 
     sampling_coords = vol_coords(sampling_inds,:); %nx3 vector of sampling point coordinates
 end

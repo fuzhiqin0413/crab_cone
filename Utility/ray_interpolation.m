@@ -7,7 +7,7 @@ function [X, T, new_delta] = ray_interpolation(type, RIType, X0, T0, delta, vol_
     switch RIType
         case 'iso'
             % RI can only be fixed at X0, as other points start after that
-            f0 = numerical_dT_dt(X0, vol_coords, vol_inds, lens_volume, fixedRI);
+            f0 = numerical_dT_dt(X0, vol_coords, vol_inds, lens_volume, []);
 
             if strcmp(type, '4S')
                     % Sharma's 4th order - keep standard sytnax
