@@ -17,8 +17,6 @@ function [dT_dt, n_of_X, dn_partial_dX] = numerical_dT_dt(X, vol_coords, vol_ind
         W_of_X(i,i) = 1-6*d^2+8*d^3-3*d^4;
     end
 
-    [p_of_X, dp_partial_dX] = calculatetricubicbasis(X(1), X(2), X(3), 1); %20x1 and 20x3
-    
     % As eqn 7   
     % A bit faster if done with single vectorized calc rather than per coord.
     P_of_X = calculatetricubicbasis_vec(sampling_coords(:,1), sampling_coords(:,2), sampling_coords(:,3)); %20xn : basis vector per sampling point
@@ -38,6 +36,8 @@ function [dT_dt, n_of_X, dn_partial_dX] = numerical_dT_dt(X, vol_coords, vol_ind
         % Same if choice occurs
 %     a_of_X = pinv(M_of_X)*(N_of_X*n_of_s);
 
+    [p_of_X, dp_partial_dX] = calculatetricubicbasis(X(1), X(2), X(3), 1); %20x1 and 20x3
+    
     if isempty(fixedRI)
         % As eqn 3
         n_of_X = p_of_X*a_of_X; %1x1 : refractive index 

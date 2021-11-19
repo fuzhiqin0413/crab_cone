@@ -22,10 +22,14 @@ function [lensRIVolume]  = creategradedfiber(radiusPixels, fiberLengthPixels, vo
 
             if r < radiusPixels
                 % Corresponds to eqn. 5.34 from Merchland 1978, where b = 1
-                    % Note, 2.5 represents No^2, alpha is effectively 1/sqrt(2.5)
+                   % Note, 2.5 represents No^2, alpha is effectively 1/sqrt(2.5)
 %                 lensRIVolume(i,j,pixelsToFill) = sqrt(2.5-(r/radiusPixels)^2);
 
+                % parabolic profile
                 lensRIVolume(i,j,pixelsToFill) = sqrt(n0^2*(1-alpha^2*(r*voxelSize).^2));
+                
+                % Gaussian profile for testing - ray convergance nearly matches, seems to be a stricter test than parabolic
+%                 lensRIVolume(i,j,pixelsToFill) = n0*exp(-alpha^2*(r*voxelSize).^2/2);
             end
         end
     end

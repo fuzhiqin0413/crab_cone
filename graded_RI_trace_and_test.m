@@ -11,13 +11,15 @@ useRealData = 0;
 if useRealData
     dataFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/AnalysisVolumes/';
     
+    n0 = 1.52;
+    
     % New radial
-%     dataFile = 'Volume_Cone_1000_nm_Cone_0_SD_GRIN_radial.mat';
-%     metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_radial.mat';
+    dataFile = 'Volume_Cone_1000_nm_Cone_0_SD_GRIN_radial.mat';
+    metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_radial.mat';
     
     % Cylinder
-    dataFile = 'Volume_Cylinder_1000_nm_Cone_0_SD_GRIN_cylinder.mat';
-    metaFile = 'Cylinder_1000_nm_Cone_0_SD_GRIN_cylinder.mat';
+%     dataFile = 'Volume_Cylinder_1000_nm_Cone_0_SD_GRIN_cylinder.mat';
+%     metaFile = 'Cylinder_1000_nm_Cone_0_SD_GRIN_cylinder.mat';
     
 %     dataFile = 'Volume_Cylinder_1000_nm_Cone_0_SD_GRIN_cylinder.mat';
 %     metaFile = 'Cylinder_1000_nm_Cone_0_SD_GRIN_cylinder.mat';
@@ -37,30 +39,31 @@ if useRealData
     plotReferenceFiber = 0;
     useTestData = 0;
     
-    xSpacing = 10;
     testOrigin = []; [5 6 7 8];
 else
     useTestData = 1;
     
-    radius = 1; 0.1; 1; %mm - used for both lens and fiber
-    voxelSize = 0.065; 0.005; 0.065; % mm
+    radius = 1; %mm - used for both lens and fiber
+    voxelSize = 0.065; % mm
 
     exteriorRI = 1;
 
     createLunebergLens = 0;
         
     createGradedFiber = 1;
-        fiberLength = 10; 0.47; 10;
-        n0 = sqrt(2.5); 1.52; %sqrt(2.5);
-        %%% 1/sqrt(2.5) matches refractive index profile described, 1/(2.5) gives curve similar to result shown
-        alpha = 1/sqrt(2.5); 3.25; %2.2; %1/(2.5); 
+        %%% Add flag to create gaussian profile then update solution and period
+        fiberLength = 10;
+        n0 = sqrt(2.5); 
+        alpha = 1/sqrt(2.5); 0.7; 
         beta = alpha*n0;
         plotReferenceFiber = 0; % will plot data from Nishidate and only trace 0.5
 end
 
+xSpacing = 5; % in voxels...
+
 % Options, 1, 4S, 4RKN, 5RKN, 45RKN 
 % Difference 4 to 5 is quite small
-interpType = '1'; %'4S';
+interpType = '4S'; %'4S';
     %This doesn't have big effect on error < 10^-9, ok even at 10^-6 but then collapses
         % May effect peripheral rays more
     tolerance = 10^-9; % Nishidate uses 10^-12, seems a bit too tight
@@ -76,7 +79,7 @@ interpType = '1'; %'4S';
 incidenceAngle = 0; 15; % deg, in XZ - plane    
     
 % Should be on, but can switch off to test    
-interfaceRefraction = 0;  
+interfaceRefraction = 1;  
 
 % bit of a hack to prevent ray reentering due to pixel jitter 
 blockMultipleExits = 1;
@@ -417,7 +420,7 @@ if useRealData
     end
 else
     if ~plotReferenceFiber
-        xStartPoints = 1:5:volumeSize(1); 
+        xStartPoints = 1:xSpacing:volumeSize(1); 
 
     else
         xStartPoints = volumeSize(1)/2+radius/voxelSize*0.5;
@@ -431,6 +434,8 @@ rayOrigins = [xStartPoints(:), ones(numel(xStartPoints),1)*volumeSize(2)/2,  ...
 
 
 nOrigins = size(rayOrigins,1);
+
+warning('startT multipled by n0, should get local value?')
 
 startRayT = [sin(incidenceAngle/180*pi), 0, cos(incidenceAngle/180*pi)];
 
@@ -485,11 +490,11 @@ rayPathLengthArray = zeros(volumeSize(3), nOrigins)*NaN;
 rayMap = zeros(volumeSize);
 
 if testPlot
-    figure; hold on; axis equal;
+    figure; hold on; axis equal
     view(0, 0)
     plot3(surfaceX(plotInds)*voxelSize, surfaceY(plotInds)*voxelSize,...
         surfaceZ(plotInds)*voxelSize, '.')
-
+    
 %     plot3(0, 0, zInterfaceRI,  'cx') 
 
     
@@ -512,9 +517,9 @@ finalRayT = zeros(nOrigins, 3);
 finalRayTRefract = zeros(nOrigins, 3);
 
 if createGradedFiber
-   % Change to half period as focus points are actually at 1/4 and 3/4 points
-   halfPeriodInFiber = 2*pi/beta*0.5;   
-   %%% From 5.69 in Merchland this should be 2*pi*n0/beta
+   % Period is for parabolic profile, gaussian period is different and independent of entry.
+   %%% This is approx as specific value varies depending on entry RI
+   halfPeriodInFiber = 2*pi*n0/beta*0.5;   
    
    numPeriods = floor(fiberLength/halfPeriodInFiber);
    
@@ -649,6 +654,7 @@ for iOrigin = 1:nOrigins
                         % Just points backwards
                         surfaceNormal = [0 0 -1];
 
+                        halfPeriodInFiber = 2*pi*rOut/beta*0.5; 
                     end
 
                     rIn = exteriorRI;
@@ -687,9 +693,12 @@ for iOrigin = 1:nOrigins
                     error('TIR - ray does not actually enter')
                 end
                 
-                rayT = rayT/norm(rayT);
+                %%% now multiplied by initial RI - not sure this is correct?
+                rayT = rayT/norm(rayT)*rOut;
             else
                 inGraded = 1; 
+                
+                warning('Ray is not multipied by entry RI')
                 
                 plot3(rayX(1), rayX(2), rayX(3), 'go')
             end
@@ -811,7 +820,7 @@ for iOrigin = 1:nOrigins
                 % test if focal point is passed and capture if so
                 if rayX(3)-(volumeSize(3)/2*voxelSize - fiberLength/2) > halfPeriodInFiber*(currentPeriod-0.5)
 
-                    % Step back
+                    % Step back - this is just a linear interpolation up to point
                     deltaTemp = (halfPeriodInFiber*(currentPeriod-0.5) - (rayX(3)-(volumeSize(3)/2*voxelSize - fiberLength/2)))/rayT(3);
 
                     periodSpotsArray(:,currentPeriod,iOrigin) = rayX + deltaTemp*rayT; 
@@ -947,8 +956,6 @@ for iOrigin = 1:nOrigins
                pathLength = pathLength + sqrt((x0(1) - rayX(1))^2 + (x0(2) - rayX(2))^2 + (x0(3) - rayX(3))^2);
             end
             
-            % Normalize before refraction
-            rayT = rayT/norm(rayT);
             
             % Ray might not exit if reflected, but these will get over written when it does
             finalIntersect(iOrigin,:) = rayX;
@@ -1030,6 +1037,10 @@ for iOrigin = 1:nOrigins
                     rOut = exteriorRI;
                 end
 
+                %%% In test case normalization seems to be very similar to dividing by RI at exit
+%                 rayT = rayT/norm(rayT);
+                rayT = rayT/rIn;
+
                 if acos(dot(rayT, surfaceNormal)/(norm(surfaceNormal)*norm(rayT))) < pi/2
                     surfaceNormal = -surfaceNormal;
                 end
@@ -1060,13 +1071,16 @@ for iOrigin = 1:nOrigins
                     % Does not exit be default
                     inGraded = 1;
                     
+                    warning('probably should continue without normalization/adjustment')
                 end
                 
                 rayT = rayT/norm(rayT);
                 
                 finalRayTRefract(iOrigin,:) = rayT;
-            else
-               plot3(rayX(1), rayX(2), rayX(3), 'mo') 
+            else 
+               %%% Ray is not normalized or divded by exit RI, but this shouldn't have effect as it's an output.
+               
+               plot3(rayX(1), rayX(2), rayX(3), 'mo')
                
                inGraded = 0;
                
@@ -1353,7 +1367,7 @@ elseif useTestData
             tempRayPath = zeros(3, volumeSize(3))*NaN;
             
             if rayOrigins(iOrigin,2) ~= fiberCentre(2) | ... 
-                    any(startRayT - [0, 0, 1])
+                    any(startRayT/norm(startRayT) - [0, 0, 1])
                 %%% Can gernalize to X component and off-axis/helical rays from Section 5.3 in Merchland 1978
                 
                 error('Analytic solution only set up for Y on midline and parallel rays')
@@ -1373,7 +1387,6 @@ elseif useTestData
                 tempRayPath(3,topZ) = finalIntersect(iOrigin,3) - (fiberCentre(3) - fiberLength/2);
                 
                 % Ray path in fiber - Nishidate 2011, eqn 31 
-                    %%% Seems incorrect, or not general
                 if plotReferenceFiber
                     nishidateSolution = tempRayPath(1, :);
                     nIn = sqrt(2.5-0.5^2);
@@ -1389,26 +1402,32 @@ elseif useTestData
                 end
                 
                 % Gives correct result From Merchland 5.41 and other refs 
-                    %%% Was previously not dividing by n0
-                tempRayPath(1, bottomZ:topZ) = tempRayPath(1,bottomZ)*cos(tempRayPath(3,bottomZ:topZ)*beta/n0);
+                    %%% Was previously not dividing by RI/n0
+                firstCoord = [rayOrigins(iOrigin,1), fiberCentre(2), fiberCentre(3) - fiberLength/2];
+                [~, rStart] = numerical_dT_dt(firstCoord, volCoords(RIFlagInds,:), RIFlagInds, lensRIVolume, []);  
+
+                tempRayPath(1, bottomZ:topZ) = tempRayPath(1,bottomZ)*cos(tempRayPath(3,bottomZ:topZ)*beta/rStart);
                 
                 % Analytic expresion for ray after exit
                 % Get final Coord and RI
-                finalX = tempRayPath(1,bottomZ)*cos(fiberLength*beta);
+                finalX = tempRayPath(1,bottomZ)*cos(fiberLength*beta/rStart);
                 finalCoord = [finalX + fiberCentre(1), fiberCentre(2), fiberCentre(3) + fiberLength/2];
                 
-                [~, rIn] = numerical_dT_dt(finalCoord, volCoords(RIFlagInds,:), RIFlagInds, lensRIVolume, []);  
+                [~, rEnd] = numerical_dT_dt(finalCoord, volCoords(RIFlagInds,:), RIFlagInds, lensRIVolume, []);  
 
-                % Get final vector and normalize
-                finalP = -beta*tempRayPath(1,bottomZ)*sin(fiberLength*beta);
-                finalT = [finalP, 0, 1];
-                finalT = finalT/norm(finalT);
+                % Get final vector and normalize - 5.43 in Merchland
+                finalP = -beta*tempRayPath(1,bottomZ)*sin(fiberLength*beta/rStart);
+                
+                % Note rStart is divded by rEnd before refraction... But matches what I did in ray-tracing?
+                finalT = [finalP, 0, rStart]/rEnd;
+                % Division by rEnd seems to effectively normalize
+%                 finalT = finalT/norm(finalT);
                 
                 surfaceNormal = [0 0 -1];
                 rOut = exteriorRI;
                 
                 % Refract
-                nRatio = rIn/rOut;
+                nRatio = rEnd/rOut;
                 cosI = -dot(surfaceNormal, finalT);
                 sinT2 = nRatio^2*(1-cosI^2);
                 cosT = sqrt(1-sinT2);
@@ -1421,10 +1440,11 @@ elseif useTestData
                     refractT = finalT-2*dot(surfaceNormal,finalT)*surfaceNormal;
                 end
                 
-                % No need to normalize as rescaled
-                refractT = refractT/refractT(3);
+                refractT = refractT/norm(refractT);
                 
                 % Propogate ray
+                % Normalize to ray z as steps are along z
+                refractT = refractT/refractT(3);
                 tempRayPath(1, topZ+1:end) = (tempRayPath(3, topZ+1:end)-fiberLength)*refractT(1) + finalX;
                 
 %                % Add fiber centre back for X
@@ -1473,7 +1493,7 @@ elseif useTestData
                 
                 tempRayPath = permute(trueRayPathArray(:, :, iOrigin), [2 1]);
 
-                plot((rayPath(:,1) - tempRayPath(:,1))*10^6, zSteps, 'color', rayCols(iOrigin,:))
+                plot((tempRayPath(:,1) - rayPath(:,1))*10^6, zSteps, 'color', rayCols(iOrigin,:))
             end
         end
        
@@ -1488,7 +1508,7 @@ elseif useTestData
           
           interpNishidatPath = interpNishidatPath - volumeSize(1)/2*voxelSize;
           
-          plot((interpNishidatPath - nishidateSolution')*100, zSteps, 'r--')
+%           plot((interpNishidatPath - nishidateSolution')*10^6, zSteps, 'r--')
 
        end
        

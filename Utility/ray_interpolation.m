@@ -94,7 +94,7 @@ function [X, T, new_delta] = ray_interpolation(type, RIType, X0, T0, delta, vol_
             error('Interpolation type not coded')
     end
     
-    % Seems like ray should be normalized here, but causes huge error.
+    %%% Temptation is to normalize ray, but this is not how it works in GRIN tracing
 %     T = T/norm(T);
 end    
 
