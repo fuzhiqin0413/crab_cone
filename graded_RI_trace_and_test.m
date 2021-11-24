@@ -6,30 +6,22 @@ clc; close all
 
 %% Set parameters
 
-useRealData = 0;
+useRealData = 1;
 
 if useRealData
     dataFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/AnalysisVolumes/';
-    
-    n0 = 1.52;
-    
+
     % New radial
-    dataFile = 'Volume_Cone_1000_nm_Cone_0_SD_GRIN_radial.mat';
-    metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_radial.mat';
+%     dataFile = 'Volume_Cone_1000_nm_Cone_0_SD_GRIN_radial.mat';
+%     metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_radial.mat';
     
     % Cylinder
 %     dataFile = 'Volume_Cylinder_1000_nm_Cone_0_SD_GRIN_cylinder.mat';
 %     metaFile = 'Cylinder_1000_nm_Cone_0_SD_GRIN_cylinder.mat';
     
-%     dataFile = 'Volume_Cylinder_1000_nm_Cone_0_SD_GRIN_cylinder.mat';
-%     metaFile = 'Cylinder_1000_nm_Cone_0_SD_GRIN_cylinder.mat';
-    
     % Orignal Radial
-%     dataFile = 'Volume_ConeOriginal_1000_nm_Cone_0_SD_GRIN_radial.mat';
-%     metaFile = 'ConeOriginal_1000_nm_Cone_0_SD_GRIN_radial.mat';
-    
-    useSlab = 0;
-        flipSlab = 0;
+    dataFile = 'Volume_ConeOriginal_1000_nm_Cone_0_SD_GRIN_radial.mat';
+    metaFile = 'ConeOriginal_1000_nm_Cone_0_SD_GRIN_radial.mat';
 
     % Usually saved pointing down
     flipVolume = 1;
@@ -59,7 +51,7 @@ else
         plotReferenceFiber = 0; % will plot data from Nishidate and only trace 0.5
 end
 
-xSpacing = 5; % in voxels...
+xSpacing = 10; % in voxels...
 
 % Options, 1, 4S, 4RKN, 5RKN, 45RKN 
 % Difference 4 to 5 is quite small
@@ -93,10 +85,6 @@ if useRealData
     temp = load(sprintf('%s%s',dataFolder, dataFile));
     lensRIVolume = temp.volume;
     
-    if flipSlab & useSlab
-        lensRIVolume = permute(lensRIVolume, [2 1 3]);
-    end
-    
     clear temp
     
     metaData = load(sprintf('%s%s',dataFolder, metaFile));
@@ -121,128 +109,315 @@ if useRealData
     
     lensRIVolume(RIFlagVolume) = -lensRIVolume(RIFlagVolume);
 
-    % for cone - note voxSize is actually 2D pixel size
+    % make meshes for each layer
+    meshAngles = (0:2:360)/180*pi;
+
+    %%% Note, border cones won't be defined using this process
+        % Add an error if they are present (rotated volume won't work anyway)
+    
+    % For cornea - flat
+     
+    % single Z at end
+    tempZ = (metaData.coneLengthToUse + metaData.outerCorneaLengthToUse + metaData.epicorneaLengthToUse)* ...
+        metaData.voxSize/metaData.voxSize3D;
+
+    [xGrid, yGrid, zGrid] = meshgrid(1:volumeSize(1), 1:volumeSize(2), tempZ);
+    xGrid = xGrid(:); yGrid = yGrid(:); zGrid = zGrid(:);
+    
+    corneaVertices = [xGrid, yGrid, zGrid];
+    corneaVertices(:,3) = corneaVertices(:,3) + metaData.tipOffset*metaData.voxSize/metaData.voxSize3D;
+    
+    tempTriangulation = delaunayTriangulation(corneaVertices(:,1:2));
+
+    corneaSurface.faces = tempTriangulation.ConnectivityList;
+    % Flip Z around center
+    corneaSurface.vertices = corneaVertices;
+    
+    corneaSurfaceVolume = polygon2voxel(corneaSurface, volumeSize, 'none');
+    
+    % for top of outer cornea - can be curved
+    if metaData.displayProfiles.EpicorneaCone
+        warning('needs testing')
+        
+        %%% needs testing before copy down - confirm against code for removing base of cone...
+        
+        % has a curve
+        tempProfile = metaData.epicorneaProfileToUse*metaData.voxSize/metaData.voxSize3D;
+        tempZ = metaData.corneaXRef*metaData.voxSize/metaData.voxSize3D;
+        
+        tempZ(isnan(tempProfile)) = [];
+        tempProfile(isnan(tempProfile)) = [];
+
+        % Adjust to actual length
+        tempZ(1) = (metaData.coneLengthToUse + metaData.outerCorneaLengthToUse)*metaData.voxSize/metaData.voxSize3D;
+        
+        epicorneaVertices = zeros(length(tempProfile)*length(meshAngles),3);
+
+        profileMax = max(tempProfile);
+        
+        for i = 1:length(tempProfile)
+            for j = 1:length(meshAngles)
+                epicorneaVertices((i-1)*length(meshAngles)+j,:) = [tempProfile(i)*sin(meshAngles(j)), ...
+                    tempProfile(i)*cos(meshAngles(j)), tempZ(i)];
+            end
+        end
+        
+        % Get cap to pad back
+        [xGrid, yGrid, zGrid] = meshgrid(-floor(profileMax):ceil(profileMax), -floor(profileMax):ceil(profileMax), tempZ(end));
+
+        xGrid = xGrid(:); yGrid = yGrid(:); zGrid = zGrid(:);
+        rGrid = sqrt(xGrid.^2 + yGrid.^2);
+
+        endInds = find(rGrid > tempProfile(end));
+
+        epicorneaVertices = [[xGrid(endInds), yGrid(endInds), zGrid(endInds)]', epicorneaVertices']';
+
+        epicorneaVertices(:,1) = epicorneaVertices(:,1) + volumeSize(1)/2;
+        epicorneaVertices(:,2) = epicorneaVertices(:,2) + volumeSize(2)/2;
+        epicorneaVertices(:,3) = epicorneaVertices(:,3) + metaData.tipOffset*metaData.voxSize/metaData.voxSize3D;
+
+        % Make another layer at base to force 3D
+        [xGrid, yGrid, zGrid] = meshgrid(1:volumeSize(1), 1:volumeSize(2), tempZ(1)-1);
+        xGrid = xGrid(:); yGrid = yGrid(:); zGrid = zGrid(:);
+        
+        epicorneaVertices = [epicorneaVertices [xGrid, yGrid, zGrid]' ]';
+        forcedInds = find(epicorneaVertices(:,3) == tempZ(1)-1);
+        
+        tempTriangulation = delaunayTriangulation(epicorneaVertices);
+        [tempFaces, tempVertices] = freeBoundary(tempTriangulation); 
+        
+        epicorneaSurface.faces = tempFaces;
+        epicorneaSurface.vertices = tempVertices;
+        
+    else
+       % just flat, can copy cornea with adjusted Z 
+       epicorneaVertices = corneaVertices; 
+       epicorneaVertices(:,3) = epicorneaVertices(:,3) - metaData.epicorneaLengthToUse*metaData.voxSize/metaData.voxSize3D;
+       
+       epicorneaSurface = corneaSurface;
+       epicorneaSurface.vertices = epicorneaVertices;
+    end
+    
+    epicorneaBorderVolume = polygon2voxel(epicorneaSurface, volumeSize, 'none');
+    
+    % for base outer cornea/intercone to  - can be curved
+    if metaData.displayProfiles.CinC
+        % has a curve
+        warning('needs testing')
+        
+        tempProfile = metaData.CinCProfileToUse*metaData.voxSize/metaData.voxSize3D;
+        tempZ = metaData.coneXRef*metaData.voxSize/metaData.voxSize3D;
+        
+        %%% Copy down from epicornea after test...
+        
+    else
+       % just flat, can copy cornea with adjusted Z 
+       cInCVertices = corneaVertices; 
+       cInCVertices(:,3) = cInCVertices(:,3) - (metaData.outerCorneaLengthToUse + metaData.epicorneaLengthToUse)*metaData.voxSize/metaData.voxSize3D;
+       
+       cInCSurface = corneaSurface;
+       cInCSurface.vertices = cInCVertices;
+    end
+    
+    cInCBorderVolume = polygon2voxel(cInCSurface, volumeSize, 'none');
+    
+    %%% Would be good to make a funciton for doing the rotation in these...
+    % for cone - is curved note voxSize is actually 2D pixel size
     tempProfile = metaData.coneProfileToUse*metaData.voxSize/metaData.voxSize3D;
     tempZ = metaData.coneXRef*metaData.voxSize/metaData.voxSize3D;
 
     tempZ(isnan(tempProfile)) = [];
     tempProfile(isnan(tempProfile)) = [];
     
+    % Adjust to actual length
+    tempZ(end) = metaData.coneLengthToUse*metaData.voxSize/metaData.voxSize3D;
+    
     profileMax = max(tempProfile);
 
+    coneVertices = zeros(length(tempProfile)*length(meshAngles),3);
+
+    for i = 1:length(tempProfile)
+        for j = 1:length(meshAngles)
+            if ~metaData.createCylinder
+                coneVertices((i-1)*length(meshAngles)+j,:) = [tempProfile(i)*sin(meshAngles(j)), ...
+                    tempProfile(i)*cos(meshAngles(j)), tempZ(i)];
+            else
+                coneVertices((i-1)*length(meshAngles)+j,:) = [profileMax*sin(meshAngles(j)), ...
+                    profileMax*cos(meshAngles(j)), tempZ(i)];
+            end
+        end
+    end
     
-    if ~useSlab
-        %%% Could be good to pad front and back with grid, has degenerate faces
-        % Make meshes for intersects
-        meshAngles = (0:2:360)/180*pi;
+    % Get caps to pad front and back, otherwise there are degenerate faces
+    [xGrid, yGrid, zGrid] = meshgrid(-floor(profileMax):ceil(profileMax), -floor(profileMax):ceil(profileMax), 1);
 
-        originalVertices = zeros(length(tempProfile)*length(meshAngles),3);
-        
-        for i = 1:length(tempProfile)
-            for j = 1:length(meshAngles)
-                if ~metaData.createCylinder
-                    originalVertices((i-1)*length(meshAngles)+j,:) = [tempProfile(i)*sin(meshAngles(j)), ...
-                        tempProfile(i)*cos(meshAngles(j)), tempZ(i)];
-                else
-                    originalVertices((i-1)*length(meshAngles)+j,:) = [profileMax*sin(meshAngles(j)), ...
-                        profileMax*cos(meshAngles(j)), tempZ(i)];
-                end
-            end
-        end
-        
-    else
-        %%% Could probably just do this with mesh grid.
-        
-        originalVertices = zeros(length(tempProfile)*volumeSize(2),3);
-        profileMax = max(tempProfile);
+    xGrid = xGrid(:); yGrid = yGrid(:); zGrid = zGrid(:);
+    rGrid = sqrt(xGrid.^2 + yGrid.^2);
 
-        for i = 1:length(tempProfile)
-            for j = 1:volumeSize(2)
-                if ~flipSlab
-                    originalVertices((i-1)*volumeSize(2)+j,:) = [j-volumeSize(1)/2,...
-                        profileMax, tempZ(i)];
-                else
-                    originalVertices((i-1)*volumeSize(2)+j,:) = [profileMax, ...
-                        j-volumeSize(1)/2, tempZ(i)];
-                end
-            end
-        end
-        
-        % Duplicate to other side
-        tempVertices = originalVertices;
-        if ~flipSlab
-            tempVertices(:,2) = -tempVertices(:,2);
-        else
-            tempVertices(:,1) = -tempVertices(:,1);
-        end
-        originalVertices = [originalVertices' tempVertices']';
+    firstInds = find(rGrid < tempProfile(1));
+    endInds = find(rGrid < tempProfile(end));
+    
+    coneVertices = [ [xGrid(firstInds), yGrid(firstInds), tempZ(1)*zGrid(firstInds)]', ...
+        coneVertices', [xGrid(endInds), yGrid(endInds), (tempZ(end)+1)*zGrid(endInds)]']';
+    
+    % Store end cap inds
+    forcedCapInds = find(coneVertices(:,3) == tempZ(end)+1);
+    
+    % Step in slightly so these don't get incorperated into faces along base of cone
+    coneVertices(forcedCapInds, 1:2) = coneVertices(forcedCapInds, 1:2)*0.9;
+    
+    coneVertices(:,1) = coneVertices(:,1) + volumeSize(1)/2;
+    coneVertices(:,2) = coneVertices(:,2) + volumeSize(2)/2;
+    coneVertices(:,3) = coneVertices(:,3) + metaData.tipOffset*metaData.voxSize/metaData.voxSize3D;
+    
+    tempTriangulation = delaunayTriangulation(coneVertices);
+    [tempFaces, tempVertices] = freeBoundary(tempTriangulation); % this seems to flip vertices in z
+    
+    % remove forced inds at base
+    % not all of the original forced inds are used in the final trinagulation
+    usedForcedInds = find(tempVertices(:,3) == coneVertices(forcedCapInds(1),3));
+    
+    facesToRemove = zeros(length(tempFaces),1, 'logical');
+    for i = 1:length(usedForcedInds)
+        % Flag for each column
+        facesToRemove(tempFaces(:,1) == usedForcedInds(i)) = 1;
+        facesToRemove(tempFaces(:,2) == usedForcedInds(i)) = 1;
+        facesToRemove(tempFaces(:,3) == usedForcedInds(i)) = 1;
     end
 
-    originalVertices(:,1) = originalVertices(:,1) + volumeSize(1)/2;
-    originalVertices(:,2) = originalVertices(:,2) + volumeSize(2)/2;
-    originalVertices(:,3) = originalVertices(:,3) + metaData.tipOffset*metaData.voxSize/metaData.voxSize3D;
-
-    tempTriangulation = delaunayTriangulation(originalVertices);
-    [coneFaces, coneVertices] = freeBoundary(tempTriangulation);
-
-    grinSurface.faces = coneFaces;
-    % Flip Z around center
-    grinSurface.vertices = coneVertices;
-    grinSurface.vertices(:,3) = -(coneVertices(:,3)-volumeSize(3)/2)+volumeSize(3)/2;
+    tempFaces(facesToRemove,:) = [];
+%     tempVertices(usedForcedInds,:) = [];
+    
+    coneVertices(forcedCapInds,:) = [];
+    
+    grinSurface.faces = tempFaces;
+    grinSurface.vertices = tempVertices;
+%   Flip Z around center
+%   grinSurface.vertices(:,3) = -(tempVertices(:,3)-volumeSize(3)/2)+volumeSize(3)/2;
 
     % Get cone border volume
-    borderVolume = polygon2voxel(grinSurface, volumeSize, 'none');
+    coneBorderVolume = polygon2voxel(grinSurface, volumeSize, 'none');
     
+    % for inner intercone - is curved
+    if any(metaData.exposedInterconeProfileToUseLeft - metaData.exposedInterconeProfileToUseRight)
+        error('Right and left intercone profiles arent equal - rotated volume also wont work')
+    end
+    
+    profileToUse = find(~isnan(metaData.exposedInterconeProfileToUseLeft));
+    
+    tempProfile = (metaData.exposedInterconeProfileToUseLeft(profileToUse)+metaData.coneProfileToUse(profileToUse))*metaData.voxSize/metaData.voxSize3D;
+    tempZ = metaData.coneXRef(profileToUse)*metaData.voxSize/metaData.voxSize3D;
+    
+    % Shrink 1st in profile to cone
+    % Tried adding a step before hand, but always caused problems somewhere
+    tempProfile(1) = metaData.coneProfileToUse(profileToUse(1))*metaData.voxSize/metaData.voxSize3D;
+    
+    interconeVertices = zeros(length(tempProfile)*length(meshAngles),3);
+
+    profileMax = max(tempProfile);  
+    
+    for i = 1:length(tempProfile)
+        for j = 1:length(meshAngles)
+            interconeVertices((i-1)*length(meshAngles)+j,:) = [tempProfile(i)*sin(meshAngles(j)), ...
+                tempProfile(i)*cos(meshAngles(j)), tempZ(i)];
+        end
+    end
+    
+    % Get fake cap to pad top
+    [xGrid, yGrid, zGrid] = meshgrid(-floor(profileMax):ceil(profileMax), -floor(profileMax):ceil(profileMax), (tempZ(1)-1));
+
+    xGrid = xGrid(:); yGrid = yGrid(:); zGrid = zGrid(:);
+    rGrid = sqrt(xGrid.^2 + yGrid.^2);
+
+    startInds = find(rGrid < tempProfile(1));
+
+    interconeVertices = [ [xGrid(startInds), yGrid(startInds), zGrid(startInds)]', interconeVertices']';
+
+    forcedCapInds = find(interconeVertices(:,3) == tempZ(1)-1);
+    % Need a lower multiple for alpha shape
+    interconeVertices(forcedCapInds, 1:2) = interconeVertices(forcedCapInds, 1:2)*0.75;
+    
+    interconeVertices(:,1) = interconeVertices(:,1) + volumeSize(1)/2;
+    interconeVertices(:,2) = interconeVertices(:,2) + volumeSize(2)/2;
+    interconeVertices(:,3) = interconeVertices(:,3) + metaData.tipOffset*metaData.voxSize/metaData.voxSize3D;
+    
+    % Now get a layer to force base
+    [xGrid, yGrid, zGrid] = meshgrid(1:volumeSize(1), 1:volumeSize(2), tempZ(end)+metaData.tipOffset*metaData.voxSize/metaData.voxSize3D);
+    xGrid = xGrid(:); yGrid = yGrid(:); zGrid = zGrid(:);
+    
+    rGrid = sqrt((xGrid-volumeSize(1)/2).^2 + (yGrid-volumeSize(2)/2).^2);
+    endInds = find(rGrid > tempProfile(end));
+    
+    interconeVertices = [interconeVertices', [xGrid(endInds), yGrid(endInds), zGrid(endInds)]']';
+    
+    % Make another layer at base to force 3D
+    [xGrid, yGrid, zGrid] = meshgrid(1:volumeSize(1), 1:volumeSize(2), tempZ(end)+1+metaData.tipOffset*metaData.voxSize/metaData.voxSize3D);
+    xGrid = xGrid(:); yGrid = yGrid(:); zGrid = zGrid(:);
+
+    interconeVertices = [interconeVertices', [xGrid, yGrid, zGrid]']';
+    forcedGridInds = find(interconeVertices(:,3) == tempZ(end)+1+metaData.tipOffset*metaData.voxSize/metaData.voxSize3D);
+
+%     tempTriangulation = delaunayTriangulation(interconeVertices);
+%     [tempFaces, tempVertices] = freeBoundary(tempTriangulation); 
+    
+    % as exposed cone is concave has to be done with alpha - but leads to some flattening around border
+    tempShape = alphaShape(interconeVertices, 10);
+    [tempFaces, tempVertices] = boundaryFacets(tempShape);
+
+    % remove forced inds at cap and base
+    usedForcedCapInds = find(tempVertices(:,3) == interconeVertices(forcedCapInds(1),3));
+    usedForcedBaseInds = find(tempVertices(:,3) == interconeVertices(forcedGridInds(1),3));
+    
+    facesToRemove = zeros(length(tempFaces),1,'logical');
+    for i = 1:length(usedForcedBaseInds)
+        % Flag for each column
+        facesToRemove(tempFaces(:,1) == usedForcedBaseInds(i)) = 1;
+        facesToRemove(tempFaces(:,2) == usedForcedBaseInds(i)) = 1;
+        facesToRemove(tempFaces(:,3) == usedForcedBaseInds(i)) = 1;
+    end
+    
+    for i = 1:length(usedForcedCapInds)
+        % Flag for each column
+        facesToRemove(tempFaces(:,1) == usedForcedCapInds(i)) = 1;
+        facesToRemove(tempFaces(:,2) == usedForcedCapInds(i)) = 1;
+        facesToRemove(tempFaces(:,3) == usedForcedCapInds(i)) = 1;
+    end
+
+    tempFaces(facesToRemove,:) = [];
+
+    interconeVertices([forcedCapInds' forcedGridInds']',:) = [];
+    
+    interconeSurface.faces = tempFaces;
+    interconeSurface.vertices = tempVertices;
+    
+    interconeBorderVolume = polygon2voxel(interconeSurface, volumeSize, 'none');
+    
+    % plots 
     figure;
-    imshow(flipud(permute(borderVolume(round(volumeSize(1)/2),:,:), [2 3 1])'));
-    hold on;
-    plot(coneVertices(:,1), coneVertices(:,3), '.')
-    plot(coneVertices(:,2), coneVertices(:,3), '.')
-    
-    %%% Need surfaces for
-    % intercone exposed - clip top onto closest points on cone and grid to edge
-    
-    % intercone to outercone - clip onto lowest border of cone and grid to edge
-    
-    % epicornea to outcone - need profile and grid to edge (and across inner)
-    
-    % epicornea - grid to edge
-    
-    figure;
-    subplot(3,2,1)
-    imshow(flipud(permute(lensRIVolume(round(volumeSize(1)/2),:,:), [2 3 1])'-1.45)/(1.54-1.45));
-    hold on
-    
-    plot(originalVertices(:,1), originalVertices(:,3), '.')
-    plot(originalVertices(:,2), originalVertices(:,3), '.')
-    
-    subplot(3,2,2)
-    imshow(flipud(permute(lensRIVolume(round(volumeSize(1)/2),:,:), [2 3 1])'-1.45)/(1.54-1.45));
-    hold on
-    plot(coneVertices(:,1), coneVertices(:,3), '.')
-    plot(coneVertices(:,2), coneVertices(:,3), '.')
+%     plot3(coneVertices(:,1), coneVertices(:,2), coneVertices(:,3), '.')
+    hold on; axis equal
+    trisurf(grinSurface.faces, grinSurface.vertices(:,1), grinSurface.vertices(:,2), grinSurface.vertices(:,3), ...
+       'FaceColor','g','FaceAlpha',0.8);
    
-   subplot(3,2,3)
-   imshow((lensRIVolume(:,:,round(volumeSize(3)/3))-1.45)/(1.54-1.45))
-   hold on; plot(originalVertices(:,1), originalVertices(:,2), '.')
+%     plot3(corneaVertices(:,1), corneaVertices(:,2), corneaVertices(:,3), '.')
+    trisurf(corneaSurface.faces, corneaSurface.vertices(:,1), corneaSurface.vertices(:,2), corneaSurface.vertices(:,3), ...
+       'FaceColor','m','FaceAlpha',0.8);
    
-   subplot(3,2,4)
-   imshow((lensRIVolume(:,:,round(volumeSize(3)/3))-1.45)/(1.54-1.45))
-   hold on; plot(coneVertices(:,1), coneVertices(:,2), '.')
+%    plot3(epicorneaVertices(:,1), epicorneaVertices(:,2), epicorneaVertices(:,3), '.')
+   trisurf(epicorneaSurface.faces, epicorneaSurface.vertices(:,1), epicorneaSurface.vertices(:,2), epicorneaSurface.vertices(:,3), ...
+       'FaceColor','c','FaceAlpha',0.8);
    
-   subplot(3,2,5)
-   imshow((lensRIVolume(:,:,round(volumeSize(3)/1.5))-1.45)/(1.54-1.45))
-   hold on; plot(originalVertices(:,1), originalVertices(:,2), '.')
+%    plot3(cInCVertices(:,1), cInCVertices(:,2), cInCVertices(:,3), '.')
+   trisurf(cInCSurface.faces, cInCSurface.vertices(:,1), cInCSurface.vertices(:,2), cInCSurface.vertices(:,3), ...
+       'FaceColor','b','FaceAlpha',0.8);
    
-   subplot(3,2,6)
-   imshow((lensRIVolume(:,:,round(volumeSize(3)/1.5))-1.45)/(1.54-1.45))
-   hold on; plot(coneVertices(:,1), coneVertices(:,2), '.')
+%    plot3(interconeVertices(:,1), interconeVertices(:,2), interconeVertices(:,3), '.')
+   trisurf(interconeSurface.faces, interconeSurface.vertices(:,1), interconeSurface.vertices(:,2), interconeSurface.vertices(:,3), ...
+       'FaceColor','b','FaceAlpha',0.8);
    
    figure;
-    plot3(originalVertices(:,1), originalVertices(:,2), originalVertices(:,3), '.')
-    hold on; axis equal
-    trisurf(coneFaces, coneVertices(:,1),coneVertices(:,2),coneVertices(:,3), ...
-       'FaceColor','cyan','FaceAlpha',0.8);
+   tempVolume = coneBorderVolume + corneaSurfaceVolume + epicorneaBorderVolume + cInCBorderVolume + interconeBorderVolume;
+   imshow(permute(tempVolume(round(volumeSize(1)/2),:,:), [2 3 1])');
    
 elseif useTestData
     if ~xor(createLunebergLens, createGradedFiber)
@@ -264,7 +439,7 @@ elseif useTestData
 
     lensRIVolume(isnan(lensRIVolume)) = exteriorRI;
     
-    borderVolume = imdilate(~RIFlagVolume, strel('sphere', 1)) & RIFlagVolume;
+    coneBorderVolume = imdilate(~RIFlagVolume, strel('sphere', 1)) & RIFlagVolume;
     
     %%% Should add option for mesh based calcuation and refraction as in real data
 end
@@ -272,7 +447,7 @@ end
 %% Do general set up
 
 % Get surface voxels of RI volume
-surfaceInds = find(borderVolume);
+surfaceInds = find(coneBorderVolume);
 
 [surfaceX, surfaceY, surfaceZ] = ind2sub(volumeSize, surfaceInds);
 
@@ -290,7 +465,7 @@ if useRealData
     grinNormals = meshFaceNormals(grinSurface.vertices, grinSurface.faces);
 
     % Test border volume is ok
-%     if any(borderVolume(vertexIndexes) == 0)
+%     if any(coneBorderVolume(vertexIndexes) == 0)
 %         error('Not all indexes contained in border volume')
 %     end
 
@@ -435,8 +610,6 @@ rayOrigins = [xStartPoints(:), ones(numel(xStartPoints),1)*volumeSize(2)/2,  ...
 
 nOrigins = size(rayOrigins,1);
 
-warning('startT multipled by n0, should get local value?')
-
 startRayT = [sin(incidenceAngle/180*pi), 0, cos(incidenceAngle/180*pi)];
 
 rayCols = lines(nOrigins);
@@ -451,7 +624,7 @@ volumeCenter = volumeSize/2*voxelSize;
 if useRealData
     % Calculating inpolyhedron is very slow, so test on volume first
     % Note inverted, zero if inside volume
-    intersectionFn = @(x1, x0)(~surfaceIntersectFunction(RIFlagVolume, borderVolume, x1, x0, voxelSize, grinSurface));
+    intersectionFn = @(x1, x0)(~surfaceIntersectFunction(RIFlagVolume, coneBorderVolume, x1, x0, voxelSize, grinSurface));
        
     %%% Correctly calculated as ray distance
     lambdaFn = @(x1, x0)surfaceLambdaFunction(x1, x0, grinSurface);
@@ -1156,7 +1329,7 @@ if useRealData
     title(sprintf('%i deg',incidenceAngle))
     
     % Plot border
-    inds = find(permute(borderVolume(:, round(rayOrigins(1,2)/voxelSize), :),[1 3 2]));
+    inds = find(permute(coneBorderVolume(:, round(rayOrigins(1,2)/voxelSize), :),[1 3 2]));
     
     [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
     
