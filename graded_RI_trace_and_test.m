@@ -24,7 +24,8 @@ if useRealData
     metaFile = 'ConeOriginal_1000_nm_Cone_0_SD_GRIN_radial.mat';
 
     % Usually saved pointing down
-    flipVolume = 1;
+    flipVolume = 1;    
+    flipSurfaces = 1;
     
     createGradedFiber = 0;
     createLunebergLens = 0;
@@ -62,19 +63,23 @@ interpType = '4S'; %'4S';
     
     % Seems good to start a bit lower than the general deltaS
         % in fixed step, 10^-3 vs. 10^-4 gives rough order of magnitude error
-    initialDeltaS = 10^-3;
+    initialDeltaS = 0.5*10^-3;
     
     % This keeps spot size surpsingly small, even on loose tolerance
         % (I guess it ends up stepping further at loose tolerance...)
     iterativeFinal = 0;  
     
-incidenceAngle = 0; 15; % deg, in XZ - plane    
+incidenceAngle = 0; % deg, in XZ - plane    
     
+%error term, sqrt of machine precision, from Nishidate paper sqrt(1.49e-8)
+    % Take geometric mean of single and double precision, double takes ages to evaluate
+epsilon = sqrt(geomean([1.19e-7 2.22e-16])); 
+
 % Should be on, but can switch off to test    
 interfaceRefraction = 1;  
 
 % bit of a hack to prevent ray reentering due to pixel jitter 
-blockMultipleExits = 1;
+blockMultipleExits = 0;
 
 % extend on final plots - only added for real data
 extendRayLength = 2; % mm
@@ -116,7 +121,6 @@ if useRealData
         % Add an error if they are present (rotated volume won't work anyway)
     
     % For cornea - flat
-     
     % single Z at end
     tempZ = (metaData.coneLengthToUse + metaData.outerCorneaLengthToUse + metaData.epicorneaLengthToUse)* ...
         metaData.voxSize/metaData.voxSize3D;
@@ -127,13 +131,18 @@ if useRealData
     corneaVertices = [xGrid, yGrid, zGrid];
     corneaVertices(:,3) = corneaVertices(:,3) + metaData.tipOffset*metaData.voxSize/metaData.voxSize3D;
     
+    % Get 2D triangulation
     tempTriangulation = delaunayTriangulation(corneaVertices(:,1:2));
 
     corneaSurface.faces = tempTriangulation.ConnectivityList;
-    % Flip Z around center
     corneaSurface.vertices = corneaVertices;
+
+    if flipSurfaces
+        corneaSurface.vertices(:,3) = -(corneaVertices(:,3)-volumeSize(3)/2)+volumeSize(3)/2;
+    end
+    corneaBorderVolume = polygon2voxel(corneaSurface, volumeSize, 'none');
+
     
-    corneaSurfaceVolume = polygon2voxel(corneaSurface, volumeSize, 'none');
     
     % for top of outer cornea - can be curved
     if metaData.displayProfiles.EpicorneaCone
@@ -198,29 +207,65 @@ if useRealData
        epicorneaSurface.vertices = epicorneaVertices;
     end
     
+    if flipSurfaces
+        epicorneaSurface.vertices(:,3) = -(epicorneaVertices(:,3)-volumeSize(3)/2)+volumeSize(3)/2;
+    end
     epicorneaBorderVolume = polygon2voxel(epicorneaSurface, volumeSize, 'none');
+
     
-    % for base outer cornea/intercone to  - can be curved
-    if metaData.displayProfiles.CinC
-        % has a curve
-        warning('needs testing')
-        
-        tempProfile = metaData.CinCProfileToUse*metaData.voxSize/metaData.voxSize3D;
-        tempZ = metaData.coneXRef*metaData.voxSize/metaData.voxSize3D;
-        
-        %%% Copy down from epicornea after test...
-        
+    
+    % for base outer cornea/intercone around cone -  flat
+    % Make flat grid as for cornea
+    tempZ = (metaData.coneLengthToUse)* metaData.voxSize/metaData.voxSize3D;
+
+    [xGrid, yGrid, zGrid] = meshgrid((1:volumeSize(1))-volumeSize(1)/2, (1:volumeSize(2))-volumeSize(2)/2, tempZ);
+    xGrid = xGrid(:); yGrid = yGrid(:); zGrid = zGrid(:);
+    
+    % Shrink vertices that are inside radius at base of cone
+    rGrid = sqrt(xGrid.^2 + yGrid.^2);
+    
+    if ~isnan(metaData.coneProfileToUse(end))
+        coneBaseRadius = metaData.coneProfileToUse(end)*metaData.voxSize/metaData.voxSize3D;
+        verticesToRemove = find(rGrid < coneBaseRadius);
     else
-       % just flat, can copy cornea with adjusted Z 
-       cInCVertices = corneaVertices; 
-       cInCVertices(:,3) = cInCVertices(:,3) - (metaData.outerCorneaLengthToUse + metaData.epicorneaLengthToUse)*metaData.voxSize/metaData.voxSize3D;
-       
-       cInCSurface = corneaSurface;
-       cInCSurface.vertices = cInCVertices;
+        error('Need to get last good value in cone profile')
     end
     
-    cInCBorderVolume = polygon2voxel(cInCSurface, volumeSize, 'none');
+    cInCVertices = [xGrid, yGrid, zGrid];
     
+    % Step in slightly so these don't get incorperated into faces along base of cone
+    cInCVertices(verticesToRemove, 1:2) = cInCVertices(verticesToRemove, 1:2)*0.9;
+    
+    % Add ring of vertices at cone base
+    cInCVertices = [cInCVertices' [coneBaseRadius*sin(meshAngles)' coneBaseRadius*cos(meshAngles)' tempZ*ones(length(meshAngles),1)]']';
+    
+    cInCVertices(:,1) = cInCVertices(:,1) + volumeSize(1)/2;
+    cInCVertices(:,2) = cInCVertices(:,2) + volumeSize(2)/2;
+    cInCVertices(:,3) = cInCVertices(:,3) + metaData.tipOffset*metaData.voxSize/metaData.voxSize3D;
+   
+    % Get 2D triangulation
+    tempTriangulation = delaunayTriangulation(cInCVertices(:,1:2));
+    
+    cInCSurface.faces = tempTriangulation.ConnectivityList;
+    cInCSurface.vertices = cInCVertices;
+    
+    facesToRemove = zeros(length(cInCSurface.faces),1,'logical');
+    for i = 1:length(verticesToRemove)
+        % Flag for each column
+        facesToRemove(cInCSurface.faces(:,1) == verticesToRemove(i)) = 1;
+        facesToRemove(cInCSurface.faces(:,2) == verticesToRemove(i)) = 1;
+        facesToRemove(cInCSurface.faces(:,3) == verticesToRemove(i)) = 1;
+    end
+    
+    cInCSurface.faces(facesToRemove,:) = [];
+
+    if flipSurfaces
+        cInCSurface.vertices(:,3) = -(cInCVertices(:,3)-volumeSize(3)/2)+volumeSize(3)/2;
+    end
+    cInCBorderVolume = polygon2voxel(cInCSurface, volumeSize, 'none');
+
+
+
     %%% Would be good to make a funciton for doing the rotation in these...
     % for cone - is curved note voxSize is actually 2D pixel size
     tempProfile = metaData.coneProfileToUse*metaData.voxSize/metaData.voxSize3D;
@@ -257,14 +302,22 @@ if useRealData
     firstInds = find(rGrid < tempProfile(1));
     endInds = find(rGrid < tempProfile(end));
     
-    coneVertices = [ [xGrid(firstInds), yGrid(firstInds), tempZ(1)*zGrid(firstInds)]', ...
-        coneVertices', [xGrid(endInds), yGrid(endInds), (tempZ(end)+1)*zGrid(endInds)]']';
+    if metaData.displayProfiles.CinC
+        error('Need to make profile at base of cone')
+        
+        coneVertices = [ [xGrid(firstInds), yGrid(firstInds), tempZ(1)*zGrid(firstInds)]', coneVertices'];
+    else
+        coneVertices = [ [xGrid(firstInds), yGrid(firstInds), tempZ(1)*zGrid(firstInds)]', ...
+            coneVertices', [xGrid(endInds), yGrid(endInds), (tempZ(end))*zGrid(endInds)]']'; % (tempZ(end)+1) to remove cap
+    end
     
     % Store end cap inds
     forcedCapInds = find(coneVertices(:,3) == tempZ(end)+1);
     
     % Step in slightly so these don't get incorperated into faces along base of cone
-    coneVertices(forcedCapInds, 1:2) = coneVertices(forcedCapInds, 1:2)*0.9;
+    if ~isempty(forcedCapInds)
+        coneVertices(forcedCapInds, 1:2) = coneVertices(forcedCapInds, 1:2)*0.9;
+    end
     
     coneVertices(:,1) = coneVertices(:,1) + volumeSize(1)/2;
     coneVertices(:,2) = coneVertices(:,2) + volumeSize(2)/2;
@@ -273,31 +326,36 @@ if useRealData
     tempTriangulation = delaunayTriangulation(coneVertices);
     [tempFaces, tempVertices] = freeBoundary(tempTriangulation); % this seems to flip vertices in z
     
-    % remove forced inds at base
-    % not all of the original forced inds are used in the final trinagulation
-    usedForcedInds = find(tempVertices(:,3) == coneVertices(forcedCapInds(1),3));
-    
-    facesToRemove = zeros(length(tempFaces),1, 'logical');
-    for i = 1:length(usedForcedInds)
-        % Flag for each column
-        facesToRemove(tempFaces(:,1) == usedForcedInds(i)) = 1;
-        facesToRemove(tempFaces(:,2) == usedForcedInds(i)) = 1;
-        facesToRemove(tempFaces(:,3) == usedForcedInds(i)) = 1;
-    end
+    if ~isempty(forcedCapInds)
+        % remove forced inds at base
+        % not all of the original forced inds are used in the final trinagulation
+        usedForcedInds = find(tempVertices(:,3) == coneVertices(forcedCapInds(1),3));
 
-    tempFaces(facesToRemove,:) = [];
-%     tempVertices(usedForcedInds,:) = [];
-    
-    coneVertices(forcedCapInds,:) = [];
+        facesToRemove = zeros(length(tempFaces),1, 'logical');
+        for i = 1:length(usedForcedInds)
+            % Flag for each column
+            facesToRemove(tempFaces(:,1) == usedForcedInds(i)) = 1;
+            facesToRemove(tempFaces(:,2) == usedForcedInds(i)) = 1;
+            facesToRemove(tempFaces(:,3) == usedForcedInds(i)) = 1;
+        end
+
+        tempFaces(facesToRemove,:) = [];
+    %     tempVertices(usedForcedInds,:) = [];
+
+        coneVertices(forcedCapInds,:) = [];
+    end
     
     grinSurface.faces = tempFaces;
     grinSurface.vertices = tempVertices;
-%   Flip Z around center
-%   grinSurface.vertices(:,3) = -(tempVertices(:,3)-volumeSize(3)/2)+volumeSize(3)/2;
 
     % Get cone border volume
+    if flipSurfaces
+        grinSurface.vertices(:,3) = -(tempVertices(:,3)-volumeSize(3)/2)+volumeSize(3)/2;
+    end
     coneBorderVolume = polygon2voxel(grinSurface, volumeSize, 'none');
     
+    
+
     % for inner intercone - is curved
     if any(metaData.exposedInterconeProfileToUseLeft - metaData.exposedInterconeProfileToUseRight)
         error('Right and left intercone profiles arent equal - rotated volume also wont work')
@@ -305,12 +363,19 @@ if useRealData
     
     profileToUse = find(~isnan(metaData.exposedInterconeProfileToUseLeft));
     
-    tempProfile = (metaData.exposedInterconeProfileToUseLeft(profileToUse)+metaData.coneProfileToUse(profileToUse))*metaData.voxSize/metaData.voxSize3D;
-    tempZ = metaData.coneXRef(profileToUse)*metaData.voxSize/metaData.voxSize3D;
+    if ~metaData.createCylinder
+        tempProfile = (metaData.exposedInterconeProfileToUseLeft(profileToUse)+metaData.coneProfileToUse(profileToUse))*metaData.voxSize/metaData.voxSize3D;
     
-    % Shrink 1st in profile to cone
-    % Tried adding a step before hand, but always caused problems somewhere
-    tempProfile(1) = metaData.coneProfileToUse(profileToUse(1))*metaData.voxSize/metaData.voxSize3D;
+        % Shrink 1st in profile to cone
+        % Tried adding a step before hand, but always caused problems somewhere
+        tempProfile(1) = metaData.coneProfileToUse(profileToUse(1))*metaData.voxSize/metaData.voxSize3D;
+    else
+        tempProfile = (metaData.exposedInterconeProfileToUseLeft(profileToUse)+max(metaData.coneProfileToUse))*metaData.voxSize/metaData.voxSize3D;
+    
+        tempProfile(1) = max(metaData.coneProfileToUse)*metaData.voxSize/metaData.voxSize3D;
+    end
+    
+    tempZ = metaData.coneXRef(profileToUse)*metaData.voxSize/metaData.voxSize3D;
     
     interconeVertices = zeros(length(tempProfile)*length(meshAngles),3);
 
@@ -389,8 +454,13 @@ if useRealData
     
     interconeSurface.faces = tempFaces;
     interconeSurface.vertices = tempVertices;
-    
+
+    if flipSurfaces
+        interconeSurface.vertices(:,3) = -(tempVertices(:,3)-volumeSize(3)/2)+volumeSize(3)/2;
+    end
     interconeBorderVolume = polygon2voxel(interconeSurface, volumeSize, 'none');
+
+    
     
     % plots 
     figure;
@@ -416,9 +486,13 @@ if useRealData
        'FaceColor','b','FaceAlpha',0.8);
    
    figure;
-   tempVolume = coneBorderVolume + corneaSurfaceVolume + epicorneaBorderVolume + cInCBorderVolume + interconeBorderVolume;
+   subplot(1,2,1)
+   tempVolume = coneBorderVolume + corneaBorderVolume + epicorneaBorderVolume + cInCBorderVolume + interconeBorderVolume;
    imshow(permute(tempVolume(round(volumeSize(1)/2),:,:), [2 3 1])');
    
+   subplot(1,2,2)
+   imshow(permute((lensRIVolume(round(volumeSize(1)/2),:,:)-1.45)/(1.54-1.45), [2 3 1])');
+
 elseif useTestData
     if ~xor(createLunebergLens, createGradedFiber)
         error('Both or neither lens/fiber flags set. Check.')
@@ -441,36 +515,16 @@ elseif useTestData
     
     coneBorderVolume = imdilate(~RIFlagVolume, strel('sphere', 1)) & RIFlagVolume;
     
-    %%% Should add option for mesh based calcuation and refraction as in real data
+    % Note that meshes are used in test cases, refraction is based on an analytical solution
 end
 
 %% Do general set up
 
-% Get surface voxels of RI volume
-surfaceInds = find(coneBorderVolume);
-
-[surfaceX, surfaceY, surfaceZ] = ind2sub(volumeSize, surfaceInds);
-
-bottomZ = min(surfaceZ);
-
-topZ = max(surfaceZ);
-
-
-% Modify surface we got previously
 if useRealData
+    % Connect GRIN vertexes to an exterior RI
     vertexIndexes = sub2ind(volumeSize, round(grinSurface.vertices(:,1)), round(grinSurface.vertices(:,2)), round(grinSurface.vertices(:,3)));
 
-    grinSurface.vertices = grinSurface.vertices*voxelSize;
-
-    grinNormals = meshFaceNormals(grinSurface.vertices, grinSurface.faces);
-
-    % Test border volume is ok
-%     if any(coneBorderVolume(vertexIndexes) == 0)
-%         error('Not all indexes contained in border volume')
-%     end
-
-
-    % Connect vertexes to an exterior RI
+    
     tempRIVolume = lensRIVolume;
 
     tempRIVolume(RIFlagVolume) = 0;
@@ -485,59 +539,48 @@ if useRealData
 
         vertexExteriorRI(vertexExteriorRI == 0) = tempRIVolume(vertexIndexes(vertexExteriorRI == 0));
     end
-else
-   warning('should have option to use vertices on test cases') 
-end
     
-uniqueRI = 0;
-%     % Interface distances between layers
-%     tempRIVolume = lensRIVolume;
-%     tempRIVolume(RIFlagVolume) = 0;
-% 
-%     uniqueRI = unique(tempRIVolume(tempRIVolume > 0))
-% 
-%     if length(uniqueRI) > 1
-%         zLevelsRI = zeros(length(uniqueRI),1);
-% 
-%         % First get order of RI (assumes they are fairly gross layers - wont work on nuanced structures)
-%         for i = 1:length(uniqueRI)
-%             [~, ~, tempZ] = ind2sub(volumeSize, find(tempRIVolume == uniqueRI(i) ));
-% 
-%             zLevelsRI(i) = mean(tempZ);
-%         end
-% 
-%         [zLevelsRI, zInds] = sort(zLevelsRI);
-%         uniqueRI = uniqueRI(zInds);
-% 
-%         % There will be nRI-1 interfaces
-%         zInterfaceRI = zeros(length(uniqueRI)-1, 1);
-% 
-%         for i = 1:length(uniqueRI)-1
-%             % Get mask for each volume
-%             tempRIVolumeBottom = tempRIVolume;
-%             tempRIVolumeBottom(tempRIVolumeBottom ~= uniqueRI(i)) = 0;
-% 
-%             tempRIVolumeTop = tempRIVolume;
-%             tempRIVolumeTop(tempRIVolumeTop ~= uniqueRI(i+1)) = 0;
-% 
-%             % Find overlap
-%             tempLayerVolume = imdilate(tempRIVolumeBottom, strel('Sphere',1)) & imdilate(tempRIVolumeTop, strel('Sphere',1));
-%             tempLayerVolume(RIFlagVolume) = 0;
-% 
-%             % Take average Z
-%             [~, ~, tempZ] = ind2sub(volumeSize, find(tempLayerVolume));
-% 
-%             zInterfaceRI(i) = mean(tempZ); 
-%             plot(10, volumeSize(3)-zInterfaceRI(i), 'rx')
-%         end
-% 
-%         zInterfaceRI = zInterfaceRI*voxelSize;
-% 
-%         clear tempRIVolumeBottom tempRIVolumeTop
-%     end
+    % Adjust vertices
+    grinSurface.vertices = grinSurface.vertices*voxelSize;
+
+    corneaSurface.vertices = corneaSurface.vertices*voxelSize;
+     
+    epicorneaSurface.vertices = epicorneaSurface.vertices*voxelSize;
+      
+    cInCSurface.vertices = cInCSurface.vertices*voxelSize;
+       
+    interconeSurface.vertices = interconeSurface.vertices*voxelSize;
+    
+    % Get normals for all
+    grinNormals = meshFaceNormals(grinSurface.vertices, grinSurface.faces);
+    
+    corneaNormals = meshFaceNormals(corneaSurface.vertices, corneaSurface.faces);
+    
+    epicorneaNormals = meshFaceNormals(epicorneaSurface.vertices, epicorneaSurface.faces);
+    
+    cInCNormals = meshFaceNormals(cInCSurface.vertices, cInCSurface.faces);
+    
+    interconeNormals = meshFaceNormals(interconeSurface.vertices, interconeSurface.faces);
+    
+    % It seems that some vertices can end up outside of the border volume..
+    % Could try add border subscripts as well?
+    coneBorderVolume = imdilate(coneBorderVolume, strel('sphere',1));
+    
+%     tempV = RIFlagVolume*2 + coneBorderVolume;
+%     figure;   imshow(permute(tempV(round(volumeSize(1)/2),:,:)/3, [2 3 1])');
+end
 
 % Do plotting - for test volume
-if useTestData      
+if useTestData  
+    % Get surface voxels of RI volume
+    surfaceInds = find(coneBorderVolume);
+
+    [surfaceX, surfaceY, surfaceZ] = ind2sub(volumeSize, surfaceInds);
+
+    bottomZ = min(surfaceZ);
+
+    topZ = max(surfaceZ);
+    
     figure;
     subplot(1,3,1);
     imshow((lensRIVolume(:,:,round(volumeSize(3)/2)))/(max(lensRIVolume(:))))
@@ -565,7 +608,7 @@ end
 RIFlagInds = find(RIFlagVolume);
 
 if useRealData
-    plotInds = 1:50:length(surfaceX);
+    plotInds = 1:50:size(grinSurface.vertices,1);
     
 elseif useTestData
     if createLunebergLens
@@ -594,7 +637,7 @@ if useRealData
         xStartPoints = xStartPoints(testOrigin);
     end
 else
-    if ~plotReferenceFiber
+    if ~plotReferenceFiber | createLunebergLens
         xStartPoints = 1:xSpacing:volumeSize(1); 
 
     else
@@ -605,8 +648,6 @@ end
 
 rayOrigins = [xStartPoints(:), ones(numel(xStartPoints),1)*volumeSize(2)/2,  ...
     ones(numel(xStartPoints),1)]*voxelSize; 
-
-
 
 nOrigins = size(rayOrigins,1);
 
@@ -620,11 +661,9 @@ volumeCenter = volumeSize/2*voxelSize;
 
 % Get border test values
 
-%%% Note intersection functions are 1 when outside of GRIN, 0 inside
 if useRealData
     % Calculating inpolyhedron is very slow, so test on volume first
-    % Note inverted, zero if inside volume
-    intersectionFn = @(x1, x0)(~surfaceIntersectFunction(RIFlagVolume, coneBorderVolume, x1, x0, voxelSize, grinSurface));
+    intersectionFn = @(x1, x0)(surfaceIntersectFunction(RIFlagVolume, coneBorderVolume, x1, x0, voxelSize, grinSurface));
        
     %%% Correctly calculated as ray distance
     lambdaFn = @(x1, x0)surfaceLambdaFunction(x1, x0, grinSurface);
@@ -632,11 +671,10 @@ if useRealData
 elseif useTestData
     if createLunebergLens
         % Get sphere intersection
-       intersectionFn = @(x1, x0)(sqrt(sum((x1 - volumeCenter).^2)) > ...
-           radius);
+       intersectionFn = @(x1, x0)(sqrt(sum((x1 - volumeCenter).^2)) <= radius);
 
        % Calculate as radius of ratios.
-            %%% Error as below, dist to border along ray-axis instead of z dist
+            %%% As below, want dist to border along ray-axis instead of z dist
        warning('Lambada calculation needs correction')
        
        lambdaFn = @(x1, x0)((radius-sqrt(sum((x0 - volumeCenter).^2)))/...
@@ -644,9 +682,9 @@ elseif useTestData
 
     elseif createGradedFiber
        % Just checks X position, not Y
-       intersectionFn = @(x1, x0)(~(x1(3) < volumeCenter(3) + fiberLength/2 & ...
-            x1(3) > volumeCenter(3) - fiberLength/2  & ...
-            x1(1) > volumeCenter(1) - radius & x1(1) < volumeCenter(1) + radius));
+       intersectionFn = @(x1, x0)((x1(3) <= volumeCenter(3) + fiberLength/2 & ...
+            x1(3) >= volumeCenter(3) - fiberLength/2  & ...
+            x1(1) >= volumeCenter(1) - radius & x1(1) <= volumeCenter(1) + radius));
         
         %%% Lambda is not entirely correct as we want to border along ray-axis instead of z dist. 
             %%% But probably negligible for small distances
@@ -665,8 +703,13 @@ rayMap = zeros(volumeSize);
 if testPlot
     figure; hold on; axis equal
     view(0, 0)
-    plot3(surfaceX(plotInds)*voxelSize, surfaceY(plotInds)*voxelSize,...
-        surfaceZ(plotInds)*voxelSize, '.')
+    if useRealData
+        plot3(grinSurface.vertices(plotInds,1), grinSurface.vertices(plotInds,2),...
+            grinSurface.vertices(plotInds,3), '.')
+    elseif useTestData
+        plot3(surfaceX(plotInds)*voxelSize, surfaceY(plotInds)*voxelSize,...
+            surfaceZ(plotInds)*voxelSize, '.')
+    end
     
 %     plot3(0, 0, zInterfaceRI,  'cx') 
 
@@ -723,7 +766,7 @@ for iOrigin = 1:nOrigins
 
     rayPathArray(:, currentStep, iOrigin) = rayX;
     
-    intersectResult = 1;
+    intersectResult = 0;
     
     pathLength = 0; % in grin area
     
@@ -732,254 +775,397 @@ for iOrigin = 1:nOrigins
     currentPeriod = 1; % only used for graded fiber
 
     while go
-
-        % Test if entering a GRIN area
-        if ~intersectResult & ~inGraded & ~exitedFlag
-
+        
+        % If outside, extend ray to grin area
+        if ~inGraded % & ~exitedFlag
+            x0 = rayX;
+            t0 = rayT;
+        
             % entering, need to find intersect to graded volume
             if useRealData
                 
                 % X and T combined on input, T needs to point back
                 lineDef = [rayX rayT];
                 
-                [intersectPoints, intersectDistance, intersectFaces] = intersectLineMesh3d(lineDef, grinSurface.vertices, grinSurface.faces);
+                % Check intersect against all surfaces
+                [intersectPointsGrin, intersectDistanceGrin, intersectFacesGrin] = intersectLineMesh3d(lineDef, grinSurface.vertices, grinSurface.faces);
                 
-                % Sort out intersections
-                if length(intersectDistance) > 1
-                    backInds = find(intersectDistance < 0);
-                    frontInds = find(intersectDistance > 0);
+                [intersectPointsCornea, intersectDistanceCornea, intersectFacesCornea] = intersectLineMesh3d(lineDef, corneaSurface.vertices, corneaSurface.faces);
+                
+                [intersectPointsEpicornea, intersectDistanceEpicornea, intersectFacesEpicornea] = intersectLineMesh3d(lineDef, epicorneaSurface.vertices, epicorneaSurface.faces);
+                
+                [intersectPointsCinC, intersectDistanceCinC, intersectFacesCinC] = intersectLineMesh3d(lineDef, cInCSurface.vertices, cInCSurface.faces);
+                
+                [intersectPointsIntercone, intersectDistanceIntercone, intersectFacesIntercone] = intersectLineMesh3d(lineDef, interconeSurface.vertices, interconeSurface.faces);
+                
+                % put miniminum intersection distances into array - could be better way to do this
+                if ~isempty(intersectDistanceGrin)
+                    % Remove points with dist less than zero - should modify function to do this...
+                    intersectPointsGrin(intersectDistanceGrin <= epsilon, :) = [];
+                    intersectFacesGrin(intersectDistanceGrin <= epsilon) = [];
+                    intersectDistanceGrin(intersectDistanceGrin <= epsilon) = [];
+                end
+                if ~isempty(intersectDistanceGrin); minDistArray = min(intersectDistanceGrin); else; minDistArray = Inf; end
+                
+                if ~isempty(intersectDistanceCornea);  
+                    intersectPointsCornea(intersectDistanceCornea <= epsilon, :) = [];
+                    intersectFacesCornea(intersectDistanceCornea <= epsilon) = [];
+                    intersectDistanceCornea(intersectDistanceCornea <= epsilon) = [];
+                end
+                if ~isempty(intersectDistanceCornea); minDistArray = [minDistArray min(intersectDistanceCornea)]; else; minDistArray = [minDistArray Inf]; end
+                
+                if ~isempty(intersectDistanceEpicornea);  
+                    intersectPointsEpicornea(intersectDistanceEpicornea <= epsilon, :) = [];
+                    intersectFacesEpicornea(intersectDistanceEpicornea <= epsilon) = [];
+                    intersectDistanceEpicornea(intersectDistanceEpicornea <= epsilon) = [];
+                end
+                if ~isempty(intersectDistanceEpicornea); minDistArray = [minDistArray min(intersectDistanceEpicornea)]; else; minDistArray = [minDistArray Inf]; end
+                
+                if ~isempty(intersectDistanceCinC);  
+                    intersectPointsCinC(intersectDistanceCinC <= epsilon, :) = [];
+                    intersectFacesCinC(intersectDistanceCinC <= epsilon) = [];
+                    intersectDistanceCinC(intersectDistanceCinC <= epsilon) = [];
+                end
+                if ~isempty(intersectDistanceCinC);   minDistArray = [minDistArray min(intersectDistanceCinC)]; else; minDistArray = [minDistArray Inf]; end
+                
+                if ~isempty(intersectDistanceIntercone);  
+                    intersectPointsIntercone(intersectDistanceIntercone <= epsilon, :) = [];
+                    intersectFacesIntercone(intersectDistanceIntercone <= epsilon) = [];
+                    intersectDistanceIntercone(intersectDistanceIntercone <= epsilon) = [];
+                end
+                if ~isempty(intersectDistanceIntercone); minDistArray = [minDistArray min(intersectDistanceIntercone)]; else; minDistArray = [minDistArray Inf]; end
+                
+                if any(~isinf(minDistArray))
+                    [~, minIntersect] = min(minDistArray);
 
-                    [~, closestBackInd] = min(abs(intersectDistance(backInds)));
-                    [~, closestFrontInd] = min(intersectDistance(frontInds));
+                    switch minIntersect
 
-                    if isempty(backInds) | isempty(frontInds)
-                        %%% Have a treatment for ray exit
-                        error('Check treatment - all inds either in front or behind')
+                        case 1 % Cone is first
+
+                        %%% Check this, could it be simpler    
+                            
+                        % Sort out intersections
+%                         if length(intersectDistance) > 1
+%                             backInds = find(intersectDistance < 0);
+%                             frontInds = find(intersectDistance > 0);
+% 
+%                             [~, closestBackInd] = min(abs(intersectDistance(backInds)));
+%                             [~, closestFrontInd] = min(intersectDistance(frontInds));
+% 
+%                             if isempty(backInds) | isempty(frontInds)
+%                                 %%% Have a treatment for ray exit
+%                                 error('Check treatment - all inds either in front or behind')
+%                             end
+% 
+%                             % Expect back ind to be closer
+%                             if abs(intersectDistance(backInds(closestBackInd))) < intersectDistance(frontInds(closestFrontInd))
+%                                 nearestInd = backInds(closestBackInd);
+% 
+%                             else
+%                                error('Check treatment - front ind closer') 
+%                             end
+% 
+%                         elseif length(intersectDistance) == 1
+%                                 nearestInd = 1;
+% 
+%                         elseif isempty(intersectDistance)
+%                                 error('No intersect')
+%                         end
+% 
+%                         rayX = intersectPoints(nearestInd, :);
+% 
+%                         faceIndices = intersectFaces(nearestInd);
+
+                            inds2Use = find(intersectDistanceGrin == min(intersectDistanceGrin));
+
+                            rayX = mean(intersectPointsGrin(inds2Use,:),1);
+
+                            faceIndices = intersectFacesGrin(inds2Use);
+
+                            intersectResult = 1;
+
+                        case 2 % cornea is first
+                            inds2Use = find(intersectDistanceCornea == min(intersectDistanceCornea));
+
+                            rayX = mean(intersectPointsCornea(inds2Use,:),1);
+
+                            faceIndices = intersectFacesCornea(inds2Use);
+
+                        case 3 % epicornea is first
+                            inds2Use = find(intersectDistanceEpicornea == min(intersectDistanceEpicornea));
+
+                            rayX = mean(intersectPointsEpicornea(inds2Use,:),1);
+
+                            faceIndices = intersectFacesEpicornea(inds2Use);    
+
+                        case 4 % CinC is first
+                            inds2Use = find(intersectDistanceCinC == min(intersectDistanceCinC));
+
+                            rayX = mean(intersectPointsCinC(inds2Use,:),1);
+
+                            faceIndices = intersectFacesCinC(inds2Use);
+
+                        case 5 % intercone is first  
+                            inds2Use = find(intersectDistanceIntercone == min(intersectDistanceIntercone));
+
+                            rayX = mean(intersectPointsIntercone(inds2Use,:),1);
+
+                            faceIndices = intersectFacesIntercone(inds2Use);
                     end
                     
-                    % Expect back ind to be closer
-                    if abs(intersectDistance(backInds(closestBackInd))) < intersectDistance(frontInds(closestFrontInd))
-                        nearestInd = backInds(closestBackInd);
-                        
-                    else
-                       error('Check treatment - front ind closer') 
-                    end
-                
-                elseif length(intersectDistance) == 1
-                        nearestInd = 1;
-                        
-                elseif isempty(intersectDistance)
-                        error('No intersect')
+                else
+                    go = 0;
                 end
-                      
-                rayX = intersectPoints(nearestInd, :);
-
-                faceIndex = intersectFaces(nearestInd);
                 
             elseif useTestData
-                if createLunebergLens                 
-                    % Get sphere intersection
-                    origin = rayX - volumeSize/2*voxelSize;
-                    centre = 0;
-                    originalDistance = centre - origin;
-                    
-                    t_ca = dot(originalDistance,rayT);
-                    d = sqrt(dot(originalDistance,originalDistance)-t_ca^2);
-                    t_hc = sqrt(radius^2-d^2);
-                    deltaTemp = t_ca - t_hc;
+                origin = rayX - volumeSize/2*voxelSize;
+                minIntersect = -1;
+                
+                if sqrt(origin(1)^2 + origin(2)^2) < radius
+                    if createLunebergLens                 
+                        % Get sphere intersection
+                        centre = 0;
+                        originalDistance = centre - origin;
 
-                    % Steps ray back to intersection
-                    rayX = rayX + rayT*deltaTemp; %3x1 coordinates
-                    
-                elseif createGradedFiber
-                    % Get z distance past bottom of gradient section
-                    deltaTemp = ((volumeCenter(3) - fiberLength/2) - rayX(3))/rayT(3);
-                    
-                    rayX = rayX + rayT*deltaTemp;
-                end
-            end
-            
-            firstIntersect(iOrigin,:) = rayX;
-            
-            voxelX = round(rayX/voxelSize); 
-            
-            if interfaceRefraction
-                % Get interior RI at entry point
-                [~, rOut] = numerical_dT_dt(rayX, volCoords(RIFlagInds,:), RIFlagInds, lensRIVolume, []);
-
-                % Get surface normal and exterior RI at entry point
-                if useRealData
-                    rIn = mean(vertexExteriorRI(grinSurface.faces(faceIndex,:)));
-                    
-                    surfaceNormal = grinNormals(faceIndex,:);
-                    
-                elseif useTestData
-                    if createLunebergLens
-                        surfaceNormal = rayX - volumeSize/2*voxelSize;
-
-                        surfaceNormal = surfaceNormal/norm(surfaceNormal);
-
-                        % Should be very close to 1, but allowing this removes notch in error profile
-                            % However, it does increase error spot slightly
-                        %rIn = 1;
+                        t_ca = dot(originalDistance,rayT);
+                        d = sqrt(dot(originalDistance,originalDistance)-t_ca^2);
+                        t_hc = sqrt(radius^2-d^2);
+                        deltaTemp = t_ca - t_hc;
 
                     elseif createGradedFiber
-                        % Just points backwards
-                        surfaceNormal = [0 0 -1];
-
-                        halfPeriodInFiber = 2*pi*rOut/beta*0.5; 
+                        % Get z distance past bottom of gradient section
+                        deltaTemp = ((volumeCenter(3) - fiberLength/2) - rayX(3))/rayT(3);
                     end
-
-                    rIn = exteriorRI;
-                end
-                
-                % Test from surface tracer
-%                 sqrt((grinNormals(faceIndex(1),1)-rayT(1))^2+(grinNormals(faceIndex(1),2)-rayT(2))^2+...
-%                         (grinNormals(faceIndex(1),3)-rayT(3))^2) < sqrt(2)
-
-                % Test normal points against ray
-                if acos(dot(rayT, surfaceNormal)/(norm(surfaceNormal)*norm(rayT))) < pi/2
-                    surfaceNormal = -surfaceNormal;
-                end
-
-                % Calculate entry refraction
-                nRatio = rIn/rOut;
-                cosI = -dot(surfaceNormal, rayT);
-                sinT2 = nRatio^2*(1-cosI^2);
-                cosT = sqrt(1-sinT2);
-
-                if sinT2 < 1
-                    % Assuming all refracted, none reflected
-                    rayT = nRatio*rayT + (nRatio*cosI-cosT)*surfaceNormal;
                     
-                    inGraded = 1;
-                    
-                    plot3(rayX(1), rayX(2), rayX(3), 'go')
+                    % This is mostly to stop ray jumping back at the end
+                    if deltaTemp > 0
+                        % Steps ray back to intersection
+                        rayX = rayX + rayT*deltaTemp; %3x1 coordinates
+
+                        intersectResult = 1;
+                    else
+                       go = 0; 
+                    end
+                   
                 else
-                    % TIR
-                    rayT = rayT-2*dot(surfaceNormal,rayT)*surfaceNormal;
-                    
-                    inGraded = 0; % ??? 
-                    
-                    plot3(rayX(1), rayX(2), rayX(3), 'g*')
-            
-                    error('TIR - ray does not actually enter')
+                    go = 0;
                 end
-                
-                %%% now multiplied by initial RI - not sure this is correct?
-                rayT = rayT/norm(rayT)*rOut;
-            else
-                inGraded = 1; 
-                
-                warning('Ray is not multipied by entry RI')
-                
-                plot3(rayX(1), rayX(2), rayX(3), 'go')
-            end
-        end
-        
-        %check if x has moved to include new voxels
-        if (norm(rayX-lastNearbyX) > voxelSize) & inGraded
-            %if so, reselect nearby points
-            lastNearbyX = rayX;
-
-            % Get array of voxels around current
-            [tempX, tempY, tempZ] = meshgrid((voxelX(1)-4:voxelX(1)+4)', (voxelX(2)-4:voxelX(2)+4)', ...
-                (voxelX(3)-4:voxelX(3)+4)');
-
-            testCoords= [tempX(:), tempY(:), tempZ(:)];
-
-            % remove outside of bounds
-            tempInd = find(testCoords(:,1) < 1 | testCoords(:,2) < 1 | testCoords(:,3) < 1 | ...
-                    testCoords(:,1) > volumeSize(1) | testCoords(:,2) > volumeSize(2) | testCoords(:,3) > volumeSize(3));
-                
-            testCoords(tempInd, :) = [];
-            
-            testInds = sub2ind(volumeSize, testCoords(:,1), testCoords(:,2), testCoords(:,3));
-            
-            % check for intersect with good volume
-            [testInds, tempInds] = intersect(testInds, RIFlagInds);
-            
-            testCoords = testCoords(tempInds,:)*voxelSize;
-            
-            %%% If all voxels equal in patch can flag to skip calc and maintain rayT
-            
-            % only nearest 128 used, but seems to need some extra
-            [~, nearInds] = sort(sqrt((testCoords(:,1)-rayX(1)).^2+(testCoords(:,2)-rayX(2)).^2+...
-                (testCoords(:,3)-rayX(3)).^2));
-            
-            if length(nearInds) > 200
-                nearInds = nearInds(1:200);
             end
             
-            testInds = testInds(nearInds);
-            
-            testCoords = testCoords(nearInds,:);
-            
-            %%% If doing direction updating, calculate RI for current direction
-            
-            [rayX rayT deltaS*10^6 length(testInds)]
-        end
-        
-        %propogate ray
-        if ~inGraded
-            x0 = rayX;
-            
-            rayX = rayX + rayT*voxelSize/3;
-            
-            if interfaceRefraction 
-                if length(uniqueRI) > 1
+            if go
+                firstIntersect(iOrigin,:) = rayX;
 
-                    % Check if z level of any intersect is passed
-                    for i = 1:length(uniqueRI)-1
-                        if x0(3) < zInterfaceRI(i) & rayX(3) >= zInterfaceRI(i)
-                            % get exact point of intersect
-                            distToIntersect = (zInterfaceRI(i) - x0(3))/rayT(3);
+                voxelX = round(rayX/voxelSize); 
+                
+                % extend ray path up to intersection
+                misingSteps = find(zSteps > x0(3) & zSteps < rayX(3));
+                
+                if ~isempty(misingSteps)
+                    tempT = rayT/rayT(3);
+                    for i = misingSteps
+                        rayPathArray(:, i, iOrigin) = x0 + tempT.*(zSteps(i) - x0(3));
+                    end
 
-                            rayX = x0 + rayT*distToIntersect;
+                    if testPlot
+                        plot3(rayPathArray(1, misingSteps, iOrigin), rayPathArray(2, misingSteps, iOrigin), ...
+                            rayPathArray(3, misingSteps, iOrigin), '.', 'color', rayCols(iOrigin,:));
+                    end
 
-                            % Set RI for each side
-                            rIn = uniqueRI(i);
-                            rOut = uniqueRI(i+1);
+                    currentStep = misingSteps(end);
+                end
+    
+                % Entering into graded region
+                if useTestData | (useRealData & minIntersect == 1)
+                   
+                    % Get interior RI at entry point
+                    [~, rOut] = numerical_dT_dt(rayX, volCoords(RIFlagInds,:), RIFlagInds, lensRIVolume, []);
 
-                            % Assumes layer always pointing down
-                            surfaceNormal = [0 0 -1];
+                    if interfaceRefraction
+                        % Get surface normal and exterior RI at entry point
+                        if useRealData
+                            rIn = vertexExteriorRI(grinSurface.faces(faceIndices,:));
+                            rIn = mean(rIn(:));    
+                            
+                            surfaceNormal = mean(grinNormals(faceIndices,:),1);
 
-                            if acos(dot(rayT, surfaceNormal)/(norm(surfaceNormal)*norm(rayT))) < pi/2
-                                surfaceNormal = -surfaceNormal;
+                        elseif useTestData
+                            if createLunebergLens
+                                surfaceNormal = rayX - volumeSize/2*voxelSize;
+
+                                surfaceNormal = surfaceNormal/norm(surfaceNormal);
+
+                                % Should be very close to 1, but allowing this removes notch in error profile
+                                    % However, it does increase error spot slightly
+                                %rIn = 1;
+
+                            elseif createGradedFiber
+                                % Just points backwards
+                                surfaceNormal = [0 0 -1];
+
+                                halfPeriodInFiber = 2*pi*rOut/beta*0.5; 
                             end
 
-                            nRatio = rIn/rOut;
-                            cosI = -dot(surfaceNormal, rayT);
-                            sinT2 = nRatio^2*(1-cosI^2);
-                            cosT = sqrt(1-sinT2);
+                            rIn = exteriorRI;
+                        end
 
-                            if sinT2 < 1
-                                % Assuming all refracted, none reflected
-                                rayT = nRatio*rayT + (nRatio*cosI-cosT)*surfaceNormal;
+                        % Test from surface tracer
+        %                 sqrt((grinNormals(faceIndex(1),1)-rayT(1))^2+(grinNormals(faceIndex(1),2)-rayT(2))^2+...
+        %                         (grinNormals(faceIndex(1),3)-rayT(3))^2) < sqrt(2)
 
-                                plot3(rayX(1), rayX(2), rayX(3), 'ko')
-                            else
-                                % TIR
-                                rayT = rayT-2*dot(surfaceNormal,rayT)*surfaceNormal;
+                        % Test normal points against ray
+                        if acos(dot(rayT, surfaceNormal)/(norm(surfaceNormal)*norm(rayT))) < pi/2
+                            surfaceNormal = -surfaceNormal;
+                        end
 
-                                plot3(rayX(1), rayX(2), rayX(3), 'k*')
-                            end
-                            break;
-                        end    
+                        % Calculate entry refraction
+                        nRatio = rIn/rOut;
+                        cosI = -dot(surfaceNormal, rayT);
+                        sinT2 = nRatio^2*(1-cosI^2);
+                        cosT = sqrt(1-sinT2);
+
+                        if sinT2 < 1
+                            % Assuming all refracted, none reflected
+                            rayT = nRatio*rayT + (nRatio*cosI-cosT)*surfaceNormal;
+
+                            inGraded = 1;
+
+                            plot3(rayX(1), rayX(2), rayX(3), 'go')
+                        else
+                            % TIR
+                            rayT = rayT-2*dot(surfaceNormal,rayT)*surfaceNormal;
+
+                            inGraded = 0; % ??? 
+
+                            plot3(rayX(1), rayX(2), rayX(3), 'g*')
+                        end
+
+                    else
+                        inGraded = 1; 
+
+                        plot3(rayX(1), rayX(2), rayX(3), 'gd')
+                    end
+
+                    % now multiplied by initial RI
+                    rayT = rayT/norm(rayT)*rOut;
+                    
+                elseif useRealData & minIntersect > 1
+                    
+                    if interfaceRefraction
+                        % do refraction between layers
+                        
+                        %%% currently sets RI assuming ray comes from base
+                            % Could test direction to normal and invert if negative?
+                        switch minIntersect
+                            case 2 % cornea
+                                rIn = metaData.outerValue;
+
+                                rOut = metaData.epicorneaValue;
+                                
+                                surfaceNormal = mean(corneaNormals(faceIndices,:),1);
+
+                            case 3 % epicornea 
+                                rIn = metaData.epicorneaValue;
+
+                                rOut = metaData.outerCorneaValue;
+                                
+                                surfaceNormal = mean(epicorneaNormals(faceIndices,:),1);
+
+                            case 4 % CinC (into intercone, not cone)
+                                rIn = metaData.outerCorneaValue;
+
+                                rOut = metaData.interconeValue;
+                                
+                                surfaceNormal = mean(cInCNormals(faceIndices,:),1);
+
+                            case 5 % intercone 
+                                rIn = metaData.interconeValue;
+
+                                rOut = metaData.innerValue;
+                                
+                                surfaceNormal = mean(interconeNormals(faceIndices,:),1);
+
+                        end
+                        
+                        % Test normal points against ray
+                        if acos(dot(rayT, surfaceNormal)/(norm(surfaceNormal)*norm(rayT))) < pi/2
+                            surfaceNormal = -surfaceNormal;
+                        end
+
+                        % Calculate entry refraction
+                        nRatio = rIn/rOut;
+                        cosI = -dot(surfaceNormal, rayT);
+                        sinT2 = nRatio^2*(1-cosI^2);
+                        cosT = sqrt(1-sinT2);
+
+                        if sinT2 < 1
+                            % Assuming all refracted, none reflected
+                            rayT = nRatio*rayT + (nRatio*cosI-cosT)*surfaceNormal;
+
+                            plot3(rayX(1), rayX(2), rayX(3), 'ko')
+                        else
+                            % TIR
+                            rayT = rayT-2*dot(surfaceNormal,rayT)*surfaceNormal;
+
+                            plot3(rayX(1), rayX(2), rayX(3), 'k*')
+                        end
+                        
+                    else
+                        plot3(rayX(1), rayX(2), rayX(3), 'kd')
                     end
                 end
             end
-            
-            %%% Could also draw voxelaized line until intersect reached, as in original surface ray-tracer
-                %%% Or check for mesh intersection using intersectLineMesh3d
-        else
+        end
 
+        if inGraded
+            %check if x has moved to include new voxels
+            if (norm(rayX-lastNearbyX) > voxelSize) & inGraded
+                %if so, reselect nearby points
+                lastNearbyX = rayX;
+
+                % Get array of voxels around current
+                [tempX, tempY, tempZ] = meshgrid((voxelX(1)-4:voxelX(1)+4)', (voxelX(2)-4:voxelX(2)+4)', ...
+                    (voxelX(3)-4:voxelX(3)+4)');
+
+                testCoords= [tempX(:), tempY(:), tempZ(:)];
+
+                % remove outside of bounds
+                tempInd = find(testCoords(:,1) < 1 | testCoords(:,2) < 1 | testCoords(:,3) < 1 | ...
+                        testCoords(:,1) > volumeSize(1) | testCoords(:,2) > volumeSize(2) | testCoords(:,3) > volumeSize(3));
+
+                testCoords(tempInd, :) = [];
+
+                testInds = sub2ind(volumeSize, testCoords(:,1), testCoords(:,2), testCoords(:,3));
+
+                % check for intersect with good volume
+                [testInds, tempInds] = intersect(testInds, RIFlagInds);
+
+                testCoords = testCoords(tempInds,:)*voxelSize;
+
+                %%% If all voxels equal in patch can flag to skip calc and maintain rayT
+
+                % only nearest 128 used, but seems to need some extra
+                [~, nearInds] = sort(sqrt((testCoords(:,1)-rayX(1)).^2+(testCoords(:,2)-rayX(2)).^2+...
+                    (testCoords(:,3)-rayX(3)).^2));
+
+                if length(nearInds) > 200
+                    nearInds = nearInds(1:200);
+                end
+
+                testInds = testInds(nearInds);
+
+                testCoords = testCoords(nearInds,:);
+
+                %%% If doing direction updating, calculate RI for current direction
+
+                [rayX rayT deltaS*10^6 length(testInds)]
+            end
+            
             x0 = rayX;
             t0 = rayT;
-
+            
             % Calc is fixed to isotropic RI
             [x, t, deltaS] = ray_interpolation(interpType, 'iso', x0', t0', deltaS, testCoords, ...
-                testInds, lensRIVolume, tolerance, []);
+                testInds, lensRIVolume, tolerance);
             
             rayX = x'; rayT = t';
             
@@ -1003,263 +1189,288 @@ for iOrigin = 1:nOrigins
                     currentPeriod = currentPeriod + 1;
                 end
             end
-        end 
         
-        intersectResult = intersectionFn(rayX, x0);
+            intersectResult = intersectionFn(rayX, x0);
         
-        % Test if leaving a GRIN area
-        if intersectResult & inGraded & ~exitedFlag
+            % Test if leaving a GRIN area
+            if ~intersectResult % & ~exitedFlag
 
-            % remove last pathlength step
-            pathLength = pathLength - sqrt((x0(1) - rayX(1))^2 + (x0(2) - rayX(2))^2 + (x0(3) - rayX(3))^2);
-            
-            % Resort voxels
-            % Get array of voxels around current - using old voxelX
-            [tempX, tempY, tempZ] = meshgrid((voxelX(1)-4:voxelX(1)+4)', (voxelX(2)-4:voxelX(2)+4)', ...
-                (voxelX(3)-4:voxelX(3)+4)');
+                % remove last pathlength step
+                pathLength = pathLength - sqrt((x0(1) - rayX(1))^2 + (x0(2) - rayX(2))^2 + (x0(3) - rayX(3))^2);
 
-            testCoords= [tempX(:), tempY(:), tempZ(:)];
+                % Resort voxels
+                % Get array of voxels around current - using old voxelX
+                [tempX, tempY, tempZ] = meshgrid((voxelX(1)-4:voxelX(1)+4)', (voxelX(2)-4:voxelX(2)+4)', ...
+                    (voxelX(3)-4:voxelX(3)+4)');
 
-            % remove outside of bounds
-            tempInd = find(testCoords(:,1) < 1 | testCoords(:,2) < 1 | testCoords(:,3) < 1 | ...
-                    testCoords(:,1) > volumeSize(1) | testCoords(:,2) > volumeSize(2) | testCoords(:,3) > volumeSize(3));
-                
-            testCoords(tempInd, :) = [];
-            
-            testInds = sub2ind(volumeSize, testCoords(:,1), testCoords(:,2), testCoords(:,3));
-            
-            % check for intersect with good volume
-            [testInds, tempInds] = intersect(testInds, RIFlagInds);
-            
-            testCoords = testCoords(tempInds,:)*voxelSize;
-            
-            %%% If all voxels equal in patch can flag to skip calc and maintain rayT
-            
-            % Sort forwards for closest 128
-            [~, nearInds] = sort(sqrt((testCoords(:,1)-x0(1)).^2+(testCoords(:,2)-x0(2)).^2+...
-                (testCoords(:,3)-x0(3)).^2));
-            
-            if length(nearInds) > 200
-                nearInds = nearInds(1:200);
-            end
-            
-            testInds_forwards = testInds(nearInds);
-            testCoords_forwards = testCoords(nearInds,:);
-            
-            lambda0 = lambdaFn(rayX, x0);
-            
-            if iterativeFinal
-                % Get backwards sorted as well
-                [~, nearInds] = sort(sqrt((testCoords(:,1)-rayX(1)).^2+(testCoords(:,2)-rayX(2)).^2+...
-                    (testCoords(:,3)-rayX(3)).^2));
+                testCoords= [tempX(:), tempY(:), tempZ(:)];
+
+                % remove outside of bounds
+                tempInd = find(testCoords(:,1) < 1 | testCoords(:,2) < 1 | testCoords(:,3) < 1 | ...
+                        testCoords(:,1) > volumeSize(1) | testCoords(:,2) > volumeSize(2) | testCoords(:,3) > volumeSize(3));
+
+                testCoords(tempInd, :) = [];
+
+                testInds = sub2ind(volumeSize, testCoords(:,1), testCoords(:,2), testCoords(:,3));
+
+                % check for intersect with good volume
+                [testInds, tempInds] = intersect(testInds, RIFlagInds);
+
+                testCoords = testCoords(tempInds,:)*voxelSize;
+
+                %%% If all voxels equal in patch can flag to skip calc and maintain rayT
+
+                % Sort forwards for closest 128
+                [~, nearInds] = sort(sqrt((testCoords(:,1)-x0(1)).^2+(testCoords(:,2)-x0(2)).^2+...
+                    (testCoords(:,3)-x0(3)).^2));
 
                 if length(nearInds) > 200
                     nearInds = nearInds(1:200);
                 end
 
-                testInds_backwards = testInds(nearInds);
-                testCoords_backwards = testCoords(nearInds,:);
-                
-                % Test intersection, leaving could just be a rounding point           
-                deltaS0_final = deltaS;
+                testInds_forwards = testInds(nearInds);
+                testCoords_forwards = testCoords(nearInds,:);
 
-                %error term, sqrt of machine precision, from Nishidate paper sqrt(1.49e-8)
-                    % Take geometric mean of single and double precision, double takes ages to evaluate
-                epsilon = sqrt(geomean([1.19e-7 2.22e-16])); 
+                lambda0 = lambdaFn(rayX, x0);
 
-                its = 1;
+                if iterativeFinal
+                    % Get backwards sorted as well
+                    [~, nearInds] = sort(sqrt((testCoords(:,1)-rayX(1)).^2+(testCoords(:,2)-rayX(2)).^2+...
+                        (testCoords(:,3)-rayX(3)).^2));
 
-                while deltaS0_final*norm(t0) > epsilon && abs(lambda0-1) > 10^-6 
-                    %%% using 10^-3 as test for zero in tests above and below
-
-                    SF = 1; %A from paper - saftey factor
-
-                    % included in loop on paper seems to never get hit
-                    if lambda0 < 10^-6
-                       rayT = t0;
-                       warning('Not sure on this');
-                       break
+                    if length(nearInds) > 200
+                        nearInds = nearInds(1:200);
                     end
 
-                    %this loop steps back from overshoot
-                    while intersectionFn(rayX, x0)
-                        if (SF >= 0.1)
-                           SF = SF - 0.1; 
-                        else
-                           SF = 0.1*SF;
+                    testInds_backwards = testInds(nearInds);
+                    testCoords_backwards = testCoords(nearInds,:);
+
+                    % Test intersection, leaving could just be a rounding point           
+                    deltaS0_final = deltaS;
+
+                    its = 1;
+
+                    while deltaS0_final*norm(t0) > epsilon && abs(lambda0-1) > 10^-6 
+                        %%% using 10^-3 as test for zero in tests above and below
+
+                        SF = 1; %A from paper - saftey factor
+
+                        % included in loop on paper seems to never get hit
+                        if lambda0 < 10^-6
+                           rayT = t0;
+                           warning('Not sure on this');
+                           break
                         end
 
-                        deltaS_final = SF*lambda0*deltaS0_final;
+                        %this loop steps back from overshoot
+                        while ~intersectionFn(rayX, x0)
+                            if (SF >= 0.1)
+                               SF = SF - 0.1; 
+                            else
+                               SF = 0.1*SF;
+                            end
 
-                        %%% step ray backward with RK5 with fixed step
-                        [x, t] = ray_interpolation('5RKN', 'iso', x0', t0', deltaS_final, testCoords_backwards, ...
-                            testInds_backwards, lensRIVolume, tolerance, []);
+                            deltaS_final = SF*lambda0*deltaS0_final;
 
-                        rayX = x'; rayT = t';
+                            %%% step ray backward with RK5 with fixed step
+                            [x, t] = ray_interpolation('5RKN', 'iso', x0', t0', deltaS_final, testCoords_backwards, ...
+                                testInds_backwards, lensRIVolume, tolerance);
+
+                            rayX = x'; rayT = t';
+                        end
+
+                        deltaS_final = (1-SF)*lambda0*deltaS0_final;
+
+                        % This loop steps forward to find new contact position just before overshoot.
+                        while intersectionFn(rayX, x0)
+                            x0 = rayX; %think this is the case, we are stepping forward
+                            t0 = rayT;
+
+                            [x, t] = ray_interpolation('5RKN', 'iso', x0', t0', deltaS_final, testCoords_forwards, ...
+                                testInds_forwards, lensRIVolume, tolerance);
+
+                            rayX = x'; rayT = t';
+
+                            pathLength = pathLength + sqrt((x0(1) - rayX(1))^2 + (x0(2) - rayX(2))^2 + (x0(3) - rayX(3))^2);
+                        end
+
+                        %update parameters for next loop
+                        lambda0 = lambdaFn(rayX, x0);
+
+                        deltaS0_final = deltaS_final;
                     end
 
-                    deltaS_final = (1-SF)*lambda0*deltaS0_final;
+                else
+                    [x, t] = ray_interpolation(interpType, 'iso', x0', t0', deltaS*lambda0, testCoords_forwards, ...
+                        testInds_forwards, lensRIVolume, tolerance);
 
-                    % This loop steps forward to find new contact position just before overshoot.
-                    while ~intersectionFn(rayX, x0)
-                        x0 = rayX; %think this is the case, we are stepping forward
-                        t0 = rayT;
+                   rayX = x';
+                   rayT = t';
 
-                        [x, t] = ray_interpolation('5RKN', 'iso', x0', t0', deltaS_final, testCoords_forwards, ...
-                            testInds_forwards, lensRIVolume, tolerance, []);
-
-                        rayX = x'; rayT = t';
-                        
-                        pathLength = pathLength + sqrt((x0(1) - rayX(1))^2 + (x0(2) - rayX(2))^2 + (x0(3) - rayX(3))^2);
-                    end
-
-                    %update parameters for next loop
-                    lambda0 = lambdaFn(rayX, x0);
-
-                    deltaS0_final = deltaS_final;
+                   pathLength = pathLength + sqrt((x0(1) - rayX(1))^2 + (x0(2) - rayX(2))^2 + (x0(3) - rayX(3))^2);
                 end
 
-            else
-                [x, t] = ray_interpolation(interpType, 'iso', x0', t0', deltaS*lambda0, testCoords_forwards, ...
-                    testInds_forwards, lensRIVolume, tolerance, []);
-            
-               rayX = x';
-               rayT = t';
-               
-               pathLength = pathLength + sqrt((x0(1) - rayX(1))^2 + (x0(2) - rayX(2))^2 + (x0(3) - rayX(3))^2);
-            end
-            
-            
-            % Ray might not exit if reflected, but these will get over written when it does
-            finalIntersect(iOrigin,:) = rayX;
 
-            finalPathLength(iOrigin,:) = pathLength;
-            
-            finalRayT(iOrigin,:) = rayT;
+                % Ray might not exit if reflected, but these will get over written when it does
+                finalIntersect(iOrigin,:) = rayX;
 
-            % Recheck in case it was side jitter...
-            intersectResult = intersectionFn(rayX, x0);
-            
-            % Do refraction at border
-            if interfaceRefraction
+                finalPathLength(iOrigin,:) = pathLength;
+
+                finalRayT(iOrigin,:) = rayT;
+
+                % Recheck in case it was side jitter...
+                %intersectResult = intersectionFn(rayX, x0);
+
                 % Get surface normal and RI at exit point
                 [~, rIn] = numerical_dT_dt(rayX, volCoords(RIFlagInds,:), RIFlagInds, lensRIVolume, []); 
-
-                if useRealData
-                    lineDef = [rayX rayT];
                 
-                    [intersectPoints, intersectDistance, intersectFaces] = intersectLineMesh3d(lineDef, grinSurface.vertices, grinSurface.faces);
- 
-                    if length(intersectDistance) > 1
-                        % Sort out intersections
-                        backInds = find(intersectDistance < 0);
-                        frontInds = find(intersectDistance > 0);
-
-                        if isempty(backInds) | isempty(frontInds)
-                            % Inds just on one side
-                            [~, sortInds] = sort(abs(intersectDistance));
-                            
-                            nearestInd = sortInds(1);
-                            furtherInd = sortInds(2);
-                            
-                        elseif ~isempty(backInds) & ~isempty(frontInds)
-                            % Inds front and back
-                            [~, closestBackInd] = min(abs(intersectDistance(backInds)));
-                            [~, closestFrontInd] = min(intersectDistance(frontInds));
-                        
-                            % swap to nearest and furthest
-                            if abs(intersectDistance(backInds(closestBackInd))) < intersectDistance(frontInds(closestFrontInd))
-                                nearestInd = backInds(closestBackInd);
-                                furtherInd = frontInds(closestFrontInd);
-                            else
-                                furtherInd = backInds(closestBackInd);
-                                nearestInd = frontInds(closestFrontInd);
-                            end
-                        end
-
-                        if abs(intersectDistance(nearestInd))*10 > abs(intersectDistance(furtherInd))
-                            error('Check treatment - both inds are very close')
-                        end
-                    elseif length(intersectDistance) == 1
-                        nearestInd = 1;
-                        
-                    elseif isempty(intersectDistance)
-                            error('No intersect')
-                    end
-                    
-                    faceIndex = intersectFaces(nearestInd);
-                    
-                    surfaceNormal = grinNormals(faceIndex,:);
-
-                    rOut = mean(vertexExteriorRI(grinSurface.faces(faceIndex,:)));
-
-                elseif useTestData
-                    if createLunebergLens
-                        surfaceNormal = -(rayX - volumeSize/2*voxelSize);
-
-                        surfaceNormal = surfaceNormal/norm(surfaceNormal);
-
-                        % Usually not exactly 1, this allows refraction but actually decreases error on exit trajectory
-    %                   rOut = 1;
-
-                    elseif createGradedFiber
-                        % Just points backwards
-                        surfaceNormal = [0 0 -1];   
-                    end
-
-                    rOut = exteriorRI;
-                end
-
                 %%% In test case normalization seems to be very similar to dividing by RI at exit
-%                 rayT = rayT/norm(rayT);
+    %           rayT = rayT/norm(rayT);
                 rayT = rayT/rIn;
-
-                if acos(dot(rayT, surfaceNormal)/(norm(surfaceNormal)*norm(rayT))) < pi/2
-                    surfaceNormal = -surfaceNormal;
-                end
                 
-                % Calculate exit refraction
-                nRatio = rIn/rOut;
-                cosI = -dot(surfaceNormal, rayT);
-                sinT2 = nRatio^2*(1-cosI^2);
-                cosT = sqrt(1-sinT2);
+                % Do refraction at border
+                if interfaceRefraction
 
-                if sinT2 < 1
-                   % Assuming all refracted, none reflected
-                   rayT = nRatio*rayT + (nRatio*cosI-cosT)*surfaceNormal;
-                   
-                   plot3(rayX(1), rayX(2), rayX(3), 'mo') 
-                   
+                    %%% Check this, could it be simpler    
+                    
+                    if useRealData
+                        lineDef = [rayX rayT];
+
+                        [intersectPoints, intersectDistance, intersectFaces] = intersectLineMesh3d(lineDef, grinSurface.vertices, grinSurface.faces);
+
+                        if length(intersectDistance) > 1
+                            % Sort out intersections
+                            backInds = find(intersectDistance < 0);
+                            frontInds = find(intersectDistance > 0);
+
+                            if isempty(backInds) | isempty(frontInds)
+                                % Inds just on one side
+                                [~, sortInds] = sort(abs(intersectDistance));
+
+                                nearestInd = sortInds(1);
+                                furtherInd = sortInds(2);
+
+                            elseif ~isempty(backInds) & ~isempty(frontInds)
+                                % Inds front and back
+                                [~, closestBackInd] = min(abs(intersectDistance(backInds)));
+                                [~, closestFrontInd] = min(intersectDistance(frontInds));
+
+                                % swap to nearest and furthest
+                                if abs(intersectDistance(backInds(closestBackInd))) < intersectDistance(frontInds(closestFrontInd))
+                                    nearestInd = backInds(closestBackInd);
+                                    furtherInd = frontInds(closestFrontInd);
+                                else
+                                    furtherInd = backInds(closestBackInd);
+                                    nearestInd = frontInds(closestFrontInd);
+                                end
+                            end
+
+                            if abs(intersectDistance(nearestInd))*10 > abs(intersectDistance(furtherInd))
+                                error('Check treatment - both inds are very close')
+                            end
+                        elseif length(intersectDistance) == 1
+                            nearestInd = 1;
+
+                        elseif isempty(intersectDistance)
+                                error('No intersect')
+                        end
+
+                        faceIndex = intersectFaces(nearestInd);
+
+                        surfaceNormal = grinNormals(faceIndex,:);
+
+                        rOut = mean(vertexExteriorRI(grinSurface.faces(faceIndex,:)));
+
+                    elseif useTestData
+                        if createLunebergLens
+                            surfaceNormal = -(rayX - volumeSize/2*voxelSize);
+
+                            surfaceNormal = surfaceNormal/norm(surfaceNormal);
+
+                            % Usually not exactly 1, this allows refraction but actually decreases error on exit trajectory
+        %                   rOut = 1;
+
+                        elseif createGradedFiber
+                            % Just points backwards
+                            surfaceNormal = [0 0 -1];   
+                        end
+
+                        rOut = exteriorRI;
+                    end
+
+                    if acos(dot(rayT, surfaceNormal)/(norm(surfaceNormal)*norm(rayT))) < pi/2
+                        surfaceNormal = -surfaceNormal;
+                    end
+
+                    % Calculate exit refraction
+                    nRatio = rIn/rOut;
+                    cosI = -dot(surfaceNormal, rayT);
+                    sinT2 = nRatio^2*(1-cosI^2);
+                    cosT = sqrt(1-sinT2);
+
+                    if sinT2 < 1
+                       % Assuming all refracted, none reflected
+                       rayT = nRatio*rayT + (nRatio*cosI-cosT)*surfaceNormal;
+
+                       plot3(rayX(1), rayX(2), rayX(3), 'mo') 
+
+                       inGraded = 0;
+
+                       if blockMultipleExits
+                          exitedFlag = 1;
+                       end
+                       
+                       rayT = rayT/norm(rayT);
+
+                       finalRayTRefract(iOrigin,:) = rayT;
+                    else
+                        % TIR
+                        rayT = rayT-2*dot(surfaceNormal,rayT)*surfaceNormal;
+
+                        rayT = rayT/norm(rayT)*rIn;
+                        
+                        plot3(rayX(1), rayX(2), rayX(3), 'm*') 
+
+                        % Does not exit be default
+                        inGraded = 1;
+
+                    end
+                else 
+                   plot3(rayX(1), rayX(2), rayX(3), 'mo')
+
                    inGraded = 0;
-               
+
                    if blockMultipleExits
                       exitedFlag = 1;
                    end
-                else
-                    % TIR
-                    rayT = rayT-2*dot(surfaceNormal,rayT)*surfaceNormal;
-                    
-                    plot3(rayX(1), rayX(2), rayX(3), 'm*') 
-                    
-                    % Does not exit be default
-                    inGraded = 1;
-                    
-                    warning('probably should continue without normalization/adjustment')
                 end
-                
-                rayT = rayT/norm(rayT);
-                
-                finalRayTRefract(iOrigin,:) = rayT;
-            else 
-               %%% Ray is not normalized or divded by exit RI, but this shouldn't have effect as it's an output.
+            end
+            
+            if rayT(3) < 0
+               % kill ray if it reverses
+               %%% Should flag for final plotting
+               go = 0; 
                
-               plot3(rayX(1), rayX(2), rayX(3), 'mo')
-               
-               inGraded = 0;
-               
-               if blockMultipleExits
-                  exitedFlag = 1;
-               end
+               plot3(rayX(1), rayX(2), rayX(3), 'rd', 'markersize', 4)
+            end
+            
+            % At each z step, record path for plotting later 
+            if rayX(3) >= zSteps(currentStep+1)
+                if currentStep + 1 < length(zSteps)
+                    currentStep = currentStep + 1;
+
+                    rayPathArray(:, currentStep, iOrigin) = rayX;
+
+                    rayPathLengthArray(currentStep, iOrigin) = pathLength;
+
+                else
+                    % Break ray if it has reach end of z steps
+                    go = 0;
+                end
+
+                if testPlot
+                    plot3(rayX(1), rayX(2), rayX(3), '.', 'color', rayCols(iOrigin,:));
+                end
             end
         end
         
@@ -1267,28 +1478,24 @@ for iOrigin = 1:nOrigins
         
 %         rayMap(voxelX(1), voxelX(2), voxelX(3)) = 1;
         
-        % At each z step, record path for plotting later 
-        if rayX(3) >= zSteps(currentStep+1)
-            if currentStep + 1 < length(zSteps)
-                currentStep = currentStep + 1;
-                
-                rayPathArray(:, currentStep, iOrigin) = rayX;
-                
-                rayPathLengthArray(currentStep, iOrigin) = pathLength;
-                
-            else
-                % Break ray if it has reach end of z steps
-                go = 0;
-            end
-            
-            if testPlot
-                plot3(rayX(1), rayX(2), rayX(3), '.', 'color', rayCols(iOrigin,:));
-            end
-        end
-        
         % Check ray has exitied volume
         if any(voxelX > volumeSize) | any(voxelX < 1)
            go = 0; 
+        end
+    end
+    
+    % extend ray path to end of z steps
+    if rayT(3) > 0
+        if currentStep < length(zSteps)
+            rayT = rayT/rayT(3);
+            for i = currentStep+1:length(zSteps)
+                rayPathArray(:, i, iOrigin) = rayX + rayT.*(zSteps(i) - rayX(3));
+            end
+
+            if testPlot
+                plot3(rayPathArray(1, currentStep+1:length(zSteps), iOrigin), rayPathArray(2, currentStep+1:length(zSteps), iOrigin), ...
+                    rayPathArray(3, currentStep+1:length(zSteps), iOrigin), '.', 'color', rayCols(iOrigin,:));
+            end
         end
     end
     
@@ -1707,9 +1914,6 @@ end
 %% 
 function  intersect = surfaceIntersectFunction(volumeFull, volumeBorder, x, x0, scale, surface) 
     % Return 1 if inside
-
-    %%% Revise this to return flag of 1 just when intersection is passed
-        %%% Will also need to revise how this is flagged on test cases
     
     voxelX = round(x/scale);
     
@@ -1724,6 +1928,8 @@ function  intersect = surfaceIntersectFunction(volumeFull, volumeBorder, x, x0, 
                 
             lineDef = [x (x-x0)];  
 
+            %%% Check this, could it be simpler    
+            
             [~, intersectDistance] = intersectLineMesh3d(lineDef, surface.vertices, surface.faces);  
             
             backInds = find(intersectDistance < 0);
@@ -1788,8 +1994,9 @@ function lambda = surfaceLambdaFunction(x1, x0, surface)
         [~, closestFrontInd] = min(intersectDistance(frontInds));
 
         if isempty(backInds) | isempty(frontInds)
-            %%% Have a treatment for ray exit
+            % This should be called while x0 is inside mesh and x1 is outside
             error('Check treatment - all inds either in front or behind')
+            % It can be that deltaS is too large
         end
 
         nearestInd = frontInds(closestFrontInd);
@@ -1805,7 +2012,7 @@ function lambda = surfaceLambdaFunction(x1, x0, surface)
     lambda = norm(intersectPoints(nearestInd,:)-x0)/norm(x1-x0);
     
     if lambda > 1
-        lambda
+        lambda;
         error('Large lambda step, intersect was triggered too early')
     elseif lambda < 0
        error('Check this') 

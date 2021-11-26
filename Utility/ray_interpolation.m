@@ -1,4 +1,4 @@
-function [X, T, new_delta] = ray_interpolation(type, RIType, X0, T0, delta, vol_coords, vol_inds, lens_volume, tolerance, fixedRI)
+function [X, T, new_delta] = ray_interpolation(type, RIType, X0, T0, delta, vol_coords, vol_inds, lens_volume, tolerance)
     %%% Select interpolation and grin type with flags.
 
     new_delta = delta;
