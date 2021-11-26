@@ -78,8 +78,11 @@ epsilon = sqrt(geomean([1.19e-7 2.22e-16]));
 % Should be on, but can switch off to test    
 interfaceRefraction = 1;  
 
-% bit of a hack to prevent ray reentering due to pixel jitter 
-blockMultipleExits = 0;
+% Ray that has exited will error on re-entry
+blockMultipleExits = 1;
+
+% Rays won't continue if it hits intercone base
+limitToConeBase = 1;
 
 % extend on final plots - only added for real data
 extendRayLength = 2; % mm
@@ -770,14 +773,16 @@ for iOrigin = 1:nOrigins
     
     pathLength = 0; % in grin area
     
-    exitedFlag = 0;
+    propogateFinalRay = 1;
+    
+    numberOfExits = 0;
     
     currentPeriod = 1; % only used for graded fiber
 
     while go
         
         % If outside, extend ray to grin area
-        if ~inGraded % & ~exitedFlag
+        if ~inGraded
             x0 = rayX;
             t0 = rayT;
         
@@ -977,6 +982,12 @@ for iOrigin = 1:nOrigins
                 % Entering into graded region
                 if useTestData | (useRealData & minIntersect == 1)
                    
+                    if numberOfExits > 0 & blockMultipleExits
+                       plot3(rayX(1), rayX(2), rayX(3), 'ro', 'markersize', 8)
+                        
+                       error('ray is reentering') 
+                    end
+                    
                     % Get interior RI at entry point
                     [~, rOut] = numerical_dT_dt(rayX, volCoords(RIFlagInds,:), RIFlagInds, lensRIVolume, []);
 
@@ -1076,6 +1087,13 @@ for iOrigin = 1:nOrigins
                                 rOut = metaData.interconeValue;
                                 
                                 surfaceNormal = mean(cInCNormals(faceIndices,:),1);
+                                
+                                if limitToConeBase
+                                
+                                    propogateFinalRay = 0;
+                                    
+                                    go = 0;
+                                end
 
                             case 5 % intercone 
                                 rIn = metaData.interconeValue;
@@ -1193,7 +1211,7 @@ for iOrigin = 1:nOrigins
             intersectResult = intersectionFn(rayX, x0);
         
             % Test if leaving a GRIN area
-            if ~intersectResult % & ~exitedFlag
+            if ~intersectResult
 
                 % remove last pathlength step
                 pathLength = pathLength - sqrt((x0(1) - rayX(1))^2 + (x0(2) - rayX(2))^2 + (x0(3) - rayX(3))^2);
@@ -1318,13 +1336,10 @@ for iOrigin = 1:nOrigins
 
                 finalRayT(iOrigin,:) = rayT;
 
-                % Recheck in case it was side jitter...
-                %intersectResult = intersectionFn(rayX, x0);
-
                 % Get surface normal and RI at exit point
                 [~, rIn] = numerical_dT_dt(rayX, volCoords(RIFlagInds,:), RIFlagInds, lensRIVolume, []); 
                 
-                %%% In test case normalization seems to be very similar to dividing by RI at exit
+                % In test case normalization seems to be very similar to dividing by RI at exit
     %           rayT = rayT/norm(rayT);
                 rayT = rayT/rIn;
                 
@@ -1416,9 +1431,7 @@ for iOrigin = 1:nOrigins
 
                        inGraded = 0;
 
-                       if blockMultipleExits
-                          exitedFlag = 1;
-                       end
+                       numberOfExits = numberOfExits + 1;
                        
                        rayT = rayT/norm(rayT);
 
@@ -1440,9 +1453,7 @@ for iOrigin = 1:nOrigins
 
                    inGraded = 0;
 
-                   if blockMultipleExits
-                      exitedFlag = 1;
-                   end
+                   numberOfExits = numberOfExits + 1;
                 end
             end
             
@@ -1451,7 +1462,9 @@ for iOrigin = 1:nOrigins
                %%% Should flag for final plotting
                go = 0; 
                
-               plot3(rayX(1), rayX(2), rayX(3), 'rd', 'markersize', 4)
+               propogateFinalRay = 0;
+               
+               plot3(rayX(1), rayX(2), rayX(3), 'rd', 'markersize', 8)
             end
             
             % At each z step, record path for plotting later 
@@ -1485,7 +1498,7 @@ for iOrigin = 1:nOrigins
     end
     
     % extend ray path to end of z steps
-    if rayT(3) > 0
+    if propogateFinalRay
         if currentStep < length(zSteps)
             rayT = rayT/rayT(3);
             for i = currentStep+1:length(zSteps)
