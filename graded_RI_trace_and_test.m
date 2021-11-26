@@ -6,22 +6,22 @@ clc; close all
 
 %% Set parameters
 
-useRealData = 1;
+useRealData = 0;
 
 if useRealData
     dataFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/AnalysisVolumes/';
 
     % New radial
-%     dataFile = 'Volume_Cone_1000_nm_Cone_0_SD_GRIN_radial.mat';
-%     metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_radial.mat';
+    dataFile = 'Volume_Cone_1000_nm_Cone_0_SD_GRIN_radial.mat';
+    metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_radial.mat';
     
     % Cylinder
 %     dataFile = 'Volume_Cylinder_1000_nm_Cone_0_SD_GRIN_cylinder.mat';
 %     metaFile = 'Cylinder_1000_nm_Cone_0_SD_GRIN_cylinder.mat';
     
     % Orignal Radial
-    dataFile = 'Volume_ConeOriginal_1000_nm_Cone_0_SD_GRIN_radial.mat';
-    metaFile = 'ConeOriginal_1000_nm_Cone_0_SD_GRIN_radial.mat';
+%     dataFile = 'Volume_ConeOriginal_1000_nm_Cone_0_SD_GRIN_radial.mat';
+%     metaFile = 'ConeOriginal_1000_nm_Cone_0_SD_GRIN_radial.mat';
 
     % Usually saved pointing down
     flipVolume = 1;    
@@ -41,9 +41,9 @@ else
 
     exteriorRI = 1;
 
-    createLunebergLens = 0;
+    createLunebergLens = 1;
         
-    createGradedFiber = 1;
+    createGradedFiber = 0;
         %%% Add flag to create gaussian profile then update solution and period
         fiberLength = 10;
         n0 = sqrt(2.5); 
@@ -73,7 +73,7 @@ incidenceAngle = 0; % deg, in XZ - plane
     
 %error term, sqrt of machine precision, from Nishidate paper sqrt(1.49e-8)
     % Take geometric mean of single and double precision, double takes ages to evaluate
-epsilon = sqrt(geomean([1.19e-7 2.22e-16])); 
+epsilon = sqrt(1.49e-8); %sqrt(geomean([1.19e-7 2.22e-16])); 
 
 % Should be on, but can switch off to test    
 interfaceRefraction = 1;  
@@ -85,7 +85,7 @@ blockMultipleExits = 1;
 limitToConeBase = 1;
 
 % extend on final plots - only added for real data
-extendRayLength = 2; % mm
+extendRayLength = 1; % mm
     
 testPlot = 1;
 %% Load or create test data     
@@ -734,6 +734,7 @@ finalIntersect = zeros(nOrigins, 3);
 finalPathLength = zeros(nOrigins, 1);
 finalRayT = zeros(nOrigins, 3);
 finalRayTRefract = zeros(nOrigins, 3);
+finalRay = zeros(nOrigins, 3);
 
 if createGradedFiber
    % Period is for parabolic profile, gaussian period is different and independent of entry.
@@ -773,7 +774,7 @@ for iOrigin = 1:nOrigins
     
     pathLength = 0; % in grin area
     
-    propogateFinalRay = 1;
+    propogateFinalRay = 0;
     
     numberOfExits = 0;
     
@@ -918,6 +919,7 @@ for iOrigin = 1:nOrigins
                             faceIndices = intersectFacesIntercone(inds2Use);
                     end
                     
+                    propogateFinalRay = 1;
                 else
                     go = 0;
                 end
@@ -948,6 +950,8 @@ for iOrigin = 1:nOrigins
                         rayX = rayX + rayT*deltaTemp; %3x1 coordinates
 
                         intersectResult = 1;
+                        
+                        propogateFinalRay = 1;
                     else
                        go = 0; 
                     end
@@ -985,6 +989,8 @@ for iOrigin = 1:nOrigins
                     if numberOfExits > 0 & blockMultipleExits
                        plot3(rayX(1), rayX(2), rayX(3), 'ro', 'markersize', 8)
                         
+                       % Changing epsilon or deltaS may help
+                       
                        error('ray is reentering') 
                     end
                     
@@ -999,6 +1005,8 @@ for iOrigin = 1:nOrigins
                             
                             surfaceNormal = mean(grinNormals(faceIndices,:),1);
 
+                            surfaceNormal = surfaceNormal/norm(surfaceNormal);
+                            
                         elseif useTestData
                             if createLunebergLens
                                 surfaceNormal = rayX - volumeSize/2*voxelSize;
@@ -1346,55 +1354,62 @@ for iOrigin = 1:nOrigins
                 % Do refraction at border
                 if interfaceRefraction
 
-                    %%% Check this, could it be simpler    
+                      
                     
                     if useRealData
                         lineDef = [rayX rayT];
 
                         [intersectPoints, intersectDistance, intersectFaces] = intersectLineMesh3d(lineDef, grinSurface.vertices, grinSurface.faces);
 
-                        if length(intersectDistance) > 1
-                            % Sort out intersections
-                            backInds = find(intersectDistance < 0);
-                            frontInds = find(intersectDistance > 0);
+                        %%% Check this, could it be simpler 
+                         
+%                         if length(intersectDistance) > 1
+%                             % Sort out intersections
+%                             backInds = find(intersectDistance < 0);
+%                             frontInds = find(intersectDistance > 0);
+% 
+%                             if isempty(backInds) | isempty(frontInds)
+%                                 % Inds just on one side
+%                                 [~, sortInds] = sort(abs(intersectDistance));
+% 
+%                                 nearestInd = sortInds(1);
+%                                 furtherInd = sortInds(2);
+% 
+%                             elseif ~isempty(backInds) & ~isempty(frontInds)
+%                                 % Inds front and back
+%                                 [~, closestBackInd] = min(abs(intersectDistance(backInds)));
+%                                 [~, closestFrontInd] = min(intersectDistance(frontInds));
+% 
+%                                 % swap to nearest and furthest
+%                                 if abs(intersectDistance(backInds(closestBackInd))) < intersectDistance(frontInds(closestFrontInd))
+%                                     nearestInd = backInds(closestBackInd);
+%                                     furtherInd = frontInds(closestFrontInd);
+%                                 else
+%                                     furtherInd = backInds(closestBackInd);
+%                                     nearestInd = frontInds(closestFrontInd);
+%                                 end
+%                             end
+% 
+%                             if abs(intersectDistance(nearestInd)) < abs(intersectDistance(furtherInd))/10
+%                                 error('Check treatment - both inds are very close')
+%                             end
+%                         elseif length(intersectDistance) == 1
+%                             nearestInd = 1;
+% 
+%                         elseif isempty(intersectDistance)
+%                                 error('No intersect')
+%                         end
 
-                            if isempty(backInds) | isempty(frontInds)
-                                % Inds just on one side
-                                [~, sortInds] = sort(abs(intersectDistance));
+                        inds2Use = find(intersectDistanceGrin == min(intersectDistanceGrin));
 
-                                nearestInd = sortInds(1);
-                                furtherInd = sortInds(2);
+                        faceIndices = intersectFaces(inds2Use);
 
-                            elseif ~isempty(backInds) & ~isempty(frontInds)
-                                % Inds front and back
-                                [~, closestBackInd] = min(abs(intersectDistance(backInds)));
-                                [~, closestFrontInd] = min(intersectDistance(frontInds));
+                        surfaceNormal = mean(grinNormals(faceIndex,:),1);
 
-                                % swap to nearest and furthest
-                                if abs(intersectDistance(backInds(closestBackInd))) < intersectDistance(frontInds(closestFrontInd))
-                                    nearestInd = backInds(closestBackInd);
-                                    furtherInd = frontInds(closestFrontInd);
-                                else
-                                    furtherInd = backInds(closestBackInd);
-                                    nearestInd = frontInds(closestFrontInd);
-                                end
-                            end
-
-                            if abs(intersectDistance(nearestInd))*10 > abs(intersectDistance(furtherInd))
-                                error('Check treatment - both inds are very close')
-                            end
-                        elseif length(intersectDistance) == 1
-                            nearestInd = 1;
-
-                        elseif isempty(intersectDistance)
-                                error('No intersect')
-                        end
-
-                        faceIndex = intersectFaces(nearestInd);
-
-                        surfaceNormal = grinNormals(faceIndex,:);
-
-                        rOut = mean(vertexExteriorRI(grinSurface.faces(faceIndex,:)));
+                        surfaceNormal = surfaceNormal/norm(surfaceNormal);
+                        
+                        rOut = vertexExteriorRI(grinSurface.faces(faceIndices,:));
+                        rOut = mean(rOut(:));  
 
                     elseif useTestData
                         if createLunebergLens
@@ -1499,6 +1514,8 @@ for iOrigin = 1:nOrigins
     
     % extend ray path to end of z steps
     if propogateFinalRay
+        finalRay(iOrigin,:) = rayT;
+        
         if currentStep < length(zSteps)
             rayT = rayT/rayT(3);
             for i = currentStep+1:length(zSteps)
@@ -1537,7 +1554,7 @@ if useRealData
 %         plot3(firstIntersect(iOrigin,1), firstIntersect(iOrigin,2), firstIntersect(iOrigin,3), 'o', 'color', rayCols(iOrigin,:))
 %         plot3(finalIntersect(iOrigin,1), finalIntersect(iOrigin,2), finalIntersect(iOrigin,3), 'o', 'color', rayCols(iOrigin,:))
         
-        extendedRay = rayPath(end-1,:) + extendRayLength*finalRayTRefract(iOrigin,:);
+        extendedRay = rayPath(end-1,:) + extendRayLength*finalRay(iOrigin,:);
         
         line([rayPath(end-1,1) extendedRay(1)], [rayPath(end-1,2) extendedRay(2)], [rayPath(end-1,3) extendedRay(3)], 'color', rayCols(iOrigin,:) )
     end
@@ -1674,7 +1691,10 @@ elseif useTestData
                 rayPath(startZPerOrigin(iOrigin),:) = firstIntersect(iOrigin,:);
                 rayPath(topZ,:) = finalIntersect(iOrigin,:);
                 
-                plot((rayPath(:,1) - tempRayPath(:,1))*10^6, zSteps, 'color', rayCols(iOrigin,:))
+                plot((tempRayPath(:,1) - rayPath(:,1))*10^6, zSteps, 'color', rayCols(iOrigin,:))
+                
+                plot((tempRayPath(startZPerOrigin(iOrigin),1) - rayPath(startZPerOrigin(iOrigin),1))*10^6, zSteps(startZPerOrigin(iOrigin)), 'rx')
+                plot((tempRayPath(topZ,1) - rayPath(topZ,1))*10^6, zSteps(topZ), 'rx')
             end
         end
         ylim([0 3])
@@ -1881,12 +1901,16 @@ elseif useTestData
             if minDeltaS(iOrigin) < 1
                 rayPath = permute(rayPathArray(:, :, iOrigin), [2 1]);
 
-                rayPath(bottomZ,:) = firstIntersect(iOrigin,:);
-                rayPath(topZ,:) = finalIntersect(iOrigin,:);
+%                 rayPath(bottomZ,:) = firstIntersect(iOrigin,:);
+%                 rayPath(topZ,:) = finalIntersect(iOrigin,:);
                 
                 tempRayPath = permute(trueRayPathArray(:, :, iOrigin), [2 1]);
 
                 plot((tempRayPath(:,1) - rayPath(:,1))*10^6, zSteps, 'color', rayCols(iOrigin,:))
+                
+                
+                plot((tempRayPath(bottomZ,1) - rayPath(bottomZ,1))*10^6, zSteps(bottomZ), 'rx')
+                plot((tempRayPath(topZ,1) - rayPath(topZ,1))*10^6, zSteps(topZ), 'rx')
             end
         end
        
@@ -1935,14 +1959,9 @@ function  intersect = surfaceIntersectFunction(volumeFull, volumeBorder, x, x0, 
         if volumeBorder(voxelX(1), voxelX(2), voxelX(3))
             % inpolyhedron is really slow!
 %             intersect = inpolyhedron(surface, x);
-
-            % Faster but also causes problems as intersectLineMesh3d tends to shift intersect backwards...
-                % Note sure what the above comment meant?
                 
             lineDef = [x (x-x0)];  
 
-            %%% Check this, could it be simpler    
-            
             [~, intersectDistance] = intersectLineMesh3d(lineDef, surface.vertices, surface.faces);  
             
             backInds = find(intersectDistance < 0);
@@ -1965,18 +1984,20 @@ function  intersect = surfaceIntersectFunction(volumeFull, volumeBorder, x, x0, 
 
                 [~, intersectDistance_x0] = intersectLineMesh3d(lineDef_x0, surface.vertices, surface.faces);  
 
+                error('Check if this section works')
+                
                 if intersectDistance_x0 > 0 & intersectDistance < 0
                     % has stepped out
                     intersect = 0;
                 elseif intersectDistance_x0 < 0 & intersectDistance > 0
                     % has stepped in ? 
-                    intersect = 0;
+                    intersect = 1;
                 else
                    error('Check treatment') 
                 end
 
             elseif isempty(intersectDistance)
-               % Not intersect can't be in volume 
+               % Not intersect so can't be in volume 
                intersect = 0;
             end
 
@@ -2008,14 +2029,18 @@ function lambda = surfaceLambdaFunction(x1, x0, surface)
 
         if isempty(backInds) | isempty(frontInds)
             % This should be called while x0 is inside mesh and x1 is outside
+                            % It can be that deltaS is too large
             error('Check treatment - all inds either in front or behind')
-            % It can be that deltaS is too large
         end
 
         nearestInd = frontInds(closestFrontInd);
 
-    elseif length(intersectDistance) == 1
+    elseif length(intersectDistance) == 1 
+        if intersectDistance > 0
             nearestInd = 1;
+        else
+           error('Only one intersect and behind x0') 
+        end
 
     elseif isempty(intersectDistance)
             error('No intersect')
@@ -2025,7 +2050,7 @@ function lambda = surfaceLambdaFunction(x1, x0, surface)
     lambda = norm(intersectPoints(nearestInd,:)-x0)/norm(x1-x0);
     
     if lambda > 1
-        lambda;
+        lambda
         error('Large lambda step, intersect was triggered too early')
     elseif lambda < 0
        error('Check this') 
