@@ -8,21 +8,41 @@ clc; close all
 
 useRealData = 1;
 
-if useRealData
-    dataFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/AnalysisVolumes/';
+incidenceAngle = 0; 7.5;  % deg, in XZ - plane    
 
-    % New radial
-    dataFile = 'Volume_Cone_1000_nm_Cone_0_SD_GRIN_radial.mat';
-    metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_radial.mat';
+if useRealData
+    dataFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/AnalysisVolumes/5 micron/';
+
+    %%% All currently have 5000 um voxel resolution
     
+    % Cone w/ latest radial at top
+%     dataFile = 'Volume_Cone_1000_nm_Cone_0_SD_GRIN_radialTop.mat';
+%     metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_radialTop.mat';
+
+    % Cone w/ latest radial at base
+%     dataFile = 'Volume_Cone_1000_nm_Cone_0_SD_GRIN_radialBase.mat';
+%     metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_radialBase.mat';
+ 
     % Cylinder
 %     dataFile = 'Volume_Cylinder_1000_nm_Cone_0_SD_GRIN_cylinder.mat';
 %     metaFile = 'Cylinder_1000_nm_Cone_0_SD_GRIN_cylinder.mat';
     
-    % Orignal Radial
-%     dataFile = 'Volume_ConeOriginal_1000_nm_Cone_0_SD_GRIN_radial.mat';
-%     metaFile = 'ConeOriginal_1000_nm_Cone_0_SD_GRIN_radial.mat';
-
+    % Cone w/ cylinder profile
+%     dataFile = 'Volume_Cone_1000_nm_Cone_0_SD_GRIN_cylinder.mat';
+%     metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_cylinder.mat';
+    
+    % Cone w/ linear profile
+%     dataFile = 'Volume_Cone_1000_nm_Cone_0_SD_GRIN_linear.mat';
+%     metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_radial.mat';
+    
+    % Cone w/ combined profile
+    dataFile = 'Volume_Cone_1000_nm_Cone_0_SD_GRIN_both.mat';
+    metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_both.mat';
+%     
+    % Cone w/ uniform RI
+%     dataFile = 'Volume_Cone_1000_nm_Cone_0_SD_Uniform_1.52.mat';
+%     metaFile = 'Cone_1000_nm_Cone_0_SD_Uniform_1.52.mat';
+    
     % Usually saved pointing down
     flipVolume = 1;    
     flipSurfaces = 1;
@@ -31,6 +51,9 @@ if useRealData
     createLunebergLens = 0;
     plotReferenceFiber = 0;
     useTestData = 0;
+    
+    receptorRadius = 40;
+    receptorAcceptance = 90;
     
     testOrigin = []; [5 6 7 8];
 else
@@ -52,7 +75,7 @@ else
         plotReferenceFiber = 0; % will plot data from Nishidate and only trace 0.5
 end
 
-xSpacing = 10; % in voxels...
+xSpacing = 5; % in voxels...
 
 trace3D = 1;
 
@@ -65,13 +88,13 @@ interpType = '4S'; %'4S';
     
     % Seems good to start a bit lower than the general deltaS
         % in fixed step, 10^-3 vs. 10^-4 gives rough order of magnitude error
-    initialDeltaS = 0.5*10^-3;
-    
+%     initialDeltaS = 0.5*10^-3;
+    % Need for uniform
+    initialDeltaS = 0.1*10^-3;
+
     % This keeps spot size surpsingly small, even on loose tolerance
         % (I guess it ends up stepping further at loose tolerance...)
     iterativeFinal = 0;  
-    
-incidenceAngle = 7.5; % deg, in XZ - plane    
     
 %error term, sqrt of machine precision, from Nishidate paper sqrt(1.49e-8)
     % Take geometric mean of single and double precision, double takes ages to evaluate
@@ -81,9 +104,9 @@ epsilon = sqrt(1.49e-8); %sqrt(geomean([1.19e-7 2.22e-16]));
 interfaceRefraction = 1;  
 
 % Ray that has exited will error on re-entry
-blockMultipleExits = 1;
+blockMultipleExits = 0;
 
-% Rays won't continue if it hits intercone base
+% Rays won't continue if it hits intercone base - effectively makes base of cone the aperture
 limitToConeBase = 1;
 
 % extend on final plots - only added for real data
@@ -146,7 +169,6 @@ if useRealData
         corneaSurface.vertices(:,3) = -(corneaVertices(:,3)-volumeSize(3)/2)+volumeSize(3)/2;
     end
     corneaBorderVolume = polygon2voxel(corneaSurface, volumeSize, 'none');
-
     
     
     % for top of outer cornea - can be curved
@@ -217,7 +239,6 @@ if useRealData
     end
     epicorneaBorderVolume = polygon2voxel(epicorneaSurface, volumeSize, 'none');
 
-    
     
     % for base outer cornea/intercone around cone -  flat
     % Make flat grid as for cornea
@@ -313,7 +334,8 @@ if useRealData
         coneVertices = [ [xGrid(firstInds), yGrid(firstInds), tempZ(1)*zGrid(firstInds)]', coneVertices'];
     else
         coneVertices = [ [xGrid(firstInds), yGrid(firstInds), tempZ(1)*zGrid(firstInds)]', ...
-            coneVertices', [xGrid(endInds), yGrid(endInds), (tempZ(end))*zGrid(endInds)]']'; % (tempZ(end)+1) to remove cap
+            coneVertices', [xGrid(endInds), yGrid(endInds), (tempZ(end))*zGrid(endInds)]']'; 
+            % (tempZ(end)+1) to remove cap, might not work with alpha shape...
     end
     
     % Store end cap inds
@@ -327,9 +349,13 @@ if useRealData
     coneVertices(:,1) = coneVertices(:,1) + volumeSize(1)/2;
     coneVertices(:,2) = coneVertices(:,2) + volumeSize(2)/2;
     coneVertices(:,3) = coneVertices(:,3) + metaData.tipOffset*metaData.voxSize/metaData.voxSize3D;
+
+    % Switch to alpha shape to prevent degenerate triangles
+    tempShape = alphaShape(coneVertices, 50);
+    [tempFaces, tempVertices] = boundaryFacets(tempShape);
     
-    tempTriangulation = delaunayTriangulation(coneVertices);
-    [tempFaces, tempVertices] = freeBoundary(tempTriangulation); % this seems to flip vertices in z
+%     tempTriangulation = delaunayTriangulation(coneVertices);
+%     [tempFaces, tempVertices] = freeBoundary(tempTriangulation); % this seems to flip vertices in z
     
     if ~isempty(forcedCapInds)
         % remove forced inds at base
@@ -353,12 +379,12 @@ if useRealData
     grinSurface.faces = tempFaces;
     grinSurface.vertices = tempVertices;
 
+    
     % Get cone border volume
     if flipSurfaces
         grinSurface.vertices(:,3) = -(tempVertices(:,3)-volumeSize(3)/2)+volumeSize(3)/2;
     end
     coneBorderVolume = polygon2voxel(grinSurface, volumeSize, 'none');
-    
     
 
     % for inner intercone - is curved
@@ -636,8 +662,10 @@ zSteps = (1:volumeSize(3))*voxelSize;
 
 if useRealData
     
-    xStartPoints = -volumeSize(1)*0.5:xSpacing:volumeSize(1)*1.5; 
-    
+    xStartPoints = volumeSize(1)/2:xSpacing:volumeSize(1)*1.5; 
+
+    xStartPoints = [(xStartPoints(1:end-1)+(-volumeSize(1)/2+1)*2) xStartPoints];
+
     if trace3D
         [xGrid, yGrid, zGrid] = meshgrid(xStartPoints, xStartPoints, 1);
         
@@ -654,7 +682,9 @@ else
     %%% Does in 2D, could add trace3D as well (need to update solver)
     
     if ~plotReferenceFiber | createLunebergLens
-        xStartPoints = 1:xSpacing:volumeSize(1); 
+        xStartPoints = volumeSize(1)/2:xSpacing:volumeSize(1); 
+        
+        xStartPoints = [(xStartPoints(1:end-1)-volumeSize(1)/2+1) xStartPoints];
     else
         xStartPoints = volumeSize(1)/2+radius/voxelSize*0.5;
     end
@@ -749,6 +779,9 @@ if createGradedFiber
    periodSpotsArray = zeros(3, numPeriods, nOrigins);
    
 end
+
+%%% Add in multi angles here -> extra loop with results stored into a struct
+    %%% Will need loop on plotting code but can split of later to seperate file
 
 for iOrigin = 1:nOrigins
     %%% Could set up to do for series of ray angles
@@ -893,9 +926,13 @@ for iOrigin = 1:nOrigins
                             rayX = mean(intersectPointsIntercone(inds2Use,:),1);
 
                             faceIndices = intersectFacesIntercone(inds2Use);
+                            
+                            if limitToConeBase & numberOfExits == 0 
+                                go = 0;
+                            end
                     end
                     
-                    propogateFinalRay = 1;
+                    propogateFinalRay = 1*go;
                 else
                     go = 0;
                 end
@@ -962,17 +999,20 @@ for iOrigin = 1:nOrigins
                 % Entering into graded region
                 if useTestData | (useRealData & minIntersect == 1)
                    
-                    if numberOfExits > 0 & blockMultipleExits
+                    if numberOfExits > 0 
                        plot3(rayX(1), rayX(2), rayX(3), 'ro', 'markersize', 8)
-                        
-                       propogateFinalRay = 0;
                        
-                       go = 0;
+                       plot3(grinSurface.vertices(grinSurface.faces(faceIndices,:),1), grinSurface.vertices(grinSurface.faces(faceIndices,:),2), ...
+                           grinSurface.vertices(grinSurface.faces(faceIndices,:),3), 'rx')
+                       
+                       trisurf(grinSurface.faces(faceIndices,:), grinSurface.vertices(:,1), grinSurface.vertices(:,2), grinSurface.vertices(:,3), ...
+                            'FaceColor','r');
                        
                        % Changing epsilon or deltaS may help 
                        warning('ray is reentering') 
-                    else
+                    end
                     
+                   if ~(blockMultipleExits & numberOfExits > 0)
                         % Get interior RI at entry point
                         [~, rOut] = numerical_dT_dt(rayX, volCoords(RIFlagInds,:), RIFlagInds, lensRIVolume, []);
 
@@ -1045,7 +1085,13 @@ for iOrigin = 1:nOrigins
 
                         % now multiplied by initial RI
                         rayT = rayT/norm(rayT)*rOut;
-                    end
+                   else
+ 
+                       propogateFinalRay = 0;
+
+                       go = 0;
+
+                   end
                     
                 elseif useRealData & minIntersect > 1
                     
@@ -1484,7 +1530,9 @@ mean(minDeltaS(minDeltaS < 1))*10^6
 
 if useRealData
 
-    figure; %subplot(1,2,1); 
+    % Plot raypaths
+    
+    figure; subplot(1,2,1); 
     hold on; axis equal;
     view(0, 0)
     for iOrigin = 1:nOrigins
@@ -1502,21 +1550,67 @@ if useRealData
 
     xlim([0 volumeSize(1)*voxelSize])
     
-    zlim([0 2])
+    zlim([0 1])
     
     title(sprintf('%i deg',incidenceAngle))
     
-    % Plot border
-    inds = find(permute(coneBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
-    
+    % Plot borders
+    % Cone
+    tempBorder = imerode(coneBorderVolume, strel('sphere',1));
+    inds = find(permute(tempBorder(:, round(volumeSize(2)/2), :),[1 3 2]));
     [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
+    plot3(tempX*voxelSize, ones(length(tempZ),1)*rayOrigins(1,2), tempZ*voxelSize, 'k.');
     
+    % Others
+    inds = find(permute(corneaBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
+    [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
+    plot3(tempX*voxelSize, ones(length(tempZ),1)*rayOrigins(1,2), tempZ*voxelSize, 'k.');
+    
+    inds = find(permute(epicorneaBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
+    [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
+    plot3(tempX*voxelSize, ones(length(tempZ),1)*rayOrigins(1,2), tempZ*voxelSize, 'k.');
+    
+    inds = find(permute(cInCBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
+    [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
+    plot3(tempX*voxelSize, ones(length(tempZ),1)*rayOrigins(1,2), tempZ*voxelSize, 'k.');
+    
+    inds = find(permute(interconeBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
+    [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
     plot3(tempX*voxelSize, ones(length(tempZ),1)*rayOrigins(1,2), tempZ*voxelSize, 'k.');
     
     % Plot ray map through central slice
 %     subplot(1,2,2); hold on; axis equal;
 %     imshow(flipud( permute( rayMap(:, round(rayOrigins(1,2)/voxelSize), :), [3 1 2])))
     
+    subplot(1,2,2); 
+    imshow(fliplr(permute((lensRIVolume(round(volumeSize(1)/2),:,:)-1.45)/(1.54-1.45), [2 3 1]))');
+    
+    ylim([-(volumeSize(3)*1/(volumeSize(3)*voxelSize)-volumeSize(3)) volumeSize(3)])
+    
+    
+    % Plot acceptance angle
+    figure; hold on; axis equal
+    
+    coneTipZ = coneVertices(1,3)*voxelSize;
+    priorZInd = find(zSteps < coneTipZ); priorZInd = priorZInd(end);
+    afterZInd = find(zSteps >= coneTipZ); afterZInd = afterZInd(1);
+    
+    for iOrigin = 1:nOrigins
+        rayPath = permute(rayPathArray(:, :, iOrigin), [2 1]);
+        
+        xTip = rayPath(priorZInd, 1) + (rayPath(afterZInd, 1) - rayPath(priorZInd, 1))/...
+            (rayPath(afterZInd, 3) - rayPath(priorZInd, 3))*(coneTipZ-rayPath(priorZInd, 3));
+        
+        yTip = rayPath(priorZInd, 2) + (rayPath(afterZInd, 2) - rayPath(priorZInd, 2))/...
+            (rayPath(afterZInd, 3) - rayPath(priorZInd, 3))*(coneTipZ-rayPath(priorZInd, 3));
+        
+        
+        xTip = xTip - volumeSize(1)/2*voxelSize;
+        yTip = yTip - volumeSize(1)/2*voxelSize;
+        
+        plot(xTip, yTip, 'rx');
+    end
+     
 elseif useTestData
     
     if createLunebergLens
@@ -1551,7 +1645,7 @@ elseif useTestData
             
             if rayOrigins(iOrigin,2) ~= lensCentre(2) | ... 
                     any(startRayT - [0, 0, 1])
-                %%% Can gernalize to X component and off-axis rays from Eq 2 in Babayigit ... Turduev 2019
+                %%% Can generalize to X component and off-axis rays from Eq 2 in Babayigit ... Turduev 2019
                 
                 error('Analytic solution only set up for Y on midline and parallel rays')
             end

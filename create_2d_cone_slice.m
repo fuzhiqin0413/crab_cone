@@ -9,7 +9,7 @@ scaleUpVoxels = 1;
     voxScale = voxSize/newVoxSize; % Scale up factor on image for FDTD
     
 writeImage = 0;
-    fileNameBase = 'Cone_Slab'; %'Cylinder' 'Cone_EC' 'Cone_CinC' 'Cone_CinC_EC'
+    fileNameBase = 'Cone'; %'Cylinder' 'Cone_EC' 'Cone_CinC' 'Cone_CinC_EC'
 
 % targetFolder = '/Users/gavintaylor/Desktop/AnalysisImages';    
 targetFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/AnalysisVolumes';    
@@ -20,7 +20,7 @@ create3D = 1;
         % than newVoxSize as 2 directly because of radial interpolant    
     resize3DRatio = 5; % scales up from image, should be integer > 1
     makeSlab = 0; % Should indicate in file name
-    write3D = 0;
+    write3D = 1;
     
 % For display
 plotMulti = 0;
@@ -58,7 +58,7 @@ createCylinder = 0; % instead of a cone
 if ~makeLabels
     outerValue = 1.33;
     innerValue = 1.34;
-    coneValue = 'radial'; %1.52 'cylinder', 'radial', 'linear' 'both'
+    coneValue = 'radialBase'; %1.52 'cylinder', 'radialTop', 'radialBase', 'linear' 'both'
     outerCorneaValue = 1.5;
     epicorneaValue = 1.53;
     interconeValue = 1.47; -1; 
@@ -433,8 +433,7 @@ for i = 1:sliceSize(2)
                         % note this radius is not rescaled and will produce lower values than radial at radius > |80| 
                         tempRI = 1.52*sech(pi*tempRadius*voxSize/2/cylinderRILength);
                         
-                    case 'radial'
-                        % Original
+                    case 'radialTop'
                         % rescale relative diameter to 80
                         tempRadius = tempRadius/fullRad*80;
                                         
@@ -446,6 +445,13 @@ for i = 1:sliceSize(2)
                         
                         % New linear contribution
                         tempRI = 1.5+(1*0.01+0.01)-(0.5*1+0.8)*0.00000612*tempRadius.^2;
+                        
+                    case 'radialBase'    
+                        % rescale relative diameter to 80
+                        tempRadius = tempRadius/fullRad*80;
+                        
+                        % New linear contribution
+                        tempRI = 1.5+(0*0.01+0.01)-(0.5*0+0.8)*0.00000612*tempRadius.^2;
 
                     case 'linear'
                         % For for original linear contribution
