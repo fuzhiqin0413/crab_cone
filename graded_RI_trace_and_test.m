@@ -1539,105 +1539,7 @@ mean(minDeltaS(minDeltaS < 1))*10^6
 % close all
 
 if useRealData
-
-    % Plot raypaths in X
-    figure; 
-    subplot(1,3,1); hold on; axis equal;
-    %view(0, 0)
-    for iOrigin = 1:nOrigins
-        rayPath = permute(rayPathArray(:, :, iOrigin), [2 1]);
-
-        % plot3(rayPath(:,1), rayPath(:,2), rayPath(:,3), 'color', rayCols(iOrigin,:));
-        % shifted to 2 x 2d plots for assymetry
-
-        extendedRay = rayPath(end-1,:) + extendRayLength*finalRay(iOrigin,:);
-        
-        %line([rayPath(end-1,1) extendedRay(1)], [rayPath(end-1,2) extendedRay(2)], [rayPath(end-1,3) extendedRay(3)], 'color', rayCols(iOrigin,:) )
-    
-        plot(rayPath(:,1),  rayPath(:,3), 'color', rayCols(iOrigin,:));
-        line([rayPath(end-1,1) extendedRay(1)], [rayPath(end-1,3) extendedRay(3)], 'color', rayCols(iOrigin,:) )
-    end
-    
-    xlim([0 volumeSize(1)*voxelSize])
-    ylim([0 1])
-    title(sprintf('%i deg',incidenceAngle))
-    
-    % Plot borders
-    % Cone
-    tempBorder = imerode(coneBorderVolume, strel('sphere',1));
-    inds = find(permute(tempBorder(:, round(volumeSize(2)/2), :),[1 3 2]));
-    [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
-    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
-    
-    % Others
-    inds = find(permute(corneaBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
-    [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
-    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
-    
-    inds = find(permute(epicorneaBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
-    [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
-    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
-    
-    inds = find(permute(cInCBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
-    [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
-    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
-    
-    inds = find(permute(interconeBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
-    [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
-    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
-    
-    % Plot ray map through central slice
-%     subplot(1,2,2); hold on; axis equal;
-%     imshow(flipud( permute( rayMap(:, round(rayOrigins(1,2)/voxelSize), :), [3 1 2])))
-    
-    % plot in Y
-    subplot(1,3,2); hold on; axis equal;
-    for iOrigin = 1:nOrigins
-        rayPath = permute(rayPathArray(:, :, iOrigin), [2 1]);
-
-        extendedRay = rayPath(end-1,:) + extendRayLength*finalRay(iOrigin,:);
- 
-        plot(rayPath(:,2),  rayPath(:,3), 'color', rayCols(iOrigin,:));
-        line([rayPath(end-1,2) extendedRay(2)], [rayPath(end-1,3) extendedRay(3)], 'color', rayCols(iOrigin,:) )
-    end
-    
-    xlim([0 volumeSize(1)*voxelSize])
-    ylim([0 1])
-    title(sprintf('%i deg',incidenceAngle))
-    
-    % Plot borders
-    % Cone
-    tempBorder = imerode(coneBorderVolume, strel('sphere',1));
-    inds = find(permute(tempBorder(:, round(volumeSize(2)/2), :),[1 3 2]));
-    [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
-    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
-    
-    % Others
-    inds = find(permute(corneaBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
-    [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
-    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
-    
-    inds = find(permute(epicorneaBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
-    [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
-    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
-    
-    inds = find(permute(cInCBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
-    [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
-    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
-    
-    inds = find(permute(interconeBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
-    [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
-    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
-    
-    
-    subplot(1,3,3); 
-    imshow(fliplr(permute((lensRIVolume(round(volumeSize(1)/2),:,:)-1.45)/(1.54-1.45), [2 3 1]))');
-    
-    ylim([-(volumeSize(3)*1/(volumeSize(3)*voxelSize)-volumeSize(3)) volumeSize(3)])
-    
-    
-    
-    % Plot spot diagram
+    % Plot spot diagram first
     figure; hold on; axis equal
     
     coneTipZ = (volumeSize(3)-coneVertices(1,3))*voxelSize;
@@ -1645,6 +1547,7 @@ if useRealData
      
     % store for acceptance angle
     rayAccepted = zeros(nOrigins, 1)*NaN;
+    rayForCOLC = zeros(nOrigins, 1);
     
     coneRad = (metaData.coneProfileToUse*metaData.voxSize/metaData.voxSize3D)*voxelSize;
     coneRad(isnan(coneRad)) = [];
@@ -1696,7 +1599,13 @@ if useRealData
                 
             end
             
-            plot(xTip*1000, yTip*1000, 'rx');
+            if sqrt(xTip.^2 + yTip.^2) <= coneRad(1)*2
+                plot(xTip*1000, yTip*1000, 'rx');
+                rayForCOLC(iOrigin) = 1;
+            else
+                plot(xTip*1000, yTip*1000, 'ko');
+                rayForCOLC(iOrigin) = 0;
+            end
         end
     end
      
@@ -1709,6 +1618,150 @@ if useRealData
     
     ylim([-coneRad(end)*1000 coneRad(end)*1000])
     xlim([-coneRad(end)*1000 coneRad(end)*1000])
+    
+    %%% Add option to just plot these along X and Y axis
+    
+    % Plot raypaths in X
+    figure; 
+    subplot(1,3,1); hold on; axis equal;
+    %view(0, 0)
+    for iOrigin = 1:nOrigins
+        rayPath = permute(rayPathArray(:, :, iOrigin), [2 1]);
+
+        % plot3(rayPath(:,1), rayPath(:,2), rayPath(:,3), 'color', rayCols(iOrigin,:));
+        % shifted to 2 x 2d plots for assymetry
+
+        extendedRay = rayPath(end-1,:) + extendRayLength*finalRay(iOrigin,:);
+        
+        %line([rayPath(end-1,1) extendedRay(1)], [rayPath(end-1,2) extendedRay(2)], [rayPath(end-1,3) extendedRay(3)], 'color', rayCols(iOrigin,:) )
+    
+        if rayForCOLC(iOrigin)
+           style = '-';
+        else
+           style = ':';
+        end
+        
+        plot(rayPath(:,1),  rayPath(:,3), 'color', rayCols(iOrigin,:), 'linestyle', style);
+        line([rayPath(end-1,1) extendedRay(1)], [rayPath(end-1,3) extendedRay(3)], 'color', rayCols(iOrigin,:), 'linestyle', style)
+    end
+    
+    xlim([0 volumeSize(1)*voxelSize])
+    ylim([0 1])
+    title(sprintf('%i deg',incidenceAngle))
+    
+    % Plot borders
+    % Cone
+    tempBorder = imerode(coneBorderVolume, strel('sphere',1));
+    inds = find(permute(tempBorder(:, round(volumeSize(2)/2), :),[1 3 2]));
+    [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
+    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
+    
+    % Others
+    inds = find(permute(corneaBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
+    [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
+    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
+    
+%     trisurf(grinSurface.faces, grinSurface.vertices(:,1), grinSurface.vertices(:,3), grinSurface.vertices(:,2), ...
+%        'FaceColor','g', 'FaceAlpha',0.8);
+    
+    inds = find(permute(epicorneaBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
+    [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
+    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
+    
+    inds = find(permute(cInCBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
+    [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
+    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
+    
+    inds = find(permute(interconeBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
+    [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
+    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
+    
+    % Plot ray map through central slice
+%     subplot(1,2,2); hold on; axis equal;
+%     imshow(flipud( permute( rayMap(:, round(rayOrigins(1,2)/voxelSize), :), [3 1 2])))
+    
+    % plot in Y
+    subplot(1,3,2); hold on; axis equal;
+    for iOrigin = 1:nOrigins
+        rayPath = permute(rayPathArray(:, :, iOrigin), [2 1]);
+
+        extendedRay = rayPath(end-1,:) + extendRayLength*finalRay(iOrigin,:);
+ 
+        if rayForCOLC(iOrigin)
+           style = '-';
+        else
+           style = ':';
+        end
+        
+        plot(rayPath(:,2),  rayPath(:,3), 'color', rayCols(iOrigin,:), 'linestyle', style);
+        line([rayPath(end-1,2) extendedRay(2)], [rayPath(end-1,3) extendedRay(3)], 'color', rayCols(iOrigin,:), 'linestyle', style);
+    end
+    
+    xlim([0 volumeSize(1)*voxelSize])
+    ylim([0 1])
+    title(sprintf('%i deg',incidenceAngle))
+    
+    % Plot borders
+    % Cone
+    tempBorder = imerode(coneBorderVolume, strel('sphere',1));
+    inds = find(permute(tempBorder(:, round(volumeSize(2)/2), :),[1 3 2]));
+    [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
+    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
+    
+    % Others
+    inds = find(permute(corneaBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
+    [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
+    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
+    
+    inds = find(permute(epicorneaBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
+    [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
+    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
+    
+    inds = find(permute(cInCBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
+    [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
+    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
+    
+    inds = find(permute(interconeBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
+    [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
+    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
+    
+    
+    subplot(1,3,3); 
+    imshow(fliplr(permute((lensRIVolume(round(volumeSize(1)/2),:,:)-1.45)/(1.54-1.45), [2 3 1]))');
+    
+    ylim([-(volumeSize(3)*1/(volumeSize(3)*voxelSize)-volumeSize(3)) volumeSize(3)])
+    
+
+    % Get lines of least confusion
+    raysToUse = find(rayForCOLC);
+    
+    minXRad = volumeSize(2)*voxelSize;
+    minYRad = volumeSize(2)*voxelSize;
+    
+    for iStep = 1:length(zSteps)
+        tempXRad = max(rayPathArray(1, iStep, raysToUse)) - min(rayPathArray(1, iStep, raysToUse));
+        if minXRad > tempXRad
+            minXRad = tempXRad;
+            minXHeight = zSteps(iStep);
+            minXPoints = [min(rayPathArray(1, iStep, raysToUse)) max(rayPathArray(1, iStep, raysToUse))];
+        end
+        
+        tempYRad = max(rayPathArray(2, iStep, raysToUse)) - min(rayPathArray(2, iStep, raysToUse));
+        if minYRad > tempYRad
+            minYRad = tempYRad;
+            minYHeight = zSteps(iStep);
+            minYPoints = [min(rayPathArray(2, iStep, raysToUse)) max(rayPathArray(2, iStep, raysToUse))];
+        end
+    end
+    
+    [minXRad minXHeight]*1000
+    [minYRad minYHeight]*1000
+    
+    subplot(1,3,1);
+    line(minXPoints, [1 1]*minXHeight, 'color', 'k', 'linewidth', 4)
+    
+    subplot(1,3,2);
+    line(minYPoints, [1 1]*minYHeight, 'color', 'k', 'linewidth', 4)
     
 elseif useTestData
     
