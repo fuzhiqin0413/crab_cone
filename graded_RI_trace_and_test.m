@@ -115,7 +115,11 @@ extendRayLength = 1; % mm
 % Best to do this as I haven't really delt with them yet
 clearReverseRays = 1;
 
+plotLineCols = 1;
+justPlotCenterRays = 0;
+
 testPlot = 1;
+
 %% Load or create test data     
 if useRealData
     temp = load(sprintf('%s%s',dataFolder, dataFile));
@@ -153,10 +157,10 @@ if useRealData
     
     % For cornea - flat
     % single Z at end
-    tempZ = (metaData.coneLengthToUse + metaData.outerCorneaLengthToUse + metaData.epicorneaLengthToUse)* ...
+    corneaZ = (metaData.coneLengthToUse + metaData.outerCorneaLengthToUse + metaData.epicorneaLengthToUse)* ...
         metaData.voxSize/metaData.voxSize3D;
 
-    [xGrid, yGrid, zGrid] = meshgrid(1:volumeSize(1), 1:volumeSize(2), tempZ);
+    [xGrid, yGrid, zGrid] = meshgrid(1:volumeSize(1), 1:volumeSize(2), corneaZ);
     xGrid = xGrid(:); yGrid = yGrid(:); zGrid = zGrid(:);
     
     corneaVertices = [xGrid, yGrid, zGrid];
@@ -168,8 +172,12 @@ if useRealData
     corneaSurface.faces = tempTriangulation.ConnectivityList;
     corneaSurface.vertices = corneaVertices;
 
+    corneaZ = corneaZ + metaData.tipOffset*metaData.voxSize/metaData.voxSize3D;
+    
     if flipSurfaces
         corneaSurface.vertices(:,3) = -(corneaVertices(:,3)-volumeSize(3)/2)+volumeSize(3)/2;
+        
+        corneaZ = -(corneaZ-volumeSize(3)/2)+volumeSize(3)/2;
     end
     corneaBorderVolume = polygon2voxel(corneaSurface, volumeSize, 'none');
     
@@ -230,23 +238,28 @@ if useRealData
     else
        % just flat, can copy cornea with adjusted Z 
        epicorneaVertices = corneaVertices; 
-       epicorneaVertices(:,3) = epicorneaVertices(:,3) - metaData.epicorneaLengthToUse*metaData.voxSize/metaData.voxSize3D;
+       epicorneaZ = (metaData.coneLengthToUse + metaData.epicorneaLengthToUse)* metaData.voxSize/metaData.voxSize3D;
+       epicorneaVertices(:,3) = epicorneaVertices(:,3) - metaData.epicorneaLengthToUse* metaData.voxSize/metaData.voxSize3D;
        
        epicorneaSurface = corneaSurface;
        epicorneaSurface.vertices = epicorneaVertices;
     end
     
+    epicorneaZ = epicorneaZ + metaData.tipOffset*metaData.voxSize/metaData.voxSize3D;
+    
     if flipSurfaces
         epicorneaSurface.vertices(:,3) = -(epicorneaVertices(:,3)-volumeSize(3)/2)+volumeSize(3)/2;
+        
+        epicorneaZ = -(epicorneaZ-volumeSize(3)/2)+volumeSize(3)/2;
     end
     epicorneaBorderVolume = polygon2voxel(epicorneaSurface, volumeSize, 'none');
 
     
     % for base outer cornea/intercone around cone -  flat
     % Make flat grid as for cornea
-    tempZ = (metaData.coneLengthToUse)* metaData.voxSize/metaData.voxSize3D;
+    coneBaseZ = (metaData.coneLengthToUse)* metaData.voxSize/metaData.voxSize3D;
 
-    [xGrid, yGrid, zGrid] = meshgrid((1:volumeSize(1))-volumeSize(1)/2, (1:volumeSize(2))-volumeSize(2)/2, tempZ);
+    [xGrid, yGrid, zGrid] = meshgrid((1:volumeSize(1))-volumeSize(1)/2, (1:volumeSize(2))-volumeSize(2)/2, coneBaseZ);
     xGrid = xGrid(:); yGrid = yGrid(:); zGrid = zGrid(:);
     
     % Shrink vertices that are inside radius at base of cone
@@ -265,7 +278,7 @@ if useRealData
     cInCVertices(verticesToRemove, 1:2) = cInCVertices(verticesToRemove, 1:2)*0.9;
     
     % Add ring of vertices at cone base
-    cInCVertices = [cInCVertices' [coneBaseRadius*sin(meshAngles)' coneBaseRadius*cos(meshAngles)' tempZ*ones(length(meshAngles),1)]']';
+    cInCVertices = [cInCVertices' [coneBaseRadius*sin(meshAngles)' coneBaseRadius*cos(meshAngles)' coneBaseZ*ones(length(meshAngles),1)]']';
     
     cInCVertices(:,1) = cInCVertices(:,1) + volumeSize(1)/2;
     cInCVertices(:,2) = cInCVertices(:,2) + volumeSize(2)/2;
@@ -287,8 +300,12 @@ if useRealData
     
     cInCSurface.faces(facesToRemove,:) = [];
 
+    coneBaseZ = coneBaseZ + metaData.tipOffset*metaData.voxSize/metaData.voxSize3D;
+    
     if flipSurfaces
         cInCSurface.vertices(:,3) = -(cInCVertices(:,3)-volumeSize(3)/2)+volumeSize(3)/2;
+        
+        coneBaseZ = -(coneBaseZ-volumeSize(3)/2)+volumeSize(3)/2;
     end
     cInCBorderVolume = polygon2voxel(cInCSurface, volumeSize, 'none');
 
@@ -296,27 +313,27 @@ if useRealData
 
     %%% Would be good to make a funciton for doing the rotation in these...
     % for cone - is curved note voxSize is actually 2D pixel size
-    tempProfile = metaData.coneProfileToUse*metaData.voxSize/metaData.voxSize3D;
-    tempZ = metaData.coneXRef*metaData.voxSize/metaData.voxSize3D;
+    coneProfileR = metaData.coneProfileToUse*metaData.voxSize/metaData.voxSize3D;
+    coneProfileZ = metaData.coneXRef*metaData.voxSize/metaData.voxSize3D;
 
-    tempZ(isnan(tempProfile)) = [];
-    tempProfile(isnan(tempProfile)) = [];
+    coneProfileZ(isnan(coneProfileR)) = [];
+    coneProfileR(isnan(coneProfileR)) = [];
     
     % Adjust to actual length
-    tempZ(end) = metaData.coneLengthToUse*metaData.voxSize/metaData.voxSize3D;
+    coneProfileZ(end) = metaData.coneLengthToUse*metaData.voxSize/metaData.voxSize3D;
     
-    profileMax = max(tempProfile);
+    profileMax = max(coneProfileR);
 
-    coneVertices = zeros(length(tempProfile)*length(meshAngles),3);
+    coneVertices = zeros(length(coneProfileR)*length(meshAngles),3);
 
-    for i = 1:length(tempProfile)
+    for i = 1:length(coneProfileR)
         for j = 1:length(meshAngles)
             if ~metaData.createCylinder
-                coneVertices((i-1)*length(meshAngles)+j,:) = [tempProfile(i)*sin(meshAngles(j)), ...
-                    tempProfile(i)*cos(meshAngles(j)), tempZ(i)];
+                coneVertices((i-1)*length(meshAngles)+j,:) = [coneProfileR(i)*sin(meshAngles(j)), ...
+                    coneProfileR(i)*cos(meshAngles(j)), coneProfileZ(i)];
             else
                 coneVertices((i-1)*length(meshAngles)+j,:) = [profileMax*sin(meshAngles(j)), ...
-                    profileMax*cos(meshAngles(j)), tempZ(i)];
+                    profileMax*cos(meshAngles(j)), coneProfileZ(i)];
             end
         end
     end
@@ -327,21 +344,21 @@ if useRealData
     xGrid = xGrid(:); yGrid = yGrid(:); zGrid = zGrid(:);
     rGrid = sqrt(xGrid.^2 + yGrid.^2);
 
-    firstInds = find(rGrid < tempProfile(1));
-    endInds = find(rGrid < tempProfile(end));
+    firstInds = find(rGrid < coneProfileR(1));
+    endInds = find(rGrid < coneProfileR(end));
     
     if metaData.displayProfiles.CinC
         error('Need to make profile at base of cone')
         
-        coneVertices = [ [xGrid(firstInds), yGrid(firstInds), tempZ(1)*zGrid(firstInds)]', coneVertices'];
+        coneVertices = [ [xGrid(firstInds), yGrid(firstInds), coneProfileZ(1)*zGrid(firstInds)]', coneVertices'];
     else
-        coneVertices = [ [xGrid(firstInds), yGrid(firstInds), tempZ(1)*zGrid(firstInds)]', ...
-            coneVertices', [xGrid(endInds), yGrid(endInds), (tempZ(end))*zGrid(endInds)]']'; 
-            % (tempZ(end)+1) to remove cap, might not work with alpha shape...
+        coneVertices = [ [xGrid(firstInds), yGrid(firstInds), coneProfileZ(1)*zGrid(firstInds)]', ...
+            coneVertices', [xGrid(endInds), yGrid(endInds), (coneProfileZ(end))*zGrid(endInds)]']'; 
+            % (coneProfileZ(end)+1) to remove cap, might not work with alpha shape...
     end
     
     % Store end cap inds
-    forcedCapInds = find(coneVertices(:,3) == tempZ(end)+1);
+    forcedCapInds = find(coneVertices(:,3) == coneProfileZ(end)+1);
     
     % Step in slightly so these don't get incorperated into faces along base of cone
     if ~isempty(forcedCapInds)
@@ -381,10 +398,13 @@ if useRealData
     grinSurface.faces = tempFaces;
     grinSurface.vertices = tempVertices;
 
+    coneProfileZ = coneProfileZ + metaData.tipOffset*metaData.voxSize/metaData.voxSize3D;
     
     % Get cone border volume
     if flipSurfaces
         grinSurface.vertices(:,3) = -(tempVertices(:,3)-volumeSize(3)/2)+volumeSize(3)/2;
+        
+        coneProfileZ = -(coneProfileZ-volumeSize(3)/2)+volumeSize(3)/2;
     end
     coneBorderVolume = polygon2voxel(grinSurface, volumeSize, 'none');
     
@@ -397,41 +417,41 @@ if useRealData
     profileToUse = find(~isnan(metaData.exposedInterconeProfileToUseLeft));
     
     if ~metaData.createCylinder
-        tempProfile = (metaData.exposedInterconeProfileToUseLeft(profileToUse)+metaData.coneProfileToUse(profileToUse))*metaData.voxSize/metaData.voxSize3D;
+        interconeProfileR = (metaData.exposedInterconeProfileToUseLeft(profileToUse)+metaData.coneProfileToUse(profileToUse))*metaData.voxSize/metaData.voxSize3D;
     
         % Shrink 1st in profile to cone
         % Tried adding a step before hand, but always caused problems somewhere
-        tempProfile(1) = metaData.coneProfileToUse(profileToUse(1))*metaData.voxSize/metaData.voxSize3D;
+        interconeProfileR(1) = metaData.coneProfileToUse(profileToUse(1))*metaData.voxSize/metaData.voxSize3D;
     else
-        tempProfile = (metaData.exposedInterconeProfileToUseLeft(profileToUse)+max(metaData.coneProfileToUse))*metaData.voxSize/metaData.voxSize3D;
+        interconeProfileR = (metaData.exposedInterconeProfileToUseLeft(profileToUse)+max(metaData.coneProfileToUse))*metaData.voxSize/metaData.voxSize3D;
     
-        tempProfile(1) = max(metaData.coneProfileToUse)*metaData.voxSize/metaData.voxSize3D;
+        interconeProfileR(1) = max(metaData.coneProfileToUse)*metaData.voxSize/metaData.voxSize3D;
     end
     
-    tempZ = metaData.coneXRef(profileToUse)*metaData.voxSize/metaData.voxSize3D;
+    interconeProfileZ = metaData.coneXRef(profileToUse)*metaData.voxSize/metaData.voxSize3D;
     
-    interconeVertices = zeros(length(tempProfile)*length(meshAngles),3);
+    interconeVertices = zeros(length(interconeProfileR)*length(meshAngles),3);
 
-    profileMax = max(tempProfile);  
+    profileMax = max(interconeProfileR);  
     
-    for i = 1:length(tempProfile)
+    for i = 1:length(interconeProfileR)
         for j = 1:length(meshAngles)
-            interconeVertices((i-1)*length(meshAngles)+j,:) = [tempProfile(i)*sin(meshAngles(j)), ...
-                tempProfile(i)*cos(meshAngles(j)), tempZ(i)];
+            interconeVertices((i-1)*length(meshAngles)+j,:) = [interconeProfileR(i)*sin(meshAngles(j)), ...
+                interconeProfileR(i)*cos(meshAngles(j)), interconeProfileZ(i)];
         end
     end
     
     % Get fake cap to pad top
-    [xGrid, yGrid, zGrid] = meshgrid(-floor(profileMax):ceil(profileMax), -floor(profileMax):ceil(profileMax), (tempZ(1)-1));
+    [xGrid, yGrid, zGrid] = meshgrid(-floor(profileMax):ceil(profileMax), -floor(profileMax):ceil(profileMax), (interconeProfileZ(1)-1));
 
     xGrid = xGrid(:); yGrid = yGrid(:); zGrid = zGrid(:);
     rGrid = sqrt(xGrid.^2 + yGrid.^2);
 
-    startInds = find(rGrid < tempProfile(1));
+    startInds = find(rGrid < interconeProfileR(1));
 
     interconeVertices = [ [xGrid(startInds), yGrid(startInds), zGrid(startInds)]', interconeVertices']';
 
-    forcedCapInds = find(interconeVertices(:,3) == tempZ(1)-1);
+    forcedCapInds = find(interconeVertices(:,3) == interconeProfileZ(1)-1);
     % Need a lower multiple for alpha shape
     interconeVertices(forcedCapInds, 1:2) = interconeVertices(forcedCapInds, 1:2)*0.75;
     
@@ -440,20 +460,20 @@ if useRealData
     interconeVertices(:,3) = interconeVertices(:,3) + metaData.tipOffset*metaData.voxSize/metaData.voxSize3D;
     
     % Now get a layer to force base
-    [xGrid, yGrid, zGrid] = meshgrid(1:volumeSize(1), 1:volumeSize(2), tempZ(end)+metaData.tipOffset*metaData.voxSize/metaData.voxSize3D);
+    [xGrid, yGrid, zGrid] = meshgrid(1:volumeSize(1), 1:volumeSize(2), interconeProfileZ(end)+metaData.tipOffset*metaData.voxSize/metaData.voxSize3D);
     xGrid = xGrid(:); yGrid = yGrid(:); zGrid = zGrid(:);
     
     rGrid = sqrt((xGrid-volumeSize(1)/2).^2 + (yGrid-volumeSize(2)/2).^2);
-    endInds = find(rGrid > tempProfile(end));
+    endInds = find(rGrid > interconeProfileR(end));
     
     interconeVertices = [interconeVertices', [xGrid(endInds), yGrid(endInds), zGrid(endInds)]']';
     
     % Make another layer at base to force 3D
-    [xGrid, yGrid, zGrid] = meshgrid(1:volumeSize(1), 1:volumeSize(2), tempZ(end)+1+metaData.tipOffset*metaData.voxSize/metaData.voxSize3D);
+    [xGrid, yGrid, zGrid] = meshgrid(1:volumeSize(1), 1:volumeSize(2), interconeProfileZ(end)+1+metaData.tipOffset*metaData.voxSize/metaData.voxSize3D);
     xGrid = xGrid(:); yGrid = yGrid(:); zGrid = zGrid(:);
 
     interconeVertices = [interconeVertices', [xGrid, yGrid, zGrid]']';
-    forcedGridInds = find(interconeVertices(:,3) == tempZ(end)+1+metaData.tipOffset*metaData.voxSize/metaData.voxSize3D);
+    forcedGridInds = find(interconeVertices(:,3) == interconeProfileZ(end)+1+metaData.tipOffset*metaData.voxSize/metaData.voxSize3D);
 
 %     tempTriangulation = delaunayTriangulation(interconeVertices);
 %     [tempFaces, tempVertices] = freeBoundary(tempTriangulation); 
@@ -488,12 +508,15 @@ if useRealData
     interconeSurface.faces = tempFaces;
     interconeSurface.vertices = tempVertices;
 
+    interconeProfileZ = interconeProfileZ + metaData.tipOffset*metaData.voxSize/metaData.voxSize3D;
+    
     if flipSurfaces
         interconeSurface.vertices(:,3) = -(tempVertices(:,3)-volumeSize(3)/2)+volumeSize(3)/2;
+        
+        interconeProfileZ = -(interconeProfileZ-volumeSize(3)/2)+volumeSize(3)/2;
     end
     interconeBorderVolume = polygon2voxel(interconeSurface, volumeSize, 'none');
 
-    
     
     % plots 
     figure;
@@ -694,6 +717,10 @@ else
     rayOrigins = [xStartPoints(:), ones(numel(xStartPoints),1)*volumeSize(2)/2,  ...
         ones(numel(xStartPoints),1)]*voxelSize; 
 end
+
+raysOnXZPlane = rayOrigins(:,2)/voxelSize == volumeSize(2)/2;
+
+raysOnYZPlane = rayOrigins(:,1)/voxelSize == volumeSize(1)/2;
 
 nOrigins = size(rayOrigins,1);
 
@@ -1539,6 +1566,9 @@ mean(minDeltaS(minDeltaS < 1))*10^6
 % close all
 
 if useRealData
+    
+    angleCols = winter(length(incidenceAngle));
+    
     % Plot spot diagram first
     figure; hold on; axis equal
     
@@ -1548,9 +1578,6 @@ if useRealData
     % store for acceptance angle
     rayAccepted = zeros(nOrigins, 1)*NaN;
     rayForCOLC = zeros(nOrigins, 1);
-    
-    coneRad = (metaData.coneProfileToUse*metaData.voxSize/metaData.voxSize3D)*voxelSize;
-    coneRad(isnan(coneRad)) = [];
     
     for iOrigin = 1:nOrigins
         if all(~isnan(finalRay(iOrigin,:))) & all(~isnan(rayPathArray(:,:,iOrigin))) & all(~isnan(finalIntersect(iOrigin,:)))
@@ -1593,17 +1620,23 @@ if useRealData
                 rayAccepted(iOrigin) = 0;
             end
             
-            if sqrt(xTip.^2 + yTip.^2) > coneRad(end)
+            if sqrt(xTip.^2 + yTip.^2) > coneProfileR(end)*voxelSize
                 %%% Could add an arrow in this case?
                 warning('Ray could be off diagram')
                 
             end
             
-            if sqrt(xTip.^2 + yTip.^2) <= coneRad(1)*2
-                plot(xTip*1000, yTip*1000, 'rx');
+            if plotLineCols
+                col = rayCols(iOrigin,:);
+            else
+               col = 'k';
+            end
+            
+            if sqrt(xTip.^2 + yTip.^2) <= coneProfileR(1)*2.5*voxelSize
+                plot(xTip*1000, yTip*1000, 'x', 'color', col);
                 rayForCOLC(iOrigin) = 1;
             else
-                plot(xTip*1000, yTip*1000, 'ko');
+                plot(xTip*1000, yTip*1000, 'o', 'color', col);
                 rayForCOLC(iOrigin) = 0;
             end
         end
@@ -1611,13 +1644,13 @@ if useRealData
      
     acceptancePercentage = sum( rayAccepted(~isnan(rayAccepted)))/sum(~isnan(rayAccepted))
     
-    viscircles([0 0],receptorRadius, 'color', 'b')
+    viscircles([0 0],receptorRadius, 'color', 'r')
     
-    viscircles([0 0],coneRad(1)*1000, 'color', 'k', 'linestyle', ':');
-    viscircles([0 0],coneRad(end)*1000, 'color', 'k');
+    viscircles([0 0],coneProfileR(1)*1000*voxelSize, 'color', 'k', 'linestyle', ':');
+    viscircles([0 0],coneProfileR(end)*1000*voxelSize, 'color', 'k');
     
-    ylim([-coneRad(end)*1000 coneRad(end)*1000])
-    xlim([-coneRad(end)*1000 coneRad(end)*1000])
+    ylim([-coneProfileR(end)*1000 coneProfileR(end)*1000]*voxelSize)
+    xlim([-coneProfileR(end)*1000 coneProfileR(end)*1000]*voxelSize)
     
     %%% Add option to just plot these along X and Y axis
     
@@ -1635,49 +1668,65 @@ if useRealData
         
         %line([rayPath(end-1,1) extendedRay(1)], [rayPath(end-1,2) extendedRay(2)], [rayPath(end-1,3) extendedRay(3)], 'color', rayCols(iOrigin,:) )
     
-        if rayForCOLC(iOrigin)
-           style = '-';
-        else
-           style = ':';
-        end
+        if rayForCOLC(iOrigin); style = '-'; else; style = ':'; end
         
-        plot(rayPath(:,1),  rayPath(:,3), 'color', rayCols(iOrigin,:), 'linestyle', style);
-        line([rayPath(end-1,1) extendedRay(1)], [rayPath(end-1,3) extendedRay(3)], 'color', rayCols(iOrigin,:), 'linestyle', style)
+        if plotLineCols; col = rayCols(iOrigin,:); else; col = 'k'; end
+        
+        if ~justPlotCenterRays | (justPlotCenterRays & raysOnXZPlane(iOrigin))
+            plot(rayPath(:,1),  rayPath(:,3), 'color', col, 'linestyle', style);
+            line([rayPath(end-1,1) extendedRay(1)], [rayPath(end-1,3) extendedRay(3)], 'color', col, 'linestyle', style)
+        end
     end
     
     xlim([0 volumeSize(1)*voxelSize])
     ylim([0 1])
     title(sprintf('%i deg',incidenceAngle))
     
-    % Plot borders
-    % Cone
-    tempBorder = imerode(coneBorderVolume, strel('sphere',1));
-    inds = find(permute(tempBorder(:, round(volumeSize(2)/2), :),[1 3 2]));
-    [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
-    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
-    
+    % Plot borders based on original profiles
+    %Cone
+    plot((volumeSize(1)/2+[-coneProfileR fliplr(coneProfileR) -coneProfileR(1)])*voxelSize,...
+        [coneProfileZ fliplr(coneProfileZ) coneProfileZ(1)]*voxelSize, 'k', 'linewidth',2);
+
     % Others
-    inds = find(permute(corneaBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
-    [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
-    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
+    line([0 volumeSize(1)]*voxelSize, [1 1]*corneaZ*voxelSize, 'color', 'k', 'linewidth',2);
     
-%     trisurf(grinSurface.faces, grinSurface.vertices(:,1), grinSurface.vertices(:,3), grinSurface.vertices(:,2), ...
-%        'FaceColor','g', 'FaceAlpha',0.8);
+    %%% If flat
+    line([0 volumeSize(1)]*voxelSize, [1 1]*epicorneaZ*voxelSize, 'color', 'k', 'linewidth',2);
     
-    inds = find(permute(epicorneaBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
-    [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
-    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
+    line([0 volumeSize(1)/2-coneProfileR(end)]*voxelSize, [1 1]*coneBaseZ*voxelSize, 'color', 'k', 'linewidth',2);
+    line([volumeSize(1)/2 + coneProfileR(end) volumeSize(1)]*voxelSize, [1 1]*coneBaseZ*voxelSize, 'color', 'k', 'linewidth',2);
     
-    inds = find(permute(cInCBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
-    [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
-    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
+    plot( ([volumeSize(1)/2-interconeProfileR 0])*voxelSize, [interconeProfileZ interconeProfileZ(end)]*voxelSize, 'k', 'linewidth',2)
+    plot( ([volumeSize(1)/2+interconeProfileR volumeSize(1)])*voxelSize, [interconeProfileZ interconeProfileZ(end)]*voxelSize, 'k', 'linewidth',2)
     
-    inds = find(permute(interconeBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
-    [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
-    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
+    % Plot based on in image
+    % Cone
+%     tempBorder = imerode(coneBorderVolume, strel('sphere',1));
+%     inds = find(permute(tempBorder(:, round(volumeSize(2)/2), :),[1 3 2]));
+%     [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
+%     plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
+%     
+%     % Others
+%     inds = find(permute(corneaBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
+%     [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
+%     plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
+%     
+% %     trisurf(grinSurface.faces, grinSurface.vertices(:,1), grinSurface.vertices(:,3), grinSurface.vertices(:,2), ...
+% %        'FaceColor','g', 'FaceAlpha',0.8);
+%     
+%     inds = find(permute(epicorneaBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
+%     [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
+%     plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
+%     
+%     inds = find(permute(cInCBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
+%     [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
+%     plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
+%     
+%     inds = find(permute(interconeBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
+%     [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
+%     plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
     
-    % Plot ray map through central slice
-%     subplot(1,2,2); hold on; axis equal;
+    % Plot central slice
 %     imshow(flipud( permute( rayMap(:, round(rayOrigins(1,2)/voxelSize), :), [3 1 2])))
     
     % plot in Y
@@ -1687,43 +1736,36 @@ if useRealData
 
         extendedRay = rayPath(end-1,:) + extendRayLength*finalRay(iOrigin,:);
  
-        if rayForCOLC(iOrigin)
-           style = '-';
-        else
-           style = ':';
-        end
+        if rayForCOLC(iOrigin); style = '-'; else; style = ':'; end
         
-        plot(rayPath(:,2),  rayPath(:,3), 'color', rayCols(iOrigin,:), 'linestyle', style);
-        line([rayPath(end-1,2) extendedRay(2)], [rayPath(end-1,3) extendedRay(3)], 'color', rayCols(iOrigin,:), 'linestyle', style);
+        if plotLineCols; col = rayCols(iOrigin,:); else; col = 'k'; end
+        
+        if ~justPlotCenterRays | (justPlotCenterRays & raysOnYZPlane(iOrigin))
+            plot(rayPath(:,2),  rayPath(:,3), 'color', col, 'linestyle', style);
+            line([rayPath(end-1,2) extendedRay(2)], [rayPath(end-1,3) extendedRay(3)], 'color', col, 'linestyle', style);
+        end
     end
     
     xlim([0 volumeSize(1)*voxelSize])
     ylim([0 1])
     title(sprintf('%i deg',incidenceAngle))
     
-    % Plot borders
-    % Cone
-    tempBorder = imerode(coneBorderVolume, strel('sphere',1));
-    inds = find(permute(tempBorder(:, round(volumeSize(2)/2), :),[1 3 2]));
-    [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
-    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
-    
+    % Plot borders from original profiles
+    plot((volumeSize(1)/2+[-coneProfileR fliplr(coneProfileR) -coneProfileR(1)])*voxelSize,...
+    [coneProfileZ fliplr(coneProfileZ) coneProfileZ(1)]*voxelSize, 'k', 'linewidth',2);
+
     % Others
-    inds = find(permute(corneaBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
-    [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
-    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
+    line([0 volumeSize(1)]*voxelSize, [1 1]*corneaZ*voxelSize, 'color', 'k', 'linewidth',2);
     
-    inds = find(permute(epicorneaBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
-    [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
-    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
+    %%% If flat
+    line([0 volumeSize(1)]*voxelSize, [1 1]*epicorneaZ*voxelSize, 'color', 'k', 'linewidth',2);
     
-    inds = find(permute(cInCBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
-    [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
-    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
+    line([0 volumeSize(1)/2-coneProfileR(end)]*voxelSize, [1 1]*coneBaseZ*voxelSize, 'color', 'k', 'linewidth',2);
+    line([volumeSize(1)/2 + coneProfileR(end) volumeSize(1)]*voxelSize, [1 1]*coneBaseZ*voxelSize, 'color', 'k', 'linewidth',2);
     
-    inds = find(permute(interconeBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
-    [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
-    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
+    plot( ([volumeSize(1)/2-interconeProfileR 0])*voxelSize, [interconeProfileZ interconeProfileZ(end)]*voxelSize, 'k', 'linewidth',2)
+    plot( ([volumeSize(1)/2+interconeProfileR volumeSize(1)])*voxelSize, [interconeProfileZ interconeProfileZ(end)]*voxelSize, 'k', 'linewidth',2)
+    
     
     
     subplot(1,3,3); 
@@ -1757,11 +1799,13 @@ if useRealData
     [minXRad minXHeight]*1000
     [minYRad minYHeight]*1000
     
+    aStep = 1;
+    
     subplot(1,3,1);
-    line(minXPoints, [1 1]*minXHeight, 'color', 'k', 'linewidth', 4)
+    line(minXPoints, [1 1]*minXHeight, 'color', angleCols(aStep,:), 'linewidth', 2)
     
     subplot(1,3,2);
-    line(minYPoints, [1 1]*minYHeight, 'color', 'k', 'linewidth', 4)
+    line(minYPoints, [1 1]*minYHeight, 'color', angleCols(aStep,:), 'linewidth', 2, 'linestyle', '-.')
     
 elseif useTestData
     
