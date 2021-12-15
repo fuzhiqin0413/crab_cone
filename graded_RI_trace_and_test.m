@@ -8,7 +8,7 @@ clc; close all
 
 useRealData = 1;
 
-incidenceAngle = 0; 7.5;  % deg, in XZ - plane    
+incidenceAngle = 7.5;  % deg, in XZ - plane    
 
 if useRealData
     dataFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/AnalysisVolumes/5 micron/';
@@ -111,7 +111,10 @@ limitToConeBase = 1;
 
 % extend on final plots - only added for real data
 extendRayLength = 1; % mm
-    
+
+% Best to do this as I haven't really delt with them yet
+clearReverseRays = 1;
+
 testPlot = 1;
 %% Load or create test data     
 if useRealData
@@ -169,7 +172,6 @@ if useRealData
         corneaSurface.vertices(:,3) = -(corneaVertices(:,3)-volumeSize(3)/2)+volumeSize(3)/2;
     end
     corneaBorderVolume = polygon2voxel(corneaSurface, volumeSize, 'none');
-    
     
     % for top of outer cornea - can be curved
     if metaData.displayProfiles.EpicorneaCone
@@ -761,13 +763,14 @@ warning('off', 'MATLAB:nearlySingularMatrix')
 
 minDeltaS = ones(nOrigins, 1);
 
-firstIntersect = zeros(nOrigins, 3);
-finalIntersect = zeros(nOrigins, 3);
+firstIntersect = zeros(nOrigins, 3)*NaN;
+finalIntersect = zeros(nOrigins, 3)*NaN;
 
 finalPathLength = zeros(nOrigins, 1);
-finalRayT = zeros(nOrigins, 3);
-finalRayTRefract = zeros(nOrigins, 3);
-finalRay = zeros(nOrigins, 3);
+finalRayT = zeros(nOrigins, 3)*NaN;
+
+finalRayTRefract = zeros(nOrigins, 3)*NaN;
+finalRay = zeros(nOrigins, 3)*NaN;
 
 if createGradedFiber
    % Period is for parabolic profile, gaussian period is different and independent of entry.
@@ -1514,6 +1517,13 @@ for iOrigin = 1:nOrigins
                     rayPathArray(3, currentStep+1:length(zSteps), iOrigin), '.', 'color', rayCols(iOrigin,:));
             end
         end
+    elseif clearReverseRays
+        
+        finalRay(iOrigin,:) = NaN;
+        finalRayTRefract(iOrigin,:) = NaN;
+        
+        finalIntersect(iOrigin,:) = NaN;
+        rayPathArray(:,:,iOrigin) = NaN;
     end
     
     pause(0.01)
@@ -1530,28 +1540,26 @@ mean(minDeltaS(minDeltaS < 1))*10^6
 
 if useRealData
 
-    % Plot raypaths
-    
-    figure; subplot(1,2,1); 
-    hold on; axis equal;
-    view(0, 0)
+    % Plot raypaths in X
+    figure; 
+    subplot(1,3,1); hold on; axis equal;
+    %view(0, 0)
     for iOrigin = 1:nOrigins
         rayPath = permute(rayPathArray(:, :, iOrigin), [2 1]);
 
-        plot3(rayPath(:,1), rayPath(:,2), rayPath(:,3), 'color', rayCols(iOrigin,:));
-        
-%         plot3(firstIntersect(iOrigin,1), firstIntersect(iOrigin,2), firstIntersect(iOrigin,3), 'o', 'color', rayCols(iOrigin,:))
-%         plot3(finalIntersect(iOrigin,1), finalIntersect(iOrigin,2), finalIntersect(iOrigin,3), 'o', 'color', rayCols(iOrigin,:))
-        
+        % plot3(rayPath(:,1), rayPath(:,2), rayPath(:,3), 'color', rayCols(iOrigin,:));
+        % shifted to 2 x 2d plots for assymetry
+
         extendedRay = rayPath(end-1,:) + extendRayLength*finalRay(iOrigin,:);
         
-        line([rayPath(end-1,1) extendedRay(1)], [rayPath(end-1,2) extendedRay(2)], [rayPath(end-1,3) extendedRay(3)], 'color', rayCols(iOrigin,:) )
+        %line([rayPath(end-1,1) extendedRay(1)], [rayPath(end-1,2) extendedRay(2)], [rayPath(end-1,3) extendedRay(3)], 'color', rayCols(iOrigin,:) )
+    
+        plot(rayPath(:,1),  rayPath(:,3), 'color', rayCols(iOrigin,:));
+        line([rayPath(end-1,1) extendedRay(1)], [rayPath(end-1,3) extendedRay(3)], 'color', rayCols(iOrigin,:) )
     end
-
+    
     xlim([0 volumeSize(1)*voxelSize])
-    
-    zlim([0 1])
-    
+    ylim([0 1])
     title(sprintf('%i deg',incidenceAngle))
     
     % Plot borders
@@ -1559,58 +1567,149 @@ if useRealData
     tempBorder = imerode(coneBorderVolume, strel('sphere',1));
     inds = find(permute(tempBorder(:, round(volumeSize(2)/2), :),[1 3 2]));
     [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
-    plot3(tempX*voxelSize, ones(length(tempZ),1)*rayOrigins(1,2), tempZ*voxelSize, 'k.');
+    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
     
     % Others
     inds = find(permute(corneaBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
     [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
-    plot3(tempX*voxelSize, ones(length(tempZ),1)*rayOrigins(1,2), tempZ*voxelSize, 'k.');
+    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
     
     inds = find(permute(epicorneaBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
     [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
-    plot3(tempX*voxelSize, ones(length(tempZ),1)*rayOrigins(1,2), tempZ*voxelSize, 'k.');
+    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
     
     inds = find(permute(cInCBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
     [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
-    plot3(tempX*voxelSize, ones(length(tempZ),1)*rayOrigins(1,2), tempZ*voxelSize, 'k.');
+    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
     
     inds = find(permute(interconeBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
     [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
-    plot3(tempX*voxelSize, ones(length(tempZ),1)*rayOrigins(1,2), tempZ*voxelSize, 'k.');
+    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
     
     % Plot ray map through central slice
 %     subplot(1,2,2); hold on; axis equal;
 %     imshow(flipud( permute( rayMap(:, round(rayOrigins(1,2)/voxelSize), :), [3 1 2])))
     
-    subplot(1,2,2); 
+    % plot in Y
+    subplot(1,3,2); hold on; axis equal;
+    for iOrigin = 1:nOrigins
+        rayPath = permute(rayPathArray(:, :, iOrigin), [2 1]);
+
+        extendedRay = rayPath(end-1,:) + extendRayLength*finalRay(iOrigin,:);
+ 
+        plot(rayPath(:,2),  rayPath(:,3), 'color', rayCols(iOrigin,:));
+        line([rayPath(end-1,2) extendedRay(2)], [rayPath(end-1,3) extendedRay(3)], 'color', rayCols(iOrigin,:) )
+    end
+    
+    xlim([0 volumeSize(1)*voxelSize])
+    ylim([0 1])
+    title(sprintf('%i deg',incidenceAngle))
+    
+    % Plot borders
+    % Cone
+    tempBorder = imerode(coneBorderVolume, strel('sphere',1));
+    inds = find(permute(tempBorder(:, round(volumeSize(2)/2), :),[1 3 2]));
+    [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
+    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
+    
+    % Others
+    inds = find(permute(corneaBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
+    [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
+    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
+    
+    inds = find(permute(epicorneaBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
+    [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
+    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
+    
+    inds = find(permute(cInCBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
+    [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
+    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
+    
+    inds = find(permute(interconeBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
+    [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
+    plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
+    
+    
+    subplot(1,3,3); 
     imshow(fliplr(permute((lensRIVolume(round(volumeSize(1)/2),:,:)-1.45)/(1.54-1.45), [2 3 1]))');
     
     ylim([-(volumeSize(3)*1/(volumeSize(3)*voxelSize)-volumeSize(3)) volumeSize(3)])
     
     
-    % Plot acceptance angle
+    
+    % Plot spot diagram
     figure; hold on; axis equal
     
-    coneTipZ = coneVertices(1,3)*voxelSize;
-    priorZInd = find(zSteps < coneTipZ); priorZInd = priorZInd(end);
-    afterZInd = find(zSteps >= coneTipZ); afterZInd = afterZInd(1);
+    coneTipZ = (volumeSize(3)-coneVertices(1,3))*voxelSize;
+    priorInd = find(zSteps < coneTipZ); priorInd = priorInd(end);
+     
+    % store for acceptance angle
+    rayAccepted = zeros(nOrigins, 1)*NaN;
+    
+    coneRad = (metaData.coneProfileToUse*metaData.voxSize/metaData.voxSize3D)*voxelSize;
+    coneRad(isnan(coneRad)) = [];
     
     for iOrigin = 1:nOrigins
-        rayPath = permute(rayPathArray(:, :, iOrigin), [2 1]);
-        
-        xTip = rayPath(priorZInd, 1) + (rayPath(afterZInd, 1) - rayPath(priorZInd, 1))/...
-            (rayPath(afterZInd, 3) - rayPath(priorZInd, 3))*(coneTipZ-rayPath(priorZInd, 3));
-        
-        yTip = rayPath(priorZInd, 2) + (rayPath(afterZInd, 2) - rayPath(priorZInd, 2))/...
-            (rayPath(afterZInd, 3) - rayPath(priorZInd, 3))*(coneTipZ-rayPath(priorZInd, 3));
-        
-        
-        xTip = xTip - volumeSize(1)/2*voxelSize;
-        yTip = yTip - volumeSize(1)/2*voxelSize;
-        
-        plot(xTip, yTip, 'rx');
+        if all(~isnan(finalRay(iOrigin,:))) & all(~isnan(rayPathArray(:,:,iOrigin))) & all(~isnan(finalIntersect(iOrigin,:)))
+                
+            % check if final intersect is closer than last z step    
+            if abs(finalIntersect(iOrigin, 3) - coneTipZ) < abs(rayPathArray(3,priorInd,iOrigin) - coneTipZ)
+                % if it is less than a micron away just plot directly
+                if abs(finalIntersect(iOrigin, 3) - coneTipZ) < 10^-3
+                   xTip = rayPathArray(1,priorInd,iOrigin);
+                   yTip = rayPathArray(2,priorInd,iOrigin);
+                else
+                   % should adjust with the refracted ray? (could be intersection after...)
+                   if finalIntersect(iOrigin, 3) - coneTipZ < 0
+                        % intesect is behind, can just extend refracted ray
+                        zDiff = coneTipZ - finalIntersect(iOrigin, 3);
+                        normRay = finalRayTRefract(iOrigin,:)/finalRayTRefract(iOrigin,3);
+                
+                        xTip = finalIntersect(iOrigin, 1) + normRay(1)*zDiff;
+                        yTip = finalIntersect(iOrigin, 2) + normRay(2)*zDiff;
+                   else
+                        error('Need to add treatment') 
+                   end
+               end
+            else
+                zDiff = coneTipZ - rayPathArray(3,priorInd,iOrigin);
+                normRay = finalRay(iOrigin,:)/finalRay(iOrigin,3);
+                
+                xTip = rayPathArray(1,priorInd,iOrigin) + normRay(1)*zDiff;
+                yTip = rayPathArray(2,priorInd,iOrigin) + normRay(2)*zDiff;
+            end
+            
+            xTip = xTip - volumeSize(1)/2*voxelSize;
+            yTip = yTip - volumeSize(1)/2*voxelSize;
+
+            % Accepted if within receptor radius and angle isn't too large
+            if sqrt(xTip.^2 + yTip.^2) <= receptorRadius/1000 & ...
+                    dot(finalRay(iOrigin,:), [0 0 1])/(norm(finalRay(iOrigin,:))*norm([0 0 1])) < receptorAcceptance/180*pi
+                rayAccepted(iOrigin) = 1;
+            else
+                rayAccepted(iOrigin) = 0;
+            end
+            
+            if sqrt(xTip.^2 + yTip.^2) > coneRad(end)
+                %%% Could add an arrow in this case?
+                warning('Ray could be off diagram')
+                
+            end
+            
+            plot(xTip*1000, yTip*1000, 'rx');
+        end
     end
      
+    acceptancePercentage = sum( rayAccepted(~isnan(rayAccepted)))/sum(~isnan(rayAccepted))
+    
+    viscircles([0 0],receptorRadius, 'color', 'b')
+    
+    viscircles([0 0],coneRad(1)*1000, 'color', 'k', 'linestyle', ':');
+    viscircles([0 0],coneRad(end)*1000, 'color', 'k');
+    
+    ylim([-coneRad(end)*1000 coneRad(end)*1000])
+    xlim([-coneRad(end)*1000 coneRad(end)*1000])
+    
 elseif useTestData
     
     if createLunebergLens
