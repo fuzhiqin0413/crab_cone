@@ -8,7 +8,7 @@ clc; close all
 
 useRealData = 1;
 
-incidenceAngle = 7.5;  % deg, in XZ - plane    
+incidenceAngle = 0:2.5:20; [0 5 10];  % deg, in XZ - plane    
 
 if useRealData
     dataFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/AnalysisVolumes/5 micron/';
@@ -52,8 +52,11 @@ if useRealData
     plotReferenceFiber = 0;
     useTestData = 0;
     
-    receptorRadius = 40;
-    receptorAcceptance = 90;
+    receptorRadius = 30; % micron - night basically 0 out, 5 at 70 out for for day
+    receptorAcceptance = 90; % degrees
+    
+    exposedHeight = 15; % micron - night, maybe around 20 for day light
+    blockExposedRentry = 1;
     
     testOrigin = []; [5 6 7 8];
 else
@@ -75,7 +78,8 @@ else
         plotReferenceFiber = 0; % will plot data from Nishidate and only trace 0.5
 end
 
-xSpacing = 5; % in voxels...
+xSpacing = 2; % in voxels...
+plotSpacing = 1; % Mutiple of xSpaing to plot - only for center ray plotting
 
 trace3D = 1;
 
@@ -115,10 +119,10 @@ extendRayLength = 1; % mm
 % Best to do this as I haven't really delt with them yet
 clearReverseRays = 1;
 
-plotLineCols = 1;
-justPlotCenterRays = 0;
+plotLineCols = 0;
+justPlotCenterRays = 1;
 
-testPlot = 1;
+testPlot = 0;
 
 %% Load or create test data     
 if useRealData
@@ -238,7 +242,7 @@ if useRealData
     else
        % just flat, can copy cornea with adjusted Z 
        epicorneaVertices = corneaVertices; 
-       epicorneaZ = (metaData.coneLengthToUse + metaData.epicorneaLengthToUse)* metaData.voxSize/metaData.voxSize3D;
+       epicorneaZ = (metaData.coneLengthToUse + metaData.outerCorneaLengthToUse)* metaData.voxSize/metaData.voxSize3D;
        epicorneaVertices(:,3) = epicorneaVertices(:,3) - metaData.epicorneaLengthToUse* metaData.voxSize/metaData.voxSize3D;
        
        epicorneaSurface = corneaSurface;
@@ -724,8 +728,6 @@ raysOnYZPlane = rayOrigins(:,1)/voxelSize == volumeSize(1)/2;
 
 nOrigins = size(rayOrigins,1);
 
-startRayT = [sin(incidenceAngle/180*pi), 0, cos(incidenceAngle/180*pi)];
-
 rayCols = lines(nOrigins);
 
 %% Run ray tracer
@@ -767,318 +769,428 @@ elseif useTestData
     end
 end
 
-rayPathArray = zeros(3, volumeSize(3), nOrigins)*NaN;
+rayPathCells = cell(length(incidenceAngle), 1);
+finalIntersectCells = cell(length(incidenceAngle), 1); 
+finalRayCells = cell(length(incidenceAngle), 1);
+finalRayTRefractCells = cell(length(incidenceAngle), 1);
+rayReverseCells = cell(length(incidenceAngle), 1);
 
-rayPathLengthArray = zeros(volumeSize(3), nOrigins)*NaN;
+for aAngle = 5; 1:length(incidenceAngle)
+    
+    tic
+    
+    startRayT = [sin(incidenceAngle(aAngle)/180*pi), 0, cos(incidenceAngle(aAngle)/180*pi)];    
 
-rayMap = zeros(volumeSize);
+    rayPathArray = zeros(3, volumeSize(3), nOrigins)*NaN;
 
-if testPlot
-    figure; hold on; axis equal
-    view(0, 0)
-    if useRealData
-        plot3(grinSurface.vertices(plotInds,1), grinSurface.vertices(plotInds,2),...
-            grinSurface.vertices(plotInds,3), '.')
-    elseif useTestData
-        plot3(surfaceX(plotInds)*voxelSize, surfaceY(plotInds)*voxelSize,...
-            surfaceZ(plotInds)*voxelSize, '.')
+    rayPathLengthArray = zeros(volumeSize(3), nOrigins)*NaN;
+
+    rayMap = zeros(volumeSize);
+
+    if testPlot
+        figure; hold on; axis equal
+        view(0, 0)
+        if useRealData
+            plot3(grinSurface.vertices(plotInds,1), grinSurface.vertices(plotInds,2),...
+                grinSurface.vertices(plotInds,3), '.')
+        elseif useTestData
+            plot3(surfaceX(plotInds)*voxelSize, surfaceY(plotInds)*voxelSize,...
+                surfaceZ(plotInds)*voxelSize, '.')
+        end
     end
-end
 
-% Turn of warning on singular matrix, otherwise backslash will slow down a lot
-warning('off', 'MATLAB:nearlySingularMatrix')
+    % Turn of warning on singular matrix, otherwise backslash will slow down a lot
+    warning('off', 'MATLAB:nearlySingularMatrix')
 
-minDeltaS = ones(nOrigins, 1);
+    minDeltaS = ones(nOrigins, 1);
 
-firstIntersect = zeros(nOrigins, 3)*NaN;
-finalIntersect = zeros(nOrigins, 3)*NaN;
+    firstIntersect = zeros(nOrigins, 3)*NaN;
+    finalIntersect = zeros(nOrigins, 3)*NaN;
 
-finalPathLength = zeros(nOrigins, 1);
-finalRayT = zeros(nOrigins, 3)*NaN;
+    finalPathLength = zeros(nOrigins, 1);
+    finalRayT = zeros(nOrigins, 3)*NaN;
 
-finalRayTRefract = zeros(nOrigins, 3)*NaN;
-finalRay = zeros(nOrigins, 3)*NaN;
+    finalRayTRefract = zeros(nOrigins, 3)*NaN;
+    finalRay = zeros(nOrigins, 3)*NaN;
 
-if createGradedFiber
-   % Period is for parabolic profile, gaussian period is different and independent of entry.
-   %%% This is approx as specific value varies depending on entry RI
-   halfPeriodInFiber = 2*pi*n0/beta*0.5;   
-   
-   numPeriods = floor(fiberLength/halfPeriodInFiber);
-   
-   periodSpotsArray = zeros(3, numPeriods, nOrigins);
-   
-end
-
-%%% Add in multi angles here -> extra loop with results stored into a struct
-    %%% Will need loop on plotting code but can split of later to seperate file
-
-for iOrigin = 1:nOrigins
-    %%% Could set up to do for series of ray angles
-    rayT = startRayT; %3x1 : ray will move from bottom to top
-
-    % In phyisical coordiantes
-    %%% Was in voxel coordinates
-    rayX = rayOrigins(iOrigin,:);
+    rayReversed = zeros(nOrigins, 1);
     
-    inGraded = 0;
-    
-    %%% Was ray x in phyiscial coordinates
-    voxelX = round(rayOrigins(iOrigin,:)/voxelSize);
-    
-    lastNearbyX = [rayX(1), rayX(2), -1];
-    
-    go = 1;
+    if createGradedFiber
+       % Period is for parabolic profile, gaussian period is different and independent of entry.
+       %%% This is approx as specific value varies depending on entry RI
+       halfPeriodInFiber = 2*pi*n0/beta*0.5;   
 
-    deltaS = initialDeltaS;
+       numPeriods = floor(fiberLength/halfPeriodInFiber);
 
-    currentStep = 1;
+       periodSpotsArray = zeros(3, numPeriods, nOrigins);
+    end
 
-    rayPathArray(:, currentStep, iOrigin) = rayX;
-    
-    intersectResult = 0;
-    
-    pathLength = 0; % in grin area
-    
-    propogateFinalRay = 0;
-    
-    numberOfExits = 0;
-    
-    currentPeriod = 1; % only used for graded fiber
-
-    while go
+    for iOrigin = 1:nOrigins
         
-        % If outside, extend ray to grin area
-        if ~inGraded
-            x0 = rayX;
-            t0 = rayT;
+        iOrigin
         
-            % entering, need to find intersect to graded volume
-            if useRealData
-                
-                % X and T combined on input, T needs to point back
-                lineDef = [rayX rayT];
-                
-                % Check intersect against all surfaces
-                [intersectPointsGrin, intersectDistanceGrin, intersectFacesGrin] = intersectLineMesh3d(lineDef, grinSurface.vertices, grinSurface.faces);
-                
-                [intersectPointsCornea, intersectDistanceCornea, intersectFacesCornea] = intersectLineMesh3d(lineDef, corneaSurface.vertices, corneaSurface.faces);
-                
-                [intersectPointsEpicornea, intersectDistanceEpicornea, intersectFacesEpicornea] = intersectLineMesh3d(lineDef, epicorneaSurface.vertices, epicorneaSurface.faces);
-                
-                [intersectPointsCinC, intersectDistanceCinC, intersectFacesCinC] = intersectLineMesh3d(lineDef, cInCSurface.vertices, cInCSurface.faces);
-                
-                [intersectPointsIntercone, intersectDistanceIntercone, intersectFacesIntercone] = intersectLineMesh3d(lineDef, interconeSurface.vertices, interconeSurface.faces);
-                
-                % put miniminum intersection distances into array - could be better way to do this
-                if ~isempty(intersectDistanceGrin)
-                    % Remove points with dist less than ~zero - should modify function to do this...
-                    % Or outside of bounds
-                    indsOut = find(intersectDistanceGrin <= epsilon | ...
-                        intersectPointsGrin(:,1) < voxelSize | intersectPointsGrin(:,1) > volumeSize(1)*voxelSize | ...
-                        intersectPointsGrin(:,2) < voxelSize | intersectPointsGrin(:,2) > volumeSize(2)*voxelSize | ...
-                        intersectPointsGrin(:,3) < voxelSize | intersectPointsGrin(:,3) > volumeSize(3)*voxelSize);
-                    
-                    intersectPointsGrin(indsOut, :) = [];
-                    intersectFacesGrin(indsOut) = [];
-                    intersectDistanceGrin(indsOut) = [];
-                    
-                end
-                if ~isempty(intersectDistanceGrin); minDistArray = min(intersectDistanceGrin); else; minDistArray = Inf; end
-                
-                if ~isempty(intersectDistanceCornea);  
-                    intersectPointsCornea(intersectDistanceCornea <= epsilon, :) = [];
-                    intersectFacesCornea(intersectDistanceCornea <= epsilon) = [];
-                    intersectDistanceCornea(intersectDistanceCornea <= epsilon) = [];
-                end
-                if ~isempty(intersectDistanceCornea); minDistArray = [minDistArray min(intersectDistanceCornea)]; else; minDistArray = [minDistArray Inf]; end
-                
-                if ~isempty(intersectDistanceEpicornea);  
-                    intersectPointsEpicornea(intersectDistanceEpicornea <= epsilon, :) = [];
-                    intersectFacesEpicornea(intersectDistanceEpicornea <= epsilon) = [];
-                    intersectDistanceEpicornea(intersectDistanceEpicornea <= epsilon) = [];
-                end
-                if ~isempty(intersectDistanceEpicornea); minDistArray = [minDistArray min(intersectDistanceEpicornea)]; else; minDistArray = [minDistArray Inf]; end
-                
-                if ~isempty(intersectDistanceCinC);  
-                    intersectPointsCinC(intersectDistanceCinC <= epsilon, :) = [];
-                    intersectFacesCinC(intersectDistanceCinC <= epsilon) = [];
-                    intersectDistanceCinC(intersectDistanceCinC <= epsilon) = [];
-                end
-                if ~isempty(intersectDistanceCinC);   minDistArray = [minDistArray min(intersectDistanceCinC)]; else; minDistArray = [minDistArray Inf]; end
-                
-                if ~isempty(intersectDistanceIntercone);  
-                    intersectPointsIntercone(intersectDistanceIntercone <= epsilon, :) = [];
-                    intersectFacesIntercone(intersectDistanceIntercone <= epsilon) = [];
-                    intersectDistanceIntercone(intersectDistanceIntercone <= epsilon) = [];
-                end
-                if ~isempty(intersectDistanceIntercone); minDistArray = [minDistArray min(intersectDistanceIntercone)]; else; minDistArray = [minDistArray Inf]; end
-                
-                if any(~isinf(minDistArray))
-                    [~, minIntersect] = min(minDistArray);
+        %%% Could set up to do for series of ray angles
+        rayT = startRayT; %3x1 : ray will move from bottom to top
 
-                    switch minIntersect
+        % In phyisical coordiantes
+        %%% Was in voxel coordinates
+        rayX = rayOrigins(iOrigin,:);
 
-                        case 1 % Cone is first
+        inGraded = 0;
 
-                            inds2Use = find(intersectDistanceGrin == min(intersectDistanceGrin));
+        %%% Was ray x in phyiscial coordinates
+        voxelX = round(rayOrigins(iOrigin,:)/voxelSize);
 
-                            rayX = mean(intersectPointsGrin(inds2Use,:),1);
+        lastNearbyX = [rayX(1), rayX(2), -1];
 
-                            faceIndices = intersectFacesGrin(inds2Use);
+        go = 1;
+
+        deltaS = initialDeltaS;
+
+        currentStep = 1;
+
+        rayPathArray(:, currentStep, iOrigin) = rayX;
+
+        intersectResult = 0;
+
+        pathLength = 0; % in grin area
+
+        propogateFinalRay = 0;
+
+        numberOfExits = 0;
+
+        currentPeriod = 1; % only used for graded fiber
+
+        while go
+
+            % If outside, extend ray to grin area
+            if ~inGraded
+                x0 = rayX;
+                t0 = rayT;
+
+                % entering, need to find intersect to graded volume
+                if useRealData
+
+                    % X and T combined on input, T needs to point back
+                    lineDef = [rayX rayT];
+
+                    % Check intersect against all surfaces
+                    [intersectPointsGrin, intersectDistanceGrin, intersectFacesGrin] = intersectLineMesh3d(lineDef, grinSurface.vertices, grinSurface.faces);
+
+                    [intersectPointsCornea, intersectDistanceCornea, intersectFacesCornea] = intersectLineMesh3d(lineDef, corneaSurface.vertices, corneaSurface.faces);
+
+                    [intersectPointsEpicornea, intersectDistanceEpicornea, intersectFacesEpicornea] = intersectLineMesh3d(lineDef, epicorneaSurface.vertices, epicorneaSurface.faces);
+
+                    [intersectPointsCinC, intersectDistanceCinC, intersectFacesCinC] = intersectLineMesh3d(lineDef, cInCSurface.vertices, cInCSurface.faces);
+
+                    [intersectPointsIntercone, intersectDistanceIntercone, intersectFacesIntercone] = intersectLineMesh3d(lineDef, interconeSurface.vertices, interconeSurface.faces);
+
+                    % put miniminum intersection distances into array - could be better way to do this
+                    if ~isempty(intersectDistanceGrin)
+                        % Remove points with dist less than ~zero - should modify function to do this...
+                        % Or outside of bounds
+                        indsOut = find(intersectDistanceGrin <= epsilon | ...
+                            intersectPointsGrin(:,1) < voxelSize | intersectPointsGrin(:,1) > volumeSize(1)*voxelSize | ...
+                            intersectPointsGrin(:,2) < voxelSize | intersectPointsGrin(:,2) > volumeSize(2)*voxelSize | ...
+                            intersectPointsGrin(:,3) < voxelSize | intersectPointsGrin(:,3) > volumeSize(3)*voxelSize);
+
+                        intersectPointsGrin(indsOut, :) = [];
+                        intersectFacesGrin(indsOut) = [];
+                        intersectDistanceGrin(indsOut) = [];
+
+                    end
+                    if ~isempty(intersectDistanceGrin); minDistArray = min(intersectDistanceGrin); else; minDistArray = Inf; end
+
+                    if ~isempty(intersectDistanceCornea);  
+                        intersectPointsCornea(intersectDistanceCornea <= epsilon, :) = [];
+                        intersectFacesCornea(intersectDistanceCornea <= epsilon) = [];
+                        intersectDistanceCornea(intersectDistanceCornea <= epsilon) = [];
+                    end
+                    if ~isempty(intersectDistanceCornea); minDistArray = [minDistArray min(intersectDistanceCornea)]; else; minDistArray = [minDistArray Inf]; end
+
+                    if ~isempty(intersectDistanceEpicornea);  
+                        intersectPointsEpicornea(intersectDistanceEpicornea <= epsilon, :) = [];
+                        intersectFacesEpicornea(intersectDistanceEpicornea <= epsilon) = [];
+                        intersectDistanceEpicornea(intersectDistanceEpicornea <= epsilon) = [];
+                    end
+                    if ~isempty(intersectDistanceEpicornea); minDistArray = [minDistArray min(intersectDistanceEpicornea)]; else; minDistArray = [minDistArray Inf]; end
+
+                    if ~isempty(intersectDistanceCinC);  
+                        intersectPointsCinC(intersectDistanceCinC <= epsilon, :) = [];
+                        intersectFacesCinC(intersectDistanceCinC <= epsilon) = [];
+                        intersectDistanceCinC(intersectDistanceCinC <= epsilon) = [];
+                    end
+                    if ~isempty(intersectDistanceCinC);   minDistArray = [minDistArray min(intersectDistanceCinC)]; else; minDistArray = [minDistArray Inf]; end
+
+                    if ~isempty(intersectDistanceIntercone);  
+                        intersectPointsIntercone(intersectDistanceIntercone <= epsilon, :) = [];
+                        intersectFacesIntercone(intersectDistanceIntercone <= epsilon) = [];
+                        intersectDistanceIntercone(intersectDistanceIntercone <= epsilon) = [];
+                    end
+                    if ~isempty(intersectDistanceIntercone); minDistArray = [minDistArray min(intersectDistanceIntercone)]; else; minDistArray = [minDistArray Inf]; end
+
+                    if any(~isinf(minDistArray))
+                        [~, minIntersect] = min(minDistArray);
+
+                        switch minIntersect
+
+                            case 1 % Cone is first
+
+                                inds2Use = find(intersectDistanceGrin == min(intersectDistanceGrin));
+
+                                rayX = mean(intersectPointsGrin(inds2Use,:),1);
+
+                                faceIndices = intersectFacesGrin(inds2Use);
+
+                                intersectResult = 1;
+
+                            case 2 % cornea is first
+                                inds2Use = find(intersectDistanceCornea == min(intersectDistanceCornea));
+
+                                rayX = mean(intersectPointsCornea(inds2Use,:),1);
+
+                                faceIndices = intersectFacesCornea(inds2Use);
+
+                            case 3 % epicornea is first
+                                inds2Use = find(intersectDistanceEpicornea == min(intersectDistanceEpicornea));
+
+                                rayX = mean(intersectPointsEpicornea(inds2Use,:),1);
+
+                                faceIndices = intersectFacesEpicornea(inds2Use);    
+
+                            case 4 % CinC is first
+                                inds2Use = find(intersectDistanceCinC == min(intersectDistanceCinC));
+
+                                rayX = mean(intersectPointsCinC(inds2Use,:),1);
+
+                                faceIndices = intersectFacesCinC(inds2Use);
+
+                            case 5 % intercone is first  
+                                inds2Use = find(intersectDistanceIntercone == min(intersectDistanceIntercone));
+
+                                rayX = mean(intersectPointsIntercone(inds2Use,:),1);
+
+                                faceIndices = intersectFacesIntercone(inds2Use);
+
+                                if limitToConeBase & numberOfExits == 0 
+                                    go = 0;
+                                end
+                        end
+
+                        propogateFinalRay = 1*go;
+                    else
+                        go = 0;
+                    end
+
+                elseif useTestData
+                    origin = rayX - volumeSize/2*voxelSize;
+                    minIntersect = -1;
+
+                    if sqrt(origin(1)^2 + origin(2)^2) < radius
+                        if createLunebergLens                 
+                            % Get sphere intersection
+                            centre = 0;
+                            originalDistance = centre - origin;
+
+                            t_ca = dot(originalDistance,rayT);
+                            d = sqrt(dot(originalDistance,originalDistance)-t_ca^2);
+                            t_hc = sqrt(radius^2-d^2);
+                            deltaTemp = t_ca - t_hc;
+
+                        elseif createGradedFiber
+                            % Get z distance past bottom of gradient section
+                            deltaTemp = ((volumeCenter(3) - fiberLength/2) - rayX(3))/rayT(3);
+                        end
+
+                        % This is mostly to stop ray jumping back at the end
+                        if deltaTemp > 0
+                            % Steps ray back to intersection
+                            rayX = rayX + rayT*deltaTemp; %3x1 coordinates
 
                             intersectResult = 1;
 
-                        case 2 % cornea is first
-                            inds2Use = find(intersectDistanceCornea == min(intersectDistanceCornea));
+                            propogateFinalRay = 1;
+                        else
+                           go = 0; 
+                        end
 
-                            rayX = mean(intersectPointsCornea(inds2Use,:),1);
-
-                            faceIndices = intersectFacesCornea(inds2Use);
-
-                        case 3 % epicornea is first
-                            inds2Use = find(intersectDistanceEpicornea == min(intersectDistanceEpicornea));
-
-                            rayX = mean(intersectPointsEpicornea(inds2Use,:),1);
-
-                            faceIndices = intersectFacesEpicornea(inds2Use);    
-
-                        case 4 % CinC is first
-                            inds2Use = find(intersectDistanceCinC == min(intersectDistanceCinC));
-
-                            rayX = mean(intersectPointsCinC(inds2Use,:),1);
-
-                            faceIndices = intersectFacesCinC(inds2Use);
-
-                        case 5 % intercone is first  
-                            inds2Use = find(intersectDistanceIntercone == min(intersectDistanceIntercone));
-
-                            rayX = mean(intersectPointsIntercone(inds2Use,:),1);
-
-                            faceIndices = intersectFacesIntercone(inds2Use);
-                            
-                            if limitToConeBase & numberOfExits == 0 
-                                go = 0;
-                            end
-                    end
-                    
-                    propogateFinalRay = 1*go;
-                else
-                    go = 0;
-                end
-                
-            elseif useTestData
-                origin = rayX - volumeSize/2*voxelSize;
-                minIntersect = -1;
-                
-                if sqrt(origin(1)^2 + origin(2)^2) < radius
-                    if createLunebergLens                 
-                        % Get sphere intersection
-                        centre = 0;
-                        originalDistance = centre - origin;
-
-                        t_ca = dot(originalDistance,rayT);
-                        d = sqrt(dot(originalDistance,originalDistance)-t_ca^2);
-                        t_hc = sqrt(radius^2-d^2);
-                        deltaTemp = t_ca - t_hc;
-
-                    elseif createGradedFiber
-                        % Get z distance past bottom of gradient section
-                        deltaTemp = ((volumeCenter(3) - fiberLength/2) - rayX(3))/rayT(3);
-                    end
-                    
-                    % This is mostly to stop ray jumping back at the end
-                    if deltaTemp > 0
-                        % Steps ray back to intersection
-                        rayX = rayX + rayT*deltaTemp; %3x1 coordinates
-
-                        intersectResult = 1;
-                        
-                        propogateFinalRay = 1;
                     else
-                       go = 0; 
+                        go = 0;
                     end
-                   
-                else
-                    go = 0;
                 end
-            end
-            
-            if go
-                firstIntersect(iOrigin,:) = rayX;
 
-                voxelX = round(rayX/voxelSize); 
-                
-                % extend ray path up to intersection
-                misingSteps = find(zSteps > x0(3) & zSteps < rayX(3));
-                
-                if ~isempty(misingSteps)
-                    tempT = rayT/rayT(3);
-                    for i = misingSteps
-                        rayPathArray(:, i, iOrigin) = x0 + tempT.*(zSteps(i) - x0(3));
+                if go
+                    firstIntersect(iOrigin,:) = rayX;
+
+                    voxelX = round(rayX/voxelSize); 
+
+                    % extend ray path up to intersection
+                    misingSteps = find(zSteps > x0(3) & zSteps < rayX(3));
+
+                    if ~isempty(misingSteps)
+                        tempT = rayT/rayT(3);
+                        for i = misingSteps
+                            rayPathArray(:, i, iOrigin) = x0 + tempT.*(zSteps(i) - x0(3));
+                        end
+
+                        if testPlot
+                            plot3(rayPathArray(1, misingSteps, iOrigin), rayPathArray(2, misingSteps, iOrigin), ...
+                                rayPathArray(3, misingSteps, iOrigin), '.', 'color', rayCols(iOrigin,:));
+                        end
+
+                        currentStep = misingSteps(end);
                     end
 
-                    if testPlot
-                        plot3(rayPathArray(1, misingSteps, iOrigin), rayPathArray(2, misingSteps, iOrigin), ...
-                            rayPathArray(3, misingSteps, iOrigin), '.', 'color', rayCols(iOrigin,:));
-                    end
+                    % Entering into graded region
+                    if useTestData | (useRealData & minIntersect == 1)
 
-                    currentStep = misingSteps(end);
-                end
-    
-                % Entering into graded region
-                if useTestData | (useRealData & minIntersect == 1)
-                   
-                    if numberOfExits > 0 
-                       plot3(rayX(1), rayX(2), rayX(3), 'ro', 'markersize', 8)
-                       
-                       plot3(grinSurface.vertices(grinSurface.faces(faceIndices,:),1), grinSurface.vertices(grinSurface.faces(faceIndices,:),2), ...
-                           grinSurface.vertices(grinSurface.faces(faceIndices,:),3), 'rx')
-                       
-                       trisurf(grinSurface.faces(faceIndices,:), grinSurface.vertices(:,1), grinSurface.vertices(:,2), grinSurface.vertices(:,3), ...
-                            'FaceColor','r');
-                       
-                       % Changing epsilon or deltaS may help 
-                       warning('ray is reentering') 
-                    end
-                    
-                   if ~(blockMultipleExits & numberOfExits > 0)
-                        % Get interior RI at entry point
-                        [~, rOut] = numerical_dT_dt(rayX, volCoords(RIFlagInds,:), RIFlagInds, lensRIVolume, []);
+                        if numberOfExits > 0 
+                            if testPlot
+                               plot3(rayX(1), rayX(2), rayX(3), 'ro', 'markersize', 8)
 
-                        if interfaceRefraction
-                            % Get surface normal and exterior RI at entry point
-                            if useRealData
-                                rIn = vertexExteriorRI(grinSurface.faces(faceIndices,:));
-                                rIn = mean(rIn(:));    
+                               plot3(grinSurface.vertices(grinSurface.faces(faceIndices,:),1), grinSurface.vertices(grinSurface.faces(faceIndices,:),2), ...
+                                   grinSurface.vertices(grinSurface.faces(faceIndices,:),3), 'rx')
 
-                                surfaceNormal = mean(grinNormals(faceIndices,:),1);
+                               trisurf(grinSurface.faces(faceIndices,:), grinSurface.vertices(:,1), grinSurface.vertices(:,2), grinSurface.vertices(:,3), ...
+                                    'FaceColor','r');
+                            end
+                            
+                           % Changing epsilon or deltaS may help 
+                           warning('ray is reentering') 
+                        end
 
-                                surfaceNormal = surfaceNormal/norm(surfaceNormal);
+                       if useRealData
+                            rTemp = vertexExteriorRI(grinSurface.faces(faceIndices,:)); 
+                            rTemp = mean(rTemp(:));
+                            
+                            enteringFromExposed = rTemp == metaData.innerValue;
+                       end
+                        
+                       if ~(blockMultipleExits & numberOfExits > 0) & ~(blockExposedRentry & enteringFromExposed)
+                            % Get interior RI at entry point
+                            [~, rOut] = numerical_dT_dt(rayX, volCoords(RIFlagInds,:), RIFlagInds, lensRIVolume, []);
 
-                            elseif useTestData
-                                if createLunebergLens
-                                    surfaceNormal = rayX - volumeSize/2*voxelSize;
+                            if interfaceRefraction
+                                % Get surface normal and exterior RI at entry point
+                                if useRealData
+                                    rIn = vertexExteriorRI(grinSurface.faces(faceIndices,:));
+                                    rIn = mean(rIn(:));    
+
+                                    surfaceNormal = mean(grinNormals(faceIndices,:),1);
 
                                     surfaceNormal = surfaceNormal/norm(surfaceNormal);
 
-                                    % Should be very close to 1, but allowing this removes notch in error profile
-                                        % However, it does increase error spot slightly
-                                    %rIn = 1;
+                                elseif useTestData
+                                    if createLunebergLens
+                                        surfaceNormal = rayX - volumeSize/2*voxelSize;
 
-                                elseif createGradedFiber
-                                    % Just points backwards
-                                    surfaceNormal = [0 0 -1];
+                                        surfaceNormal = surfaceNormal/norm(surfaceNormal);
 
-                                    halfPeriodInFiber = 2*pi*rOut/beta*0.5; 
+                                        % Should be very close to 1, but allowing this removes notch in error profile
+                                            % However, it does increase error spot slightly
+                                        %rIn = 1;
+
+                                    elseif createGradedFiber
+                                        % Just points backwards
+                                        surfaceNormal = [0 0 -1];
+
+                                        halfPeriodInFiber = 2*pi*rOut/beta*0.5; 
+                                    end
+
+                                    rIn = exteriorRI;
                                 end
 
-                                rIn = exteriorRI;
+                                % Test from surface tracer
+                %                 sqrt((grinNormals(faceIndex(1),1)-rayT(1))^2+(grinNormals(faceIndex(1),2)-rayT(2))^2+...
+                %                         (grinNormals(faceIndex(1),3)-rayT(3))^2) < sqrt(2)
+
+                                % Test normal points against ray
+                                if acos(dot(rayT, surfaceNormal)/(norm(surfaceNormal)*norm(rayT))) < pi/2
+                                    surfaceNormal = -surfaceNormal;
+                                end
+
+                                % Calculate entry refraction
+                                nRatio = rIn/rOut;
+                                cosI = -dot(surfaceNormal, rayT);
+                                sinT2 = nRatio^2*(1-cosI^2);
+                                cosT = sqrt(1-sinT2);
+
+                                if sinT2 < 1
+                                    % Assuming all refracted, none reflected
+                                    rayT = nRatio*rayT + (nRatio*cosI-cosT)*surfaceNormal;
+
+                                    inGraded = 1;
+
+                                    if testPlot; plot3(rayX(1), rayX(2), rayX(3), 'go'); end
+                                else
+                                    % TIR
+                                    rayT = rayT-2*dot(surfaceNormal,rayT)*surfaceNormal;
+
+                                    inGraded = 0; % ??? 
+
+                                    if testPlot; plot3(rayX(1), rayX(2), rayX(3), 'g*'); end
+                                end
+
+                            else
+                                inGraded = 1; 
+
+                                if testPlot; plot3(rayX(1), rayX(2), rayX(3), 'gd'); end
                             end
 
-                            % Test from surface tracer
-            %                 sqrt((grinNormals(faceIndex(1),1)-rayT(1))^2+(grinNormals(faceIndex(1),2)-rayT(2))^2+...
-            %                         (grinNormals(faceIndex(1),3)-rayT(3))^2) < sqrt(2)
+                            % now multiplied by initial RI
+                            rayT = rayT/norm(rayT)*rOut;
+                       else
+
+                           propogateFinalRay = 0;
+
+                           go = 0;
+
+                       end
+
+                    elseif useRealData & minIntersect > 1
+
+                        if interfaceRefraction
+                            % do refraction between layers
+
+                            %%% currently sets RI assuming ray comes from base
+                                % Could test direction to normal and invert if negative?
+                            switch minIntersect
+                                case 2 % cornea
+                                    rIn = metaData.outerValue;
+
+                                    rOut = metaData.epicorneaValue;
+
+                                    surfaceNormal = mean(corneaNormals(faceIndices,:),1);
+
+                                case 3 % epicornea 
+                                    rIn = metaData.epicorneaValue;
+
+                                    rOut = metaData.outerCorneaValue;
+
+                                    surfaceNormal = mean(epicorneaNormals(faceIndices,:),1);
+
+                                case 4 % CinC (into intercone, not cone)
+                                    rIn = metaData.outerCorneaValue;
+
+                                    rOut = metaData.interconeValue;
+
+                                    surfaceNormal = mean(cInCNormals(faceIndices,:),1);
+
+                                    if limitToConeBase
+
+                                        propogateFinalRay = 0;
+
+                                        go = 0;
+                                    end
+
+                                case 5 % intercone 
+                                    rIn = metaData.interconeValue;
+
+                                    rOut = metaData.innerValue;
+
+                                    surfaceNormal = mean(interconeNormals(faceIndices,:),1);
+
+                            end
 
                             % Test normal points against ray
                             if acos(dot(rayT, surfaceNormal)/(norm(surfaceNormal)*norm(rayT))) < pi/2
@@ -1095,228 +1207,49 @@ for iOrigin = 1:nOrigins
                                 % Assuming all refracted, none reflected
                                 rayT = nRatio*rayT + (nRatio*cosI-cosT)*surfaceNormal;
 
-                                inGraded = 1;
-
-                                plot3(rayX(1), rayX(2), rayX(3), 'go')
+                                if testPlot; plot3(rayX(1), rayX(2), rayX(3), 'ko'); end
                             else
                                 % TIR
                                 rayT = rayT-2*dot(surfaceNormal,rayT)*surfaceNormal;
 
-                                inGraded = 0; % ??? 
-
-                                plot3(rayX(1), rayX(2), rayX(3), 'g*')
+                                if testPlot; plot3(rayX(1), rayX(2), rayX(3), 'k*'); end
                             end
 
                         else
-                            inGraded = 1; 
-
-                            plot3(rayX(1), rayX(2), rayX(3), 'gd')
+                            if testPlot; plot3(rayX(1), rayX(2), rayX(3), 'kd'); end
                         end
-
-                        % now multiplied by initial RI
-                        rayT = rayT/norm(rayT)*rOut;
-                   else
- 
-                       propogateFinalRay = 0;
-
-                       go = 0;
-
-                   end
-                    
-                elseif useRealData & minIntersect > 1
-                    
-                    if interfaceRefraction
-                        % do refraction between layers
-                        
-                        %%% currently sets RI assuming ray comes from base
-                            % Could test direction to normal and invert if negative?
-                        switch minIntersect
-                            case 2 % cornea
-                                rIn = metaData.outerValue;
-
-                                rOut = metaData.epicorneaValue;
-                                
-                                surfaceNormal = mean(corneaNormals(faceIndices,:),1);
-
-                            case 3 % epicornea 
-                                rIn = metaData.epicorneaValue;
-
-                                rOut = metaData.outerCorneaValue;
-                                
-                                surfaceNormal = mean(epicorneaNormals(faceIndices,:),1);
-
-                            case 4 % CinC (into intercone, not cone)
-                                rIn = metaData.outerCorneaValue;
-
-                                rOut = metaData.interconeValue;
-                                
-                                surfaceNormal = mean(cInCNormals(faceIndices,:),1);
-                                
-                                if limitToConeBase
-                                
-                                    propogateFinalRay = 0;
-                                    
-                                    go = 0;
-                                end
-
-                            case 5 % intercone 
-                                rIn = metaData.interconeValue;
-
-                                rOut = metaData.innerValue;
-                                
-                                surfaceNormal = mean(interconeNormals(faceIndices,:),1);
-
-                        end
-                        
-                        % Test normal points against ray
-                        if acos(dot(rayT, surfaceNormal)/(norm(surfaceNormal)*norm(rayT))) < pi/2
-                            surfaceNormal = -surfaceNormal;
-                        end
-
-                        % Calculate entry refraction
-                        nRatio = rIn/rOut;
-                        cosI = -dot(surfaceNormal, rayT);
-                        sinT2 = nRatio^2*(1-cosI^2);
-                        cosT = sqrt(1-sinT2);
-
-                        if sinT2 < 1
-                            % Assuming all refracted, none reflected
-                            rayT = nRatio*rayT + (nRatio*cosI-cosT)*surfaceNormal;
-
-                            plot3(rayX(1), rayX(2), rayX(3), 'ko')
-                        else
-                            % TIR
-                            rayT = rayT-2*dot(surfaceNormal,rayT)*surfaceNormal;
-
-                            plot3(rayX(1), rayX(2), rayX(3), 'k*')
-                        end
-                        
-                    else
-                        plot3(rayX(1), rayX(2), rayX(3), 'kd')
                     end
                 end
             end
-        end
 
-        if inGraded
-            %check if x has moved to include new voxels
-            if (norm(rayX-lastNearbyX) > voxelSize) & inGraded
-                %if so, reselect nearby points
-                lastNearbyX = rayX;
+            if inGraded
+                %check if x has moved to include new voxels
+                if (norm(rayX-lastNearbyX) > voxelSize) & inGraded
+                    %if so, reselect nearby points
+                    lastNearbyX = rayX;
 
-                % Get array of voxels around current
-                [tempX, tempY, tempZ] = meshgrid((voxelX(1)-4:voxelX(1)+4)', (voxelX(2)-4:voxelX(2)+4)', ...
-                    (voxelX(3)-4:voxelX(3)+4)');
+                    % Get array of voxels around current
+                    [tempX, tempY, tempZ] = meshgrid((voxelX(1)-4:voxelX(1)+4)', (voxelX(2)-4:voxelX(2)+4)', ...
+                        (voxelX(3)-4:voxelX(3)+4)');
 
-                testCoords= [tempX(:), tempY(:), tempZ(:)];
+                    testCoords= [tempX(:), tempY(:), tempZ(:)];
 
-                % remove outside of bounds
-                tempInd = find(testCoords(:,1) < 1 | testCoords(:,2) < 1 | testCoords(:,3) < 1 | ...
-                        testCoords(:,1) > volumeSize(1) | testCoords(:,2) > volumeSize(2) | testCoords(:,3) > volumeSize(3));
+                    % remove outside of bounds
+                    tempInd = find(testCoords(:,1) < 1 | testCoords(:,2) < 1 | testCoords(:,3) < 1 | ...
+                            testCoords(:,1) > volumeSize(1) | testCoords(:,2) > volumeSize(2) | testCoords(:,3) > volumeSize(3));
 
-                testCoords(tempInd, :) = [];
+                    testCoords(tempInd, :) = [];
 
-                testInds = sub2ind(volumeSize, testCoords(:,1), testCoords(:,2), testCoords(:,3));
+                    testInds = sub2ind(volumeSize, testCoords(:,1), testCoords(:,2), testCoords(:,3));
 
-                % check for intersect with good volume
-                [testInds, tempInds] = intersect(testInds, RIFlagInds);
+                    % check for intersect with good volume
+                    [testInds, tempInds] = intersect(testInds, RIFlagInds);
 
-                testCoords = testCoords(tempInds,:)*voxelSize;
+                    testCoords = testCoords(tempInds,:)*voxelSize;
 
-                %%% If all voxels equal in patch can flag to skip calc and maintain rayT
+                    %%% If all voxels equal in patch can flag to skip calc and maintain rayT
 
-                % only nearest 128 used, but seems to need some extra
-                [~, nearInds] = sort(sqrt((testCoords(:,1)-rayX(1)).^2+(testCoords(:,2)-rayX(2)).^2+...
-                    (testCoords(:,3)-rayX(3)).^2));
-
-                if length(nearInds) > 200
-                    nearInds = nearInds(1:200);
-                end
-
-                testInds = testInds(nearInds);
-
-                testCoords = testCoords(nearInds,:);
-
-                %%% If doing direction updating, calculate RI for current direction
-
-                [rayX rayT deltaS*10^6 length(testInds)]
-            end
-            
-            x0 = rayX;
-            t0 = rayT;
-            
-            % Calc is fixed to isotropic RI
-            [x, t, deltaS] = ray_interpolation(interpType, 'iso', x0', t0', deltaS, testCoords, ...
-                testInds, lensRIVolume, tolerance);
-            
-            rayX = x'; rayT = t';
-            
-            pathLength = pathLength + sqrt((x0(1) - rayX(1))^2 + (x0(2) - rayX(2))^2 + (x0(3) - rayX(3))^2);
-            
-            if deltaS < minDeltaS(iOrigin)
-                minDeltaS(iOrigin) = deltaS;
-            end
-            
-            if createGradedFiber
-                % test if focal point is passed and capture if so
-                if rayX(3)-(volumeSize(3)/2*voxelSize - fiberLength/2) > halfPeriodInFiber*(currentPeriod-0.5)
-
-                    % Step back - this is just a linear interpolation up to point
-                    deltaTemp = (halfPeriodInFiber*(currentPeriod-0.5) - (rayX(3)-(volumeSize(3)/2*voxelSize - fiberLength/2)))/rayT(3);
-
-                    periodSpotsArray(:,currentPeriod,iOrigin) = rayX + deltaTemp*rayT; 
-
-                    plot3(periodSpotsArray(1,currentPeriod,iOrigin), periodSpotsArray(2,currentPeriod,iOrigin), periodSpotsArray(3,currentPeriod,iOrigin), 'xr');
-
-                    currentPeriod = currentPeriod + 1;
-                end
-            end
-        
-            intersectResult = intersectionFn(rayX, x0);
-        
-            % Test if leaving a GRIN area
-            if ~intersectResult
-
-                % remove last pathlength step
-                pathLength = pathLength - sqrt((x0(1) - rayX(1))^2 + (x0(2) - rayX(2))^2 + (x0(3) - rayX(3))^2);
-
-                % Resort voxels
-                % Get array of voxels around current - using old voxelX
-                [tempX, tempY, tempZ] = meshgrid((voxelX(1)-4:voxelX(1)+4)', (voxelX(2)-4:voxelX(2)+4)', ...
-                    (voxelX(3)-4:voxelX(3)+4)');
-
-                testCoords= [tempX(:), tempY(:), tempZ(:)];
-
-                % remove outside of bounds
-                tempInd = find(testCoords(:,1) < 1 | testCoords(:,2) < 1 | testCoords(:,3) < 1 | ...
-                        testCoords(:,1) > volumeSize(1) | testCoords(:,2) > volumeSize(2) | testCoords(:,3) > volumeSize(3));
-
-                testCoords(tempInd, :) = [];
-
-                testInds = sub2ind(volumeSize, testCoords(:,1), testCoords(:,2), testCoords(:,3));
-
-                % check for intersect with good volume
-                [testInds, tempInds] = intersect(testInds, RIFlagInds);
-
-                testCoords = testCoords(tempInds,:)*voxelSize;
-
-                %%% If all voxels equal in patch can flag to skip calc and maintain rayT
-
-                % Sort forwards for closest 128
-                [~, nearInds] = sort(sqrt((testCoords(:,1)-x0(1)).^2+(testCoords(:,2)-x0(2)).^2+...
-                    (testCoords(:,3)-x0(3)).^2));
-
-                if length(nearInds) > 200
-                    nearInds = nearInds(1:200);
-                end
-
-                testInds_forwards = testInds(nearInds);
-                testCoords_forwards = testCoords(nearInds,:);
-
-                lambda0 = lambdaFn(rayX, x0);
-
-                if iterativeFinal
-                    % Get backwards sorted as well
+                    % only nearest 128 used, but seems to need some extra
                     [~, nearInds] = sort(sqrt((testCoords(:,1)-rayX(1)).^2+(testCoords(:,2)-rayX(2)).^2+...
                         (testCoords(:,3)-rayX(3)).^2));
 
@@ -1324,244 +1257,352 @@ for iOrigin = 1:nOrigins
                         nearInds = nearInds(1:200);
                     end
 
-                    testInds_backwards = testInds(nearInds);
-                    testCoords_backwards = testCoords(nearInds,:);
+                    testInds = testInds(nearInds);
 
-                    % Test intersection, leaving could just be a rounding point           
-                    deltaS0_final = deltaS;
+                    testCoords = testCoords(nearInds,:);
 
-                    its = 1;
-
-                    while deltaS0_final*norm(t0) > epsilon && abs(lambda0-1) > 10^-6 
-                        %%% using 10^-3 as test for zero in tests above and below
-
-                        SF = 1; %A from paper - saftey factor
-
-                        % included in loop on paper seems to never get hit
-                        if lambda0 < 10^-6
-                           rayT = t0;
-                           warning('Not sure on this');
-                           break
-                        end
-
-                        %this loop steps back from overshoot
-                        while ~intersectionFn(rayX, x0)
-                            if (SF >= 0.1)
-                               SF = SF - 0.1; 
-                            else
-                               SF = 0.1*SF;
-                            end
-
-                            deltaS_final = SF*lambda0*deltaS0_final;
-
-                            %%% step ray backward with RK5 with fixed step
-                            [x, t] = ray_interpolation('5RKN', 'iso', x0', t0', deltaS_final, testCoords_backwards, ...
-                                testInds_backwards, lensRIVolume, tolerance);
-
-                            rayX = x'; rayT = t';
-                        end
-
-                        deltaS_final = (1-SF)*lambda0*deltaS0_final;
-
-                        % This loop steps forward to find new contact position just before overshoot.
-                        while intersectionFn(rayX, x0)
-                            x0 = rayX; %think this is the case, we are stepping forward
-                            t0 = rayT;
-
-                            [x, t] = ray_interpolation('5RKN', 'iso', x0', t0', deltaS_final, testCoords_forwards, ...
-                                testInds_forwards, lensRIVolume, tolerance);
-
-                            rayX = x'; rayT = t';
-
-                            pathLength = pathLength + sqrt((x0(1) - rayX(1))^2 + (x0(2) - rayX(2))^2 + (x0(3) - rayX(3))^2);
-                        end
-
-                        %update parameters for next loop
-                        lambda0 = lambdaFn(rayX, x0);
-
-                        deltaS0_final = deltaS_final;
-                    end
-
-                else
-                    [x, t] = ray_interpolation(interpType, 'iso', x0', t0', deltaS*lambda0, testCoords_forwards, ...
-                        testInds_forwards, lensRIVolume, tolerance);
-
-                   rayX = x';
-                   rayT = t';
-
-                   pathLength = pathLength + sqrt((x0(1) - rayX(1))^2 + (x0(2) - rayX(2))^2 + (x0(3) - rayX(3))^2);
+                    %%% If doing direction updating, calculate RI for current direction
+                    
+%                     [rayX rayT deltaS*10^6 length(testInds)]
                 end
 
+                x0 = rayX;
+                t0 = rayT;
 
-                % Ray might not exit if reflected, but these will get over written when it does
-                finalIntersect(iOrigin,:) = rayX;
+                % Calc is fixed to isotropic RI
+                [x, t, deltaS] = ray_interpolation(interpType, 'iso', x0', t0', deltaS, testCoords, ...
+                    testInds, lensRIVolume, tolerance);
 
-                finalPathLength(iOrigin,:) = pathLength;
+                rayX = x'; rayT = t';
 
-                finalRayT(iOrigin,:) = rayT;
+                pathLength = pathLength + sqrt((x0(1) - rayX(1))^2 + (x0(2) - rayX(2))^2 + (x0(3) - rayX(3))^2);
 
-                % Get surface normal and RI at exit point
-                [~, rIn] = numerical_dT_dt(rayX, volCoords(RIFlagInds,:), RIFlagInds, lensRIVolume, []); 
-                
-                % In test case normalization seems to be very similar to dividing by RI at exit
-    %           rayT = rayT/norm(rayT);
-                rayT = rayT/rIn;
-                
-                % Do refraction at border
-                if interfaceRefraction
+                if deltaS < minDeltaS(iOrigin)
+                    minDeltaS(iOrigin) = deltaS;
+                end
 
-                    if useRealData
-                        lineDef = [rayX rayT];
+                if createGradedFiber
+                    % test if focal point is passed and capture if so
+                    if rayX(3)-(volumeSize(3)/2*voxelSize - fiberLength/2) > halfPeriodInFiber*(currentPeriod-0.5)
 
-                        [intersectPoints, intersectDistance, intersectFaces] = intersectLineMesh3d(lineDef, grinSurface.vertices, grinSurface.faces);
+                        % Step back - this is just a linear interpolation up to point
+                        deltaTemp = (halfPeriodInFiber*(currentPeriod-0.5) - (rayX(3)-(volumeSize(3)/2*voxelSize - fiberLength/2)))/rayT(3);
 
-                        inds2Use = find(abs(intersectDistance) == min(abs(intersectDistance)));
+                        periodSpotsArray(:,currentPeriod,iOrigin) = rayX + deltaTemp*rayT; 
 
-                        faceIndices = intersectFaces(inds2Use);
-
-                        surfaceNormal = mean(grinNormals(faceIndices,:),1);
-
-                        surfaceNormal = surfaceNormal/norm(surfaceNormal);
+                        if testPlot;
+                            plot3(periodSpotsArray(1,currentPeriod,iOrigin), periodSpotsArray(2,currentPeriod,iOrigin), periodSpotsArray(3,currentPeriod,iOrigin), 'xr');
+                        end
                         
-                        rOut = vertexExteriorRI(grinSurface.faces(faceIndices,:));
-                        rOut = mean(rOut(:));  
+                        currentPeriod = currentPeriod + 1;
+                    end
+                end
 
-                    elseif useTestData
-                        if createLunebergLens
-                            surfaceNormal = -(rayX - volumeSize/2*voxelSize);
+                intersectResult = intersectionFn(rayX, x0);
+
+                % Test if leaving a GRIN area
+                if ~intersectResult
+
+                    % remove last pathlength step
+                    pathLength = pathLength - sqrt((x0(1) - rayX(1))^2 + (x0(2) - rayX(2))^2 + (x0(3) - rayX(3))^2);
+
+                    % Resort voxels
+                    % Get array of voxels around current - using old voxelX
+                    [tempX, tempY, tempZ] = meshgrid((voxelX(1)-4:voxelX(1)+4)', (voxelX(2)-4:voxelX(2)+4)', ...
+                        (voxelX(3)-4:voxelX(3)+4)');
+
+                    testCoords= [tempX(:), tempY(:), tempZ(:)];
+
+                    % remove outside of bounds
+                    tempInd = find(testCoords(:,1) < 1 | testCoords(:,2) < 1 | testCoords(:,3) < 1 | ...
+                            testCoords(:,1) > volumeSize(1) | testCoords(:,2) > volumeSize(2) | testCoords(:,3) > volumeSize(3));
+
+                    testCoords(tempInd, :) = [];
+
+                    testInds = sub2ind(volumeSize, testCoords(:,1), testCoords(:,2), testCoords(:,3));
+
+                    % check for intersect with good volume
+                    [testInds, tempInds] = intersect(testInds, RIFlagInds);
+
+                    testCoords = testCoords(tempInds,:)*voxelSize;
+
+                    %%% If all voxels equal in patch can flag to skip calc and maintain rayT
+
+                    % Sort forwards for closest 128
+                    [~, nearInds] = sort(sqrt((testCoords(:,1)-x0(1)).^2+(testCoords(:,2)-x0(2)).^2+...
+                        (testCoords(:,3)-x0(3)).^2));
+
+                    if length(nearInds) > 200
+                        nearInds = nearInds(1:200);
+                    end
+
+                    testInds_forwards = testInds(nearInds);
+                    testCoords_forwards = testCoords(nearInds,:);
+
+                    lambda0 = lambdaFn(rayX, x0);
+
+                    if iterativeFinal
+                        % Get backwards sorted as well
+                        [~, nearInds] = sort(sqrt((testCoords(:,1)-rayX(1)).^2+(testCoords(:,2)-rayX(2)).^2+...
+                            (testCoords(:,3)-rayX(3)).^2));
+
+                        if length(nearInds) > 200
+                            nearInds = nearInds(1:200);
+                        end
+
+                        testInds_backwards = testInds(nearInds);
+                        testCoords_backwards = testCoords(nearInds,:);
+
+                        % Test intersection, leaving could just be a rounding point           
+                        deltaS0_final = deltaS;
+
+                        its = 1;
+
+                        while deltaS0_final*norm(t0) > epsilon && abs(lambda0-1) > 10^-6 
+                            %%% using 10^-3 as test for zero in tests above and below
+
+                            SF = 1; %A from paper - saftey factor
+
+                            % included in loop on paper seems to never get hit
+                            if lambda0 < 10^-6
+                               rayT = t0;
+                               warning('Not sure on this');
+                               break
+                            end
+
+                            %this loop steps back from overshoot
+                            while ~intersectionFn(rayX, x0)
+                                if (SF >= 0.1)
+                                   SF = SF - 0.1; 
+                                else
+                                   SF = 0.1*SF;
+                                end
+
+                                deltaS_final = SF*lambda0*deltaS0_final;
+
+                                %%% step ray backward with RK5 with fixed step
+                                [x, t] = ray_interpolation('5RKN', 'iso', x0', t0', deltaS_final, testCoords_backwards, ...
+                                    testInds_backwards, lensRIVolume, tolerance);
+
+                                rayX = x'; rayT = t';
+                            end
+
+                            deltaS_final = (1-SF)*lambda0*deltaS0_final;
+
+                            % This loop steps forward to find new contact position just before overshoot.
+                            while intersectionFn(rayX, x0)
+                                x0 = rayX; %think this is the case, we are stepping forward
+                                t0 = rayT;
+
+                                [x, t] = ray_interpolation('5RKN', 'iso', x0', t0', deltaS_final, testCoords_forwards, ...
+                                    testInds_forwards, lensRIVolume, tolerance);
+
+                                rayX = x'; rayT = t';
+
+                                pathLength = pathLength + sqrt((x0(1) - rayX(1))^2 + (x0(2) - rayX(2))^2 + (x0(3) - rayX(3))^2);
+                            end
+
+                            %update parameters for next loop
+                            lambda0 = lambdaFn(rayX, x0);
+
+                            deltaS0_final = deltaS_final;
+                        end
+
+                    else
+                        [x, t] = ray_interpolation(interpType, 'iso', x0', t0', deltaS*lambda0, testCoords_forwards, ...
+                            testInds_forwards, lensRIVolume, tolerance);
+
+                       rayX = x';
+                       rayT = t';
+
+                       pathLength = pathLength + sqrt((x0(1) - rayX(1))^2 + (x0(2) - rayX(2))^2 + (x0(3) - rayX(3))^2);
+                    end
+
+
+                    % Ray might not exit if reflected, but these will get over written when it does
+                    finalIntersect(iOrigin,:) = rayX;
+
+                    finalPathLength(iOrigin,:) = pathLength;
+
+                    finalRayT(iOrigin,:) = rayT;
+
+                    % Get surface normal and RI at exit point
+                    [~, rIn] = numerical_dT_dt(rayX, volCoords(RIFlagInds,:), RIFlagInds, lensRIVolume, []); 
+
+                    % In test case normalization seems to be very similar to dividing by RI at exit
+        %           rayT = rayT/norm(rayT);
+                    rayT = rayT/rIn;
+
+                    % Do refraction at border
+                    if interfaceRefraction
+
+                        if useRealData
+                            lineDef = [rayX rayT];
+
+                            [intersectPoints, intersectDistance, intersectFaces] = intersectLineMesh3d(lineDef, grinSurface.vertices, grinSurface.faces);
+
+                            inds2Use = find(abs(intersectDistance) == min(abs(intersectDistance)));
+
+                            faceIndices = intersectFaces(inds2Use);
+
+                            surfaceNormal = mean(grinNormals(faceIndices,:),1);
 
                             surfaceNormal = surfaceNormal/norm(surfaceNormal);
 
-                            % Usually not exactly 1, this allows refraction but actually decreases error on exit trajectory
-        %                   rOut = 1;
+                            rOut = vertexExteriorRI(grinSurface.faces(faceIndices,:));
+                            rOut = mean(rOut(:));  
 
-                        elseif createGradedFiber
-                            % Just points backwards
-                            surfaceNormal = [0 0 -1];   
+                        elseif useTestData
+                            if createLunebergLens
+                                surfaceNormal = -(rayX - volumeSize/2*voxelSize);
+
+                                surfaceNormal = surfaceNormal/norm(surfaceNormal);
+
+                                % Usually not exactly 1, this allows refraction but actually decreases error on exit trajectory
+            %                   rOut = 1;
+
+                            elseif createGradedFiber
+                                % Just points backwards
+                                surfaceNormal = [0 0 -1];   
+                            end
+
+                            rOut = exteriorRI;
                         end
 
-                        rOut = exteriorRI;
-                    end
+                        if acos(dot(rayT, surfaceNormal)/(norm(surfaceNormal)*norm(rayT))) < pi/2
+                            surfaceNormal = -surfaceNormal;
+                        end
 
-                    if acos(dot(rayT, surfaceNormal)/(norm(surfaceNormal)*norm(rayT))) < pi/2
-                        surfaceNormal = -surfaceNormal;
-                    end
+                        % Calculate exit refraction
+                        nRatio = rIn/rOut;
+                        cosI = -dot(surfaceNormal, rayT);
+                        sinT2 = nRatio^2*(1-cosI^2);
+                        cosT = sqrt(1-sinT2);
 
-                    % Calculate exit refraction
-                    nRatio = rIn/rOut;
-                    cosI = -dot(surfaceNormal, rayT);
-                    sinT2 = nRatio^2*(1-cosI^2);
-                    cosT = sqrt(1-sinT2);
+                        if sinT2 < 1
+                           % Assuming all refracted, none reflected
+                           rayT = nRatio*rayT + (nRatio*cosI-cosT)*surfaceNormal;
 
-                    if sinT2 < 1
-                       % Assuming all refracted, none reflected
-                       rayT = nRatio*rayT + (nRatio*cosI-cosT)*surfaceNormal;
+                           if testPlot; plot3(rayX(1), rayX(2), rayX(3), 'mo'); end 
 
-                       plot3(rayX(1), rayX(2), rayX(3), 'mo') 
+                           inGraded = 0;
+
+                           numberOfExits = numberOfExits + 1;
+
+                           rayT = rayT/norm(rayT);
+
+                           finalRayTRefract(iOrigin,:) = rayT;
+                        else
+                            % TIR
+                            rayT = rayT-2*dot(surfaceNormal,rayT)*surfaceNormal;
+
+                            rayT = rayT/norm(rayT)*rIn;
+
+                            if testPlot; plot3(rayX(1), rayX(2), rayX(3), 'm*'); end 
+
+                            % Does not exit be default
+                            inGraded = 1;
+
+                        end
+                    else 
+                       if testPlot; plot3(rayX(1), rayX(2), rayX(3), 'mo'); end
 
                        inGraded = 0;
 
                        numberOfExits = numberOfExits + 1;
-                       
-                       rayT = rayT/norm(rayT);
-
-                       finalRayTRefract(iOrigin,:) = rayT;
-                    else
-                        % TIR
-                        rayT = rayT-2*dot(surfaceNormal,rayT)*surfaceNormal;
-
-                        rayT = rayT/norm(rayT)*rIn;
-                        
-                        plot3(rayX(1), rayX(2), rayX(3), 'm*') 
-
-                        % Does not exit be default
-                        inGraded = 1;
-
                     end
-                else 
-                   plot3(rayX(1), rayX(2), rayX(3), 'mo')
+                end
 
-                   inGraded = 0;
+                if rayT(3) < 0
+                   % kill ray if it reverses
+                   %%% Should flag for final plotting
+                   go = 0; 
 
-                   numberOfExits = numberOfExits + 1;
+                   propogateFinalRay = 0;
+
+                   if testPlot; plot3(rayX(1), rayX(2), rayX(3), 'rd', 'markersize', 8); end
+
+                   warning('Ray has reversed')
+                   
+                   rayReversed(iOrigin) = 1;
+                end
+
+                % At each z step, record path for plotting later 
+                if rayX(3) >= zSteps(currentStep+1)
+                    if currentStep + 1 < length(zSteps)
+                        currentStep = currentStep + 1;
+
+                        rayPathArray(:, currentStep, iOrigin) = rayX;
+
+                        rayPathLengthArray(currentStep, iOrigin) = pathLength;
+
+                    else
+                        % Break ray if it has reach end of z steps
+                        go = 0;
+                    end
+
+                    if testPlot; plot3(rayX(1), rayX(2), rayX(3), '.', 'color', rayCols(iOrigin,:)); end
                 end
             end
-            
-            if rayT(3) < 0
-               % kill ray if it reverses
-               %%% Should flag for final plotting
+
+            voxelX = round(rayX/voxelSize);
+
+    %         rayMap(voxelX(1), voxelX(2), voxelX(3)) = 1;
+
+            % Check ray has exitied volume
+            if any(voxelX > volumeSize) | any(voxelX < 1)
                go = 0; 
-               
-               propogateFinalRay = 0;
-               
-               plot3(rayX(1), rayX(2), rayX(3), 'rd', 'markersize', 8)
-               
-               warning('Ray has reversed')
             end
-            
-            % At each z step, record path for plotting later 
-            if rayX(3) >= zSteps(currentStep+1)
-                if currentStep + 1 < length(zSteps)
-                    currentStep = currentStep + 1;
+        end
 
-                    rayPathArray(:, currentStep, iOrigin) = rayX;
+        if numberOfExits == 0
+            propogateFinalRay = 0;
+        end
+        
+        % extend ray path to end of z steps
+        if propogateFinalRay
+            finalRay(iOrigin,:) = rayT;
 
-                    rayPathLengthArray(currentStep, iOrigin) = pathLength;
-
-                else
-                    % Break ray if it has reach end of z steps
-                    go = 0;
+            if currentStep < length(zSteps)
+                rayT = rayT/rayT(3);
+                for i = currentStep+1:length(zSteps)
+                    rayPathArray(:, i, iOrigin) = rayX + rayT.*(zSteps(i) - rayX(3));
                 end
 
                 if testPlot
-                    plot3(rayX(1), rayX(2), rayX(3), '.', 'color', rayCols(iOrigin,:));
+                    plot3(rayPathArray(1, currentStep+1:length(zSteps), iOrigin), rayPathArray(2, currentStep+1:length(zSteps), iOrigin), ...
+                        rayPathArray(3, currentStep+1:length(zSteps), iOrigin), '.', 'color', rayCols(iOrigin,:));
                 end
             end
-        end
-        
-        voxelX = round(rayX/voxelSize);
-        
-%         rayMap(voxelX(1), voxelX(2), voxelX(3)) = 1;
-        
-        % Check ray has exitied volume
-        if any(voxelX > volumeSize) | any(voxelX < 1)
-           go = 0; 
-        end
-    end
-    
-    % extend ray path to end of z steps
-    if propogateFinalRay
-        finalRay(iOrigin,:) = rayT;
-        
-        if currentStep < length(zSteps)
-            rayT = rayT/rayT(3);
-            for i = currentStep+1:length(zSteps)
-                rayPathArray(:, i, iOrigin) = rayX + rayT.*(zSteps(i) - rayX(3));
-            end
+        elseif clearReverseRays
 
-            if testPlot
-                plot3(rayPathArray(1, currentStep+1:length(zSteps), iOrigin), rayPathArray(2, currentStep+1:length(zSteps), iOrigin), ...
-                    rayPathArray(3, currentStep+1:length(zSteps), iOrigin), '.', 'color', rayCols(iOrigin,:));
-            end
+            finalRay(iOrigin,:) = NaN;
+            finalRayTRefract(iOrigin,:) = NaN;
+
+            finalIntersect(iOrigin,:) = NaN;
+            rayPathArray(:,:,iOrigin) = NaN;
         end
-    elseif clearReverseRays
-        
-        finalRay(iOrigin,:) = NaN;
-        finalRayTRefract(iOrigin,:) = NaN;
-        
-        finalIntersect(iOrigin,:) = NaN;
-        rayPathArray(:,:,iOrigin) = NaN;
+
+        pause(0.01)
     end
     
-    pause(0.01)
+    rayPathCells{aAngle} = finalRay;
+    finalIntersectCells{aAngle} = finalRayTRefract;
+    finalRayCells{aAngle} = finalIntersect;
+    finalRayTRefractCells{aAngle} = rayPathArray;
+    rayReverseCells{aAngle} = rayReversed;
+    
+
+    warning('on', 'MATLAB:nearlySingularMatrix')
+
+    tolerance
+    minDeltaS(minDeltaS < 1)*10^6
+    mean(minDeltaS(minDeltaS < 1))*10^6
+    
+    time = toc;
+    [aAngle time]
+    
 end
-
-warning('on', 'MATLAB:nearlySingularMatrix')
-
-tolerance
-minDeltaS(minDeltaS < 1)*10^6
-mean(minDeltaS(minDeltaS < 1))*10^6
-
 %% Plot results
 % close all
 
@@ -1569,243 +1610,408 @@ if useRealData
     
     angleCols = winter(length(incidenceAngle));
     
-    % Plot spot diagram first
-    figure; hold on; axis equal
+    outlineCol = [0.5 0.5 0.5];
     
-    coneTipZ = (volumeSize(3)-coneVertices(1,3))*voxelSize;
-    priorInd = find(zSteps < coneTipZ); priorInd = priorInd(end);
-     
-    % store for acceptance angle
-    rayAccepted = zeros(nOrigins, 1)*NaN;
-    rayForCOLC = zeros(nOrigins, 1);
+    spotF = figure;
+    rayF = figure;
+    tipF = figure; hold on; axis equal
     
-    for iOrigin = 1:nOrigins
-        if all(~isnan(finalRay(iOrigin,:))) & all(~isnan(rayPathArray(:,:,iOrigin))) & all(~isnan(finalIntersect(iOrigin,:)))
-                
-            % check if final intersect is closer than last z step    
-            if abs(finalIntersect(iOrigin, 3) - coneTipZ) < abs(rayPathArray(3,priorInd,iOrigin) - coneTipZ)
-                % if it is less than a micron away just plot directly
-                if abs(finalIntersect(iOrigin, 3) - coneTipZ) < 10^-3
-                   xTip = rayPathArray(1,priorInd,iOrigin);
-                   yTip = rayPathArray(2,priorInd,iOrigin);
-                else
-                   % should adjust with the refracted ray? (could be intersection after...)
-                   if finalIntersect(iOrigin, 3) - coneTipZ < 0
-                        % intesect is behind, can just extend refracted ray
-                        zDiff = coneTipZ - finalIntersect(iOrigin, 3);
-                        normRay = finalRayTRefract(iOrigin,:)/finalRayTRefract(iOrigin,3);
-                
-                        xTip = finalIntersect(iOrigin, 1) + normRay(1)*zDiff;
-                        yTip = finalIntersect(iOrigin, 2) + normRay(2)*zDiff;
-                   else
-                        error('Need to add treatment') 
+    acceptancePercentage = zeros(length(incidenceAngle),1);
+    
+    focusXHeight = zeros(length(incidenceAngle),1);
+    focusXRadius = zeros(length(incidenceAngle),1);
+    
+    focusYHeight = zeros(length(incidenceAngle),1);
+    focusYRadius = zeros(length(incidenceAngle),1);
+    
+    colcHeight = zeros(length(incidenceAngle),1);
+    colcRadius = zeros(length(incidenceAngle),1);
+    
+    for aAngle = 5; 1:length(incidenceAngle)
+        
+        finalRay = rayPathCells{aAngle};
+        finalRayTRefract = finalIntersectCells{aAngle};
+        finalIntersect = finalRayCells{aAngle};
+        rayPathArray = finalRayTRefractCells{aAngle};
+
+        % Plot spot diagram first
+        figure(spotF); 
+        subplot(1, length(incidenceAngle), aAngle)
+        hold on; axis equal
+        set(gca,'TickDir','out');
+        
+        coneTipZ = (volumeSize(3)-coneVertices(1,3))*voxelSize;
+        priorInd = find(zSteps < coneTipZ); priorInd = priorInd(end);
+
+        % store for acceptance angle
+        rayAccepted = zeros(nOrigins, 1)*NaN;
+        rayForColc = zeros(nOrigins, 1);
+
+        baseMult = 1.5;
+        
+        for iOrigin = 1:nOrigins
+            if all(~isnan(finalRay(iOrigin,:))) & all(~isnan(rayPathArray(:,:,iOrigin))) & all(~isnan(finalIntersect(iOrigin,:)))
+
+                % check if final intersect is closer than last z step    
+                if abs(finalIntersect(iOrigin, 3) - coneTipZ) < abs(rayPathArray(3,priorInd,iOrigin) - coneTipZ)
+                    % if it is less than a micron away just plot directly
+                    if abs(finalIntersect(iOrigin, 3) - coneTipZ) < 10^-3
+                       xTip = rayPathArray(1,priorInd,iOrigin);
+                       yTip = rayPathArray(2,priorInd,iOrigin);
+                    else
+                       % should adjust with the refracted ray? (could be intersection after...)
+                       if finalIntersect(iOrigin, 3) - coneTipZ < 0
+                            % intesect is behind, can just extend refracted ray
+                            zDiff = coneTipZ - finalIntersect(iOrigin, 3);
+                            normRay = finalRayTRefract(iOrigin,:)/finalRayTRefract(iOrigin,3);
+
+                            xTip = finalIntersect(iOrigin, 1) + normRay(1)*zDiff;
+                            yTip = finalIntersect(iOrigin, 2) + normRay(2)*zDiff;
+                       else
+                            error('Need to add treatment') 
+                       end
                    end
-               end
-            else
-                zDiff = coneTipZ - rayPathArray(3,priorInd,iOrigin);
-                normRay = finalRay(iOrigin,:)/finalRay(iOrigin,3);
-                
-                xTip = rayPathArray(1,priorInd,iOrigin) + normRay(1)*zDiff;
-                yTip = rayPathArray(2,priorInd,iOrigin) + normRay(2)*zDiff;
+                else
+                    zDiff = coneTipZ - rayPathArray(3,priorInd,iOrigin);
+                    normRay = finalRay(iOrigin,:)/finalRay(iOrigin,3);
+
+                    xTip = rayPathArray(1,priorInd,iOrigin) + normRay(1)*zDiff;
+                    yTip = rayPathArray(2,priorInd,iOrigin) + normRay(2)*zDiff;
+                end
+
+                xTip = xTip - volumeSize(1)/2*voxelSize;
+                yTip = yTip - volumeSize(1)/2*voxelSize;
+
+                % Accepted if within receptor radius and angle isn't too large
+                if sqrt(xTip.^2 + yTip.^2) <= receptorRadius/1000 & ...
+                        dot(finalRay(iOrigin,:), [0 0 1])/(norm(finalRay(iOrigin,:))*norm([0 0 1])) < receptorAcceptance/180*pi
+                    rayAccepted(iOrigin) = 1;
+                else
+                    rayAccepted(iOrigin) = 0;
+                end
+
+                if abs(xTip) > coneProfileR(end)*voxelSize*baseMult | ...
+                       abs(yTip) > coneProfileR(end)*voxelSize*baseMult
+                   % Add arrow as ray is of diagram
+
+                   % Firstly scale to border
+                   if abs(xTip) > coneProfileR(end)*voxelSize*baseMult
+                       yTipClip = yTip*(coneProfileR(end)*voxelSize*baseMult)/xTip;
+                       xTipClip = coneProfileR(end)*voxelSize*baseMult;
+                   elseif abs(yTip) > coneProfileR(end)*voxelSize*baseMult
+                       xTipClip = xTip*(coneProfileR(end)*voxelSize*baseMult)/yTip;
+                       yTipClip = coneProfileR(end)*voxelSize*baseMult;
+                   end
+                   
+                   tipNorm = sqrt(xTipClip^2 + yTipClip^2);
+                   
+                   line(xTipClip*1000+[-xTipClip/tipNorm*5 0], yTipClip*1000+[-yTipClip/tipNorm*5 0], 'linewidth', 1.5, 'color', 'k')
+                end
+
+                if plotLineCols
+                    col = rayCols(iOrigin,:);
+                else
+                   col = 'k';
+                end
+
+                if finalIntersect(iOrigin, 3) > coneTipZ - exposedHeight/1000;
+                    %sqrt(xTip.^2 + yTip.^2) <= coneProfileR(1)*2.5*voxelSize
+                    plot(xTip*1000, yTip*1000, 'x', 'color', col)
+                    rayForColc(iOrigin) = 1;
+                else
+                    plot(xTip*1000, yTip*1000, 'o', 'color', col)
+                    rayForColc(iOrigin) = 0;
+                end
+            end
+        end
+
+        acceptancePercentage(aAngle) = sum( rayAccepted(~isnan(rayAccepted)))/sum(~isnan(rayAccepted));
+
+        viscircles([0 0],receptorRadius, 'color', 'r')
+
+        exposedConeInds = find(coneProfileZ*voxelSize > coneTipZ - exposedHeight/1000);
+        
+        viscircles([0 0],coneProfileR(exposedConeInds(end))*1000*voxelSize, 'color', outlineCol, 'linestyle', '-.');
+        
+        viscircles([0 0],coneProfileR(end)*1000*voxelSize, 'color', outlineCol);
+
+        ylim([-coneProfileR(end) coneProfileR(end)]*voxelSize*baseMult*1000)
+        xlim([-coneProfileR(end) coneProfileR(end)]*voxelSize*baseMult*1000)
+
+        title(sprintf('%.1f deg',incidenceAngle(aAngle)))
+        
+        %%% Add option to just plot these along X and Y axis
+
+        % Plot raypaths in X
+        figure(rayF); 
+        subplot(2, length(incidenceAngle)+1,aAngle); hold on; axis equal;
+        set(gca,'TickDir','out');
+        
+        % limit number of lines plotted
+        tempInds = find(raysOnXZPlane);
+        tempRaysOnXZPlane = raysOnXZPlane*0;
+        tempRaysOnXZPlane(tempInds(1:plotSpacing:end)) = 1;
+
+        for iOrigin = 1:nOrigins
+            rayPath = permute(rayPathArray(:, :, iOrigin), [2 1]);
+
+            % plot3(rayPath(:,1), rayPath(:,2), rayPath(:,3), 'color', rayCols(iOrigin,:));
+            % shifted to 2 x 2d plots for assymetry
+
+            extendedRay = rayPath(end-1,:) + extendRayLength*finalRay(iOrigin,:);
+
+            %line([rayPath(end-1,1) extendedRay(1)], [rayPath(end-1,2) extendedRay(2)], [rayPath(end-1,3) extendedRay(3)], 'color', rayCols(iOrigin,:) )
+
+            if rayForColc(iOrigin); style = '-'; else; style = ':'; end
+
+            if plotLineCols; col = rayCols(iOrigin,:); else; col = 'k'; end
+
+            if ~justPlotCenterRays | (justPlotCenterRays & tempRaysOnXZPlane(iOrigin))
+                plot(rayPath(:,1),  rayPath(:,3), 'color', col, 'linestyle', style);
+                line([rayPath(end-1,1) extendedRay(1)], [rayPath(end-1,3) extendedRay(3)], 'color', col, 'linestyle', style)
+            end
+        end
+
+        title(sprintf('%.1f deg - X plane',incidenceAngle(aAngle)))
+
+        % Plot borders based on original profiles
+        %Cone
+        plot((volumeSize(2)/2+[-coneProfileR fliplr(coneProfileR) -coneProfileR(1)])*voxelSize,...
+            [coneProfileZ fliplr(coneProfileZ) coneProfileZ(1)]*voxelSize, 'color', outlineCol, 'linewidth',2);
+
+        % Others
+        line([0 volumeSize(2)]*voxelSize, [1 1]*corneaZ*voxelSize, 'color', outlineCol, 'linewidth',2);
+
+        %%% If flat
+        line([0 volumeSize(2)]*voxelSize, [1 1]*epicorneaZ*voxelSize, 'color', outlineCol, 'linewidth',2);
+
+        line([0 volumeSize(2)/2-coneProfileR(end)]*voxelSize, [1 1]*coneBaseZ*voxelSize, 'color', outlineCol, 'linewidth',2);
+        line([volumeSize(2)/2 + coneProfileR(end) volumeSize(2)]*voxelSize, [1 1]*coneBaseZ*voxelSize, 'color', outlineCol, 'linewidth',2);
+
+        plot( ([volumeSize(2)/2-interconeProfileR 0])*voxelSize, [interconeProfileZ interconeProfileZ(end)]*voxelSize, 'color', outlineCol, 'linewidth',2)
+        plot( ([volumeSize(2)/2+interconeProfileR volumeSize(2)])*voxelSize, [interconeProfileZ interconeProfileZ(end)]*voxelSize, 'color', outlineCol, 'linewidth',2)
+        
+        % Plot based on in image
+        % Cone
+    %     tempBorder = imerode(coneBorderVolume, strel('sphere',1));
+    %     inds = find(permute(tempBorder(:, round(volumeSize(2)/2), :),[1 3 2]));
+    %     [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
+    %     plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
+    %     
+    %     % Others
+    %     inds = find(permute(corneaBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
+    %     [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
+    %     plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
+    %     
+    % %     trisurf(grinSurface.faces, grinSurface.vertices(:,1), grinSurface.vertices(:,3), grinSurface.vertices(:,2), ...
+    % %        'FaceColor','g', 'FaceAlpha',0.8);
+    %     
+    %     inds = find(permute(epicorneaBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
+    %     [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
+    %     plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
+    %     
+    %     inds = find(permute(cInCBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
+    %     [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
+    %     plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
+    %     
+    %     inds = find(permute(interconeBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
+    %     [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
+    %     plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
+
+        % Plot central slice
+    %     imshow(flipud( permute( rayMap(:, round(rayOrigins(1,2)/voxelSize), :), [3 1 2])))
+
+        % plot in Y
+        tempInds = find(raysOnYZPlane);
+        tempRaysOnYZPlane = raysOnYZPlane*0;
+        tempRaysOnYZPlane(tempInds(1:plotSpacing:end)) = 1;
+        
+        subplot(2, length(incidenceAngle)+1, aAngle+length(incidenceAngle)+1); 
+        hold on; axis equal;
+        set(gca,'TickDir','out');
+        
+        for iOrigin = 1:nOrigins
+            rayPath = permute(rayPathArray(:, :, iOrigin), [2 1]);
+
+            extendedRay = rayPath(end-1,:) + extendRayLength*finalRay(iOrigin,:);
+
+            if rayForColc(iOrigin); style = '-'; else; style = ':'; end
+
+            if plotLineCols; col = rayCols(iOrigin,:); else; col = 'k'; end
+
+            if ~justPlotCenterRays | (justPlotCenterRays & tempRaysOnYZPlane(iOrigin))
+                plot(rayPath(:,2),  rayPath(:,3), 'color', col, 'linestyle', style);
+                line([rayPath(end-1,2) extendedRay(2)], [rayPath(end-1,3) extendedRay(3)], 'color', col, 'linestyle', style);
+            end
+        end
+
+        if incidenceAngle(aAngle) == 0
+            title(sprintf('%.1f deg - Y plane',incidenceAngle(aAngle)))
+        else
+            title(sprintf('%.1f deg - Y plane (Rays lean in)',incidenceAngle(aAngle))) 
+        end
+
+        % Plot borders from original profiles
+        plot((volumeSize(1)/2+[-coneProfileR fliplr(coneProfileR) -coneProfileR(1)])*voxelSize,...
+            [coneProfileZ fliplr(coneProfileZ) coneProfileZ(1)]*voxelSize, 'color', outlineCol, 'linewidth',2);
+
+        % Others
+        line([0 volumeSize(1)]*voxelSize, [1 1]*corneaZ*voxelSize, 'color', outlineCol, 'linewidth',2);
+
+        %%% If flat
+        line([0 volumeSize(1)]*voxelSize, [1 1]*epicorneaZ*voxelSize, 'color', outlineCol, 'linewidth',2);
+
+        line([0 volumeSize(1)/2-coneProfileR(end)]*voxelSize, [1 1]*coneBaseZ*voxelSize, 'color', outlineCol, 'linewidth',2);
+        line([volumeSize(1)/2 + coneProfileR(end) volumeSize(1)]*voxelSize, [1 1]*coneBaseZ*voxelSize, 'color', outlineCol, 'linewidth',2);
+
+        plot( ([volumeSize(1)/2-interconeProfileR 0])*voxelSize, [interconeProfileZ interconeProfileZ(end)]*voxelSize, 'color', outlineCol, 'linewidth',2)
+        plot( ([volumeSize(1)/2+interconeProfileR volumeSize(1)])*voxelSize, [interconeProfileZ interconeProfileZ(end)]*voxelSize, 'color', outlineCol, 'linewidth',2)
+        
+        if aAngle == 1
+            subplot(2, length(incidenceAngle)+1,length(incidenceAngle)+1); 
+            imshow(fliplr(permute((lensRIVolume(round(volumeSize(1)/2),:,:)-1.45)/(1.54-1.45), [2 3 1]))');
+            
+            ylim([-(volumeSize(3)*1/(volumeSize(3)*voxelSize)-volumeSize(3)) volumeSize(3)])
+        end
+        
+        % Get lines of least confusion
+        raysToUse = find(rayForColc);
+
+        focusXRadius(aAngle) = volumeSize(2)*voxelSize;
+        focusYRadius(aAngle) = volumeSize(2)*voxelSize;
+        colcRadius(aAngle) = volumeSize(2)*voxelSize;
+        
+        for iStep = 1:length(zSteps)
+            tempXRad = max(rayPathArray(1, iStep, raysToUse)) - min(rayPathArray(1, iStep, raysToUse));
+            if focusXRadius(aAngle) > tempXRad
+                focusXRadius(aAngle) = tempXRad;
+                focusXHeight(aAngle) = zSteps(iStep);
+                minXPoints = [min(rayPathArray(1, iStep, raysToUse)) max(rayPathArray(1, iStep, raysToUse))];
+            end
+
+            tempYRad = max(rayPathArray(2, iStep, raysToUse)) - min(rayPathArray(2, iStep, raysToUse));
+            if focusYRadius(aAngle) > tempYRad
+                focusYRadius(aAngle) = tempYRad;
+                focusYHeight(aAngle) = zSteps(iStep);
+                minYPoints = [min(rayPathArray(2, iStep, raysToUse)) max(rayPathArray(2, iStep, raysToUse))];
             end
             
-            xTip = xTip - volumeSize(1)/2*voxelSize;
-            yTip = yTip - volumeSize(1)/2*voxelSize;
-
-            % Accepted if within receptor radius and angle isn't too large
-            if sqrt(xTip.^2 + yTip.^2) <= receptorRadius/1000 & ...
-                    dot(finalRay(iOrigin,:), [0 0 1])/(norm(finalRay(iOrigin,:))*norm([0 0 1])) < receptorAcceptance/180*pi
-                rayAccepted(iOrigin) = 1;
-            else
-                rayAccepted(iOrigin) = 0;
+            [tempColcRad, tempColcCenter] = ExactMinBoundCircle(permute(rayPathArray(1:2, iStep, raysToUse), [3 1 2]));
+            if colcRadius(aAngle) > tempColcRad
+                colcRadius(aAngle) = tempColcRad;
+                colcHeight(aAngle) = zSteps(iStep);
+                minColcCenter = tempColcCenter;
             end
+        end
+
+        [focusXRadius(aAngle) focusXHeight(aAngle)]*1000
+        [focusYRadius(aAngle) focusYHeight(aAngle)]*1000
+
+        subplot(2, length(incidenceAngle)+1, aAngle); hold on; axis equal;
+        line(minXPoints, [1 1]*focusXHeight(aAngle), 'color', angleCols(aAngle,:), 'linewidth', 2)
+        
+        line(minColcCenter(1) + colcRadius(aAngle)*[-1 1], [1 1]*colcHeight(aAngle), 'color', angleCols(aAngle,:), 'linewidth', 2, 'linestyle', ':')
+
+        xlim([0 volumeSize(2)*voxelSize])
+        ylim([corneaZ*voxelSize-0.15 coneTipZ+0.15])
+        
+        subplot(2, length(incidenceAngle)+1, aAngle+length(incidenceAngle)+1); hold on; axis equal;
+        line(minYPoints, [1 1]*focusYHeight(aAngle), 'color', angleCols(aAngle,:), 'linewidth', 2)
+        
+        line(minColcCenter(2) + colcRadius(aAngle)*[-1 1], [1 1]*colcHeight(aAngle), 'color', angleCols(aAngle,:), 'linewidth', 2, 'linestyle', ':')
+        
+        xlim([0 volumeSize(2)*voxelSize])
+        ylim([corneaZ*voxelSize-0.15 coneTipZ])
+        
+        % Plot on tip
+        figure(tipF)
+        
+        for i = 1:3
+            subplot(1,3,i); hold on; axis equal
+            set(gca,'TickDir','out');
             
-            if sqrt(xTip.^2 + yTip.^2) > coneProfileR(end)*voxelSize
-                %%% Could add an arrow in this case?
-                warning('Ray could be off diagram')
-                
-            end
-            
-            if plotLineCols
-                col = rayCols(iOrigin,:);
-            else
-               col = 'k';
-            end
-            
-            if sqrt(xTip.^2 + yTip.^2) <= coneProfileR(1)*2.5*voxelSize
-                plot(xTip*1000, yTip*1000, 'x', 'color', col);
-                rayForCOLC(iOrigin) = 1;
-            else
-                plot(xTip*1000, yTip*1000, 'o', 'color', col);
-                rayForCOLC(iOrigin) = 0;
+            if aAngle == 1
+                plot((volumeSize(2)/2+[-coneProfileR fliplr(coneProfileR) -coneProfileR(1)])*voxelSize,...
+                    [coneProfileZ fliplr(coneProfileZ) coneProfileZ(1)]*voxelSize, 'color', outlineCol, 'linewidth',2);
             end
         end
-    end
-     
-    acceptancePercentage = sum( rayAccepted(~isnan(rayAccepted)))/sum(~isnan(rayAccepted))
-    
-    viscircles([0 0],receptorRadius, 'color', 'r')
-    
-    viscircles([0 0],coneProfileR(1)*1000*voxelSize, 'color', 'k', 'linestyle', ':');
-    viscircles([0 0],coneProfileR(end)*1000*voxelSize, 'color', 'k');
-    
-    ylim([-coneProfileR(end)*1000 coneProfileR(end)*1000]*voxelSize)
-    xlim([-coneProfileR(end)*1000 coneProfileR(end)*1000]*voxelSize)
-    
-    %%% Add option to just plot these along X and Y axis
-    
-    % Plot raypaths in X
-    figure; 
-    subplot(1,3,1); hold on; axis equal;
-    %view(0, 0)
-    for iOrigin = 1:nOrigins
-        rayPath = permute(rayPathArray(:, :, iOrigin), [2 1]);
 
-        % plot3(rayPath(:,1), rayPath(:,2), rayPath(:,3), 'color', rayCols(iOrigin,:));
-        % shifted to 2 x 2d plots for assymetry
-
-        extendedRay = rayPath(end-1,:) + extendRayLength*finalRay(iOrigin,:);
+        subplot(1,3,1);
+        line(mean(minColcCenter) + colcRadius(aAngle)*[-1 1], [1 1]*colcHeight(aAngle), 'color', angleCols(aAngle,:), 'linewidth', 2)
         
-        %line([rayPath(end-1,1) extendedRay(1)], [rayPath(end-1,2) extendedRay(2)], [rayPath(end-1,3) extendedRay(3)], 'color', rayCols(iOrigin,:) )
+        subplot(1,3,2);
+        line(minXPoints, [1 1]*focusXHeight(aAngle), 'color', angleCols(aAngle,:), 'linewidth', 2)
+        
+        subplot(1,3,3);
+        line(minYPoints, [1 1]*focusYHeight(aAngle), 'color', angleCols(aAngle,:), 'linewidth', 2)
     
-        if rayForCOLC(iOrigin); style = '-'; else; style = ':'; end
-        
-        if plotLineCols; col = rayCols(iOrigin,:); else; col = 'k'; end
-        
-        if ~justPlotCenterRays | (justPlotCenterRays & raysOnXZPlane(iOrigin))
-            plot(rayPath(:,1),  rayPath(:,3), 'color', col, 'linestyle', style);
-            line([rayPath(end-1,1) extendedRay(1)], [rayPath(end-1,3) extendedRay(3)], 'color', col, 'linestyle', style)
-        end
     end
     
-    xlim([0 volumeSize(1)*voxelSize])
-    ylim([0 1])
-    title(sprintf('%i deg',incidenceAngle))
-    
-    % Plot borders based on original profiles
-    %Cone
-    plot((volumeSize(1)/2+[-coneProfileR fliplr(coneProfileR) -coneProfileR(1)])*voxelSize,...
-        [coneProfileZ fliplr(coneProfileZ) coneProfileZ(1)]*voxelSize, 'k', 'linewidth',2);
+    figure(tipF)
+    for i = 1:3
+        subplot(1,3,i);
+        ylim(coneTipZ+[-0.15 0.15])
 
-    % Others
-    line([0 volumeSize(1)]*voxelSize, [1 1]*corneaZ*voxelSize, 'color', 'k', 'linewidth',2);
-    
-    %%% If flat
-    line([0 volumeSize(1)]*voxelSize, [1 1]*epicorneaZ*voxelSize, 'color', 'k', 'linewidth',2);
-    
-    line([0 volumeSize(1)/2-coneProfileR(end)]*voxelSize, [1 1]*coneBaseZ*voxelSize, 'color', 'k', 'linewidth',2);
-    line([volumeSize(1)/2 + coneProfileR(end) volumeSize(1)]*voxelSize, [1 1]*coneBaseZ*voxelSize, 'color', 'k', 'linewidth',2);
-    
-    plot( ([volumeSize(1)/2-interconeProfileR 0])*voxelSize, [interconeProfileZ interconeProfileZ(end)]*voxelSize, 'k', 'linewidth',2)
-    plot( ([volumeSize(1)/2+interconeProfileR volumeSize(1)])*voxelSize, [interconeProfileZ interconeProfileZ(end)]*voxelSize, 'k', 'linewidth',2)
-    
-    % Plot based on in image
-    % Cone
-%     tempBorder = imerode(coneBorderVolume, strel('sphere',1));
-%     inds = find(permute(tempBorder(:, round(volumeSize(2)/2), :),[1 3 2]));
-%     [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
-%     plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
-%     
-%     % Others
-%     inds = find(permute(corneaBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
-%     [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
-%     plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
-%     
-% %     trisurf(grinSurface.faces, grinSurface.vertices(:,1), grinSurface.vertices(:,3), grinSurface.vertices(:,2), ...
-% %        'FaceColor','g', 'FaceAlpha',0.8);
-%     
-%     inds = find(permute(epicorneaBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
-%     [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
-%     plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
-%     
-%     inds = find(permute(cInCBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
-%     [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
-%     plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
-%     
-%     inds = find(permute(interconeBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
-%     [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
-%     plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
-    
-    % Plot central slice
-%     imshow(flipud( permute( rayMap(:, round(rayOrigins(1,2)/voxelSize), :), [3 1 2])))
-    
-    % plot in Y
-    subplot(1,3,2); hold on; axis equal;
-    for iOrigin = 1:nOrigins
-        rayPath = permute(rayPathArray(:, :, iOrigin), [2 1]);
-
-        extendedRay = rayPath(end-1,:) + extendRayLength*finalRay(iOrigin,:);
- 
-        if rayForCOLC(iOrigin); style = '-'; else; style = ':'; end
-        
-        if plotLineCols; col = rayCols(iOrigin,:); else; col = 'k'; end
-        
-        if ~justPlotCenterRays | (justPlotCenterRays & raysOnYZPlane(iOrigin))
-            plot(rayPath(:,2),  rayPath(:,3), 'color', col, 'linestyle', style);
-            line([rayPath(end-1,2) extendedRay(2)], [rayPath(end-1,3) extendedRay(3)], 'color', col, 'linestyle', style);
-        end
+        colormap(angleCols)
+        cH = colorbar;
+        set(cH, 'TickLabels', incidenceAngle, 'Ticks', ((1:length(incidenceAngle))-1)/(length(incidenceAngle)-1),'TickDir','out')
     end
-    
-    xlim([0 volumeSize(1)*voxelSize])
-    ylim([0 1])
-    title(sprintf('%i deg',incidenceAngle))
-    
-    % Plot borders from original profiles
-    plot((volumeSize(1)/2+[-coneProfileR fliplr(coneProfileR) -coneProfileR(1)])*voxelSize,...
-    [coneProfileZ fliplr(coneProfileZ) coneProfileZ(1)]*voxelSize, 'k', 'linewidth',2);
-
-    % Others
-    line([0 volumeSize(1)]*voxelSize, [1 1]*corneaZ*voxelSize, 'color', 'k', 'linewidth',2);
-    
-    %%% If flat
-    line([0 volumeSize(1)]*voxelSize, [1 1]*epicorneaZ*voxelSize, 'color', 'k', 'linewidth',2);
-    
-    line([0 volumeSize(1)/2-coneProfileR(end)]*voxelSize, [1 1]*coneBaseZ*voxelSize, 'color', 'k', 'linewidth',2);
-    line([volumeSize(1)/2 + coneProfileR(end) volumeSize(1)]*voxelSize, [1 1]*coneBaseZ*voxelSize, 'color', 'k', 'linewidth',2);
-    
-    plot( ([volumeSize(1)/2-interconeProfileR 0])*voxelSize, [interconeProfileZ interconeProfileZ(end)]*voxelSize, 'k', 'linewidth',2)
-    plot( ([volumeSize(1)/2+interconeProfileR volumeSize(1)])*voxelSize, [interconeProfileZ interconeProfileZ(end)]*voxelSize, 'k', 'linewidth',2)
-    
-    
-    
-    subplot(1,3,3); 
-    imshow(fliplr(permute((lensRIVolume(round(volumeSize(1)/2),:,:)-1.45)/(1.54-1.45), [2 3 1]))');
-    
-    ylim([-(volumeSize(3)*1/(volumeSize(3)*voxelSize)-volumeSize(3)) volumeSize(3)])
-    
-
-    % Get lines of least confusion
-    raysToUse = find(rayForCOLC);
-    
-    minXRad = volumeSize(2)*voxelSize;
-    minYRad = volumeSize(2)*voxelSize;
-    
-    for iStep = 1:length(zSteps)
-        tempXRad = max(rayPathArray(1, iStep, raysToUse)) - min(rayPathArray(1, iStep, raysToUse));
-        if minXRad > tempXRad
-            minXRad = tempXRad;
-            minXHeight = zSteps(iStep);
-            minXPoints = [min(rayPathArray(1, iStep, raysToUse)) max(rayPathArray(1, iStep, raysToUse))];
-        end
-        
-        tempYRad = max(rayPathArray(2, iStep, raysToUse)) - min(rayPathArray(2, iStep, raysToUse));
-        if minYRad > tempYRad
-            minYRad = tempYRad;
-            minYHeight = zSteps(iStep);
-            minYPoints = [min(rayPathArray(2, iStep, raysToUse)) max(rayPathArray(2, iStep, raysToUse))];
-        end
-    end
-    
-    [minXRad minXHeight]*1000
-    [minYRad minYHeight]*1000
-    
-    aStep = 1;
     
     subplot(1,3,1);
-    line(minXPoints, [1 1]*minXHeight, 'color', angleCols(aStep,:), 'linewidth', 2)
+    title('COLC by angle')
     
     subplot(1,3,2);
-    line(minYPoints, [1 1]*minYHeight, 'color', angleCols(aStep,:), 'linewidth', 2, 'linestyle', '-.')
+    title('X Focus by angle')
+    
+    subplot(1,3,3);
+    title('Y Focus by angle')
+    
+    % Plot final results
+    figure;
+    subplot(3,3,1)
+    plot(incidenceAngle, acceptancePercentage)
+    title('Acceptance function')
+    ylim([0 1]); ylabel('Percentage captured'); xlabel('Angle (o)')
+    set(gca,'TickDir','out');
+    
+    subplot(3,3,2)
+    plot(incidenceAngle, (colcHeight - coneTipZ)*1000)
+    title('COLC Height from Tip')
+    line([0 10], [0 0], 'color', 'k')
+    ylim([-100 100]); ylabel('Height (um)'); xlabel('Angle (o)')
+    set(gca,'TickDir','out');
+    
+    subplot(3,3,3)
+    plot(incidenceAngle, colcRadius*1000)
+    title('COLC radius')
+    ylim([0 40]); ylabel('Radius (um)'); xlabel('Angle (o)')
+    set(gca,'TickDir','out');
+    
+    subplot(3,3,5)
+    plot(incidenceAngle, (focusXHeight - coneTipZ)*1000)
+    title('X Focus Height from Tip')
+    line([0 10], [0 0], 'color', 'k')
+    ylim([-100 100]); ylabel('Height (um)'); xlabel('Angle (o)')
+    set(gca,'TickDir','out');
+    
+    subplot(3,3,6)
+    plot(incidenceAngle, focusXRadius*1000)
+    title('X Focus Radius')
+    ylim([0 40]); ylabel('Radius (um)'); xlabel('Angle (o)')
+    set(gca,'TickDir','out');
+    
+    subplot(3,3,8)
+    plot(incidenceAngle, (focusYHeight - coneTipZ)*1000)
+    title('Y Focus Height from Tip')
+    line([0 10], [0 0], 'color', 'k')
+    ylim([-100 100]); ylabel('Height (um)'); xlabel('Angle (o)')
+    set(gca,'TickDir','out');
+    
+    subplot(3,3,9)
+    plot(incidenceAngle, focusYRadius*1000)
+    title('Y Focus Radius')
+    ylim([0 40]); ylabel('Radius (um)'); xlabel('Angle (o)')
+    set(gca,'TickDir','out');
     
 elseif useTestData
     
