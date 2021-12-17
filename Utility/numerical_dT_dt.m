@@ -1,7 +1,7 @@
 function [dT_dt, n_of_X, dn_partial_dX] = numerical_dT_dt(X, vol_coords, vol_inds, lens_volume, fixedRI)
     % get change in ray vector based on change in refractive index and derivative as in nishidate 2011 paper
         
-    if ~isnan(fixedRI)
+    if isnan(fixedRI)
         % take sampling points first
         [sampling_inds, sampling_coords, point_dists] = getsamplingpoints(vol_coords, X);
 

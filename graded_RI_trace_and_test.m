@@ -8,11 +8,14 @@ clc; close all
 
 useRealData = 1;
 
-incidenceAngle = 0; 0:2.5:20; [0 5 10];  % deg, in XZ - plane    
+incidenceAngle = 0:2.5:20; [0 5 10];  % deg, in XZ - plane    
 
 if useRealData
     dataFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/AnalysisVolumes/5 micron/';
-
+    analysisFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/AnalysisResults/';
+    saveData = 1;
+    saveFigures = 1;
+    
     %%% All currently have 5000 um voxel resolution
     
     % Cone w/ latest radial at top
@@ -61,7 +64,7 @@ if useRealData
     
     exposedHeight = 15; % micron - night, maybe around 20 for day light
     blockExposedRentry = 1;
-    
+        
     testOrigin = []; [5 6 7 8];
 else
     useTestData = 1;
@@ -80,12 +83,14 @@ else
         alpha = 1/sqrt(2.5); 0.7; 
         beta = alpha*n0;
         plotReferenceFiber = 0; % will plot data from Nishidate and only trace 0.5
+        
+    blockExposedRentry = 0;
 end
 
 xSpacing = 5; % in voxels...
 plotSpacing = 1; % Mutiple of xSpaing to plot - only for center ray plotting
 
-trace3D = 1;
+trace3D = 1; % Otherwise just line across X
 
 % Options, 1, 4S, 4RKN, 5RKN, 45RKN 
 % Difference 4 to 5 is quite small
@@ -98,15 +103,15 @@ interpType = '4S'; %'4S';
         % in fixed step, 10^-3 vs. 10^-4 gives rough order of magnitude error
 %     initialDeltaS = 0.5*10^-3;
     % Need for uniform
-    initialDeltaS = 0.1*10^-3;
+    initialDeltaS = 1*10^-3;
 
     % This keeps spot size surpsingly small, even on loose tolerance
         % (I guess it ends up stepping further at loose tolerance...)
-    iterativeFinal = 0;  
+    iterativeFinal = 1;  
     
 %error term, sqrt of machine precision, from Nishidate paper sqrt(1.49e-8)
     % Take geometric mean of single and double precision, double takes ages to evaluate
-epsilon = sqrt(1.49e-8); %sqrt(geomean([1.19e-7 2.22e-16])); 
+epsilon = sqrt(geomean([1.19e-7 2.22e-16])); sqrt(1.49e-8); %sqrt(geomean([1.19e-7 2.22e-16])); 
 
 % Should be on, but can switch off to test    
 interfaceRefraction = 1;  
@@ -124,9 +129,12 @@ extendRayLength = 1; % mm
 clearReverseRays = 1;
 
 plotLineCols = 0;
-justPlotCenterRays = 1;
+justPlotCenterRays = 0;
+scaleBarsOnRayDiagram = 1;
+plotRIImageOnRayDiagram = 0;
 
 testPlot = 0;
+testPlotSurface = 0;
 
 %% Load or create test data     
 if useRealData
@@ -272,6 +280,12 @@ if useRealData
         epicorneaSurface.faces = tempFaces;
         epicorneaSurface.vertices = tempVertices;
         
+        epicorneaProfileZ = epicorneaProfileZ + metaData.tipOffset*metaData.voxSize/metaData.voxSize3D;
+        
+        if flipSurfaces
+            epicorneaProfileZ = -(epicorneaProfileZ-volumeSize(3)/2)+volumeSize(3)/2;
+        end
+        
     else
        % just flat, can copy cornea with adjusted Z 
        epicorneaVertices = corneaVertices; 
@@ -290,6 +304,7 @@ if useRealData
         
         epicorneaZ = -(epicorneaZ-volumeSize(3)/2)+volumeSize(3)/2;
     end
+    
     epicorneaBorderVolume = polygon2voxel(epicorneaSurface, volumeSize, 'none');
 
     
@@ -418,6 +433,12 @@ if useRealData
         cInCSurface.faces = tempFaces;
         cInCSurface.vertices = tempVertices;
         
+        cInCProfileZ = cInCProfileZ + metaData.tipOffset*metaData.voxSize/metaData.voxSize3D;
+        
+        if flipSurfaces
+            cInCProfileZ = -(cInCProfileZ-volumeSize(3)/2)+volumeSize(3)/2;
+        end
+        
     else
         % use a flat cInC - basically as for intercone base
         tempZ = (metaData.coneLengthToUse)* metaData.voxSize/metaData.voxSize3D;
@@ -462,6 +483,7 @@ if useRealData
     
     if flipSurfaces
         cInCSurface.vertices(:,3) = -(cInCSurface.vertices(:,3)-volumeSize(3)/2)+volumeSize(3)/2;
+        
     end
 
     
@@ -669,34 +691,34 @@ if useRealData
     end
     interconeBorderVolume = polygon2voxel(interconeSurface, volumeSize, 'none');
 
-    
-    
     % plots 
-    figure;
-%     plot3(coneVertices(:,1), coneVertices(:,2), coneVertices(:,3), '.')
-    hold on; axis equal
-    trisurf(grinSurface.faces, grinSurface.vertices(:,1), grinSurface.vertices(:,2), grinSurface.vertices(:,3), ...
-       'FaceColor','g','FaceAlpha',0.8);
-   
-%     plot3(corneaVertices(:,1), corneaVertices(:,2), corneaVertices(:,3), '.')
-    trisurf(corneaSurface.faces, corneaSurface.vertices(:,1), corneaSurface.vertices(:,2), corneaSurface.vertices(:,3), ...
-       'FaceColor','m','FaceAlpha',0.8);
-   
-%    plot3(epicorneaVertices(:,1), epicorneaVertices(:,2), epicorneaVertices(:,3), '.')
-   trisurf(epicorneaSurface.faces, epicorneaSurface.vertices(:,1), epicorneaSurface.vertices(:,2), epicorneaSurface.vertices(:,3), ...
-       'FaceColor','c','FaceAlpha',0.8);
-   
-%    plot3(interconeBaseVertices(:,1), interconeBaseVertices(:,2), interconeBaseVertices(:,3), '.')
-   trisurf(interconeBaseSurface.faces, interconeBaseSurface.vertices(:,1), interconeBaseSurface.vertices(:,2), interconeBaseSurface.vertices(:,3), ...
-       'FaceColor','b','FaceAlpha',0.8);
-   
-%    plot3(cInCVertices(:,1), cInCVertices(:,2), cInCVertices(:,3), '.')
-%    trisurf(cInCSurface.faces, cInCSurface.vertices(:,1), cInCSurface.vertices(:,2), cInCSurface.vertices(:,3), ...
-%        'FaceColor','r','FaceAlpha',0.8);
-   
-%    plot3(interconeVertices(:,1), interconeVertices(:,2), interconeVertices(:,3), '.')
-   trisurf(interconeSurface.faces, interconeSurface.vertices(:,1), interconeSurface.vertices(:,2), interconeSurface.vertices(:,3), ...
-       'FaceColor','b','FaceAlpha',0.8);
+    if testPlotSurface
+        figure;
+    %     plot3(coneVertices(:,1), coneVertices(:,2), coneVertices(:,3), '.')
+        hold on; axis equal
+        trisurf(grinSurface.faces, grinSurface.vertices(:,1), grinSurface.vertices(:,2), grinSurface.vertices(:,3), ...
+           'FaceColor','g','FaceAlpha',0.8);
+
+    %     plot3(corneaVertices(:,1), corneaVertices(:,2), corneaVertices(:,3), '.')
+        trisurf(corneaSurface.faces, corneaSurface.vertices(:,1), corneaSurface.vertices(:,2), corneaSurface.vertices(:,3), ...
+           'FaceColor','m','FaceAlpha',0.8);
+
+    %    plot3(epicorneaVertices(:,1), epicorneaVertices(:,2), epicorneaVertices(:,3), '.')
+       trisurf(epicorneaSurface.faces, epicorneaSurface.vertices(:,1), epicorneaSurface.vertices(:,2), epicorneaSurface.vertices(:,3), ...
+           'FaceColor','c','FaceAlpha',0.8);
+
+    %    plot3(interconeBaseVertices(:,1), interconeBaseVertices(:,2), interconeBaseVertices(:,3), '.')
+       trisurf(interconeBaseSurface.faces, interconeBaseSurface.vertices(:,1), interconeBaseSurface.vertices(:,2), interconeBaseSurface.vertices(:,3), ...
+           'FaceColor','b','FaceAlpha',0.8);
+
+    %    plot3(cInCVertices(:,1), cInCVertices(:,2), cInCVertices(:,3), '.')
+    %    trisurf(cInCSurface.faces, cInCSurface.vertices(:,1), cInCSurface.vertices(:,2), cInCSurface.vertices(:,3), ...
+    %        'FaceColor','r','FaceAlpha',0.8);
+
+    %    plot3(interconeVertices(:,1), interconeVertices(:,2), interconeVertices(:,3), '.')
+       trisurf(interconeSurface.faces, interconeSurface.vertices(:,1), interconeSurface.vertices(:,2), interconeSurface.vertices(:,3), ...
+           'FaceColor','b','FaceAlpha',0.8);
+    end
    
    figure;
    subplot(1,2,1)
@@ -933,7 +955,7 @@ finalRayCells = cell(length(incidenceAngle), 1);
 finalRayTRefractCells = cell(length(incidenceAngle), 1);
 rayReverseCells = cell(length(incidenceAngle), 1);
 
-for aAngle = 5; 1:length(incidenceAngle)
+for aAngle = 1:length(incidenceAngle)
     
     tic
     
@@ -985,7 +1007,8 @@ for aAngle = 5; 1:length(incidenceAngle)
 
     for iOrigin = 1:nOrigins
         
-        iOrigin
+        tempTime = toc;
+        [aAngle iOrigin tempTime]
         
         %%% Could set up to do for series of ray angles
         rayT = startRayT; %3x1 : ray will move from bottom to top
@@ -1016,6 +1039,8 @@ for aAngle = 5; 1:length(incidenceAngle)
         propogateFinalRay = 0;
 
         numberOfExits = 0;
+        
+        hitsCornea = 0;
 
         currentPeriod = 1; % only used for graded fiber
 
@@ -1043,6 +1068,8 @@ for aAngle = 5; 1:length(incidenceAngle)
 
                     [intersectPointsIntercone, intersectDistanceIntercone, intersectFacesIntercone] = intersectLineMesh3d(lineDef, interconeSurface.vertices, interconeSurface.faces);
 
+                    %%% Note epsilon was increased for iterative final - hopefully it's not too fine here...
+                    
                     % put miniminum intersection distances into array - could be better way to do this
                     if ~isempty(intersectDistanceGrin)
                         % Remove points with dist less than ~zero - should modify function to do this...
@@ -1108,6 +1135,8 @@ for aAngle = 5; 1:length(incidenceAngle)
                                 rayX = mean(intersectPointsCornea(inds2Use,:),1);
 
                                 faceIndices = intersectFacesCornea(inds2Use);
+                                
+                                hitsCornea = 1;
 
                             case 3 % epicornea is first
                                 inds2Use = find(intersectDistanceEpicornea == min(intersectDistanceEpicornea));
@@ -1222,11 +1251,13 @@ for aAngle = 5; 1:length(incidenceAngle)
                             rTemp = mean(rTemp(:));
                             
                             enteringFromExposed = rTemp == metaData.innerValue;
+                       else
+                          enteringFromExposed = 0; 
                        end
                         
                        if ~(blockMultipleExits & numberOfExits > 0) & ~(blockExposedRentry & enteringFromExposed)
                             % Get interior RI at entry point
-                            [~, rOut] = numerical_dT_dt(rayX, volCoords(RIFlagInds,:), RIFlagInds, lensRIVolume, []);
+                            [~, rOut] = numerical_dT_dt(rayX, volCoords(RIFlagInds,:), RIFlagInds, lensRIVolume, NaN);
 
                             if interfaceRefraction
                                 % Get surface normal and exterior RI at entry point
@@ -1471,8 +1502,8 @@ for aAngle = 5; 1:length(incidenceAngle)
 
                     % Resort voxels
                     % Get array of voxels around current - using old voxelX
-                    [tempX, tempY, tempZ] = meshgrid((voxelX(1)-4:voxelX(1)+4)', (voxelX(2)-4:voxelX(2)+4)', ...
-                        (voxelX(3)-4:voxelX(3)+4)');
+                    [tempX, tempY, tempZ] = meshgrid((voxelX(1)-5:voxelX(1)+5)', (voxelX(2)-5:voxelX(2)+5)', ...
+                        (voxelX(3)-5:voxelX(3)+5)');
 
                     testCoords= [tempX(:), tempY(:), tempZ(:)];
 
@@ -1495,47 +1526,33 @@ for aAngle = 5; 1:length(incidenceAngle)
 
                     testCoords = testCoords(tempInds,:)*voxelSize;
 
-                    %%% If all voxels equal in patch can flag to skip calc and maintain rayT
-
                     % Sort forwards for closest 128
                     [~, nearInds] = sort(sqrt((testCoords(:,1)-x0(1)).^2+(testCoords(:,2)-x0(2)).^2+...
                         (testCoords(:,3)-x0(3)).^2));
 
-                    if length(nearInds) > 200
-                        nearInds = nearInds(1:200);
+                    if length(nearInds) > 400
+                        nearInds = nearInds(1:400);
                     end
 
-                    testInds_forwards = testInds(nearInds);
-                    testCoords_forwards = testCoords(nearInds,:);
+                    testInds = testInds(nearInds);
+                    testCoords = testCoords(nearInds,:);
 
                     lambda0 = lambdaFn(rayX, x0);
 
                     if iterativeFinal
-                        % Get backwards sorted as well
-                        [~, nearInds] = sort(sqrt((testCoords(:,1)-rayX(1)).^2+(testCoords(:,2)-rayX(2)).^2+...
-                            (testCoords(:,3)-rayX(3)).^2));
-
-                        if length(nearInds) > 200
-                            nearInds = nearInds(1:200);
-                        end
-
-                        testInds_backwards = testInds(nearInds);
-                        testCoords_backwards = testCoords(nearInds,:);
-
                         % Test intersection, leaving could just be a rounding point           
                         deltaS0_final = deltaS;
 
-                        its = 1;
+                        its = 0;
 
-                        while deltaS0_final*norm(t0) > epsilon && abs(lambda0-1) > 10^-6 
+                        while deltaS0_final*norm(t0) > epsilon && abs(lambda0-1) > 10^-9 
                             %%% using 10^-3 as test for zero in tests above and below
 
                             SF = 1; %A from paper - saftey factor
 
                             % included in loop on paper seems to never get hit
-                            if lambda0 < 10^-6
+                            if lambda0 < 10^-9
                                rayT = t0;
-                               warning('Not sure on this');
                                break
                             end
 
@@ -1550,8 +1567,8 @@ for aAngle = 5; 1:length(incidenceAngle)
                                 deltaS_final = SF*lambda0*deltaS0_final;
 
                                 %%% step ray backward with RK5 with fixed step
-                                [x, t] = ray_interpolation('5RKN', 'iso', x0', t0', deltaS_final, testCoords_backwards, ...
-                                    testInds_backwards, lensRIVolume, tolerance, RIToUse);
+                                [x, t] = ray_interpolation('5RKN', 'iso', x0', t0', deltaS_final, testCoords, ...
+                                    testInds, lensRIVolume, tolerance, RIToUse);
 
                                 rayX = x'; rayT = t';
                             end
@@ -1563,8 +1580,8 @@ for aAngle = 5; 1:length(incidenceAngle)
                                 x0 = rayX; %think this is the case, we are stepping forward
                                 t0 = rayT;
 
-                                [x, t] = ray_interpolation('5RKN', 'iso', x0', t0', deltaS_final, testCoords_forwards, ...
-                                    testInds_forwards, lensRIVolume, tolerance, RIToUse);
+                                [x, t] = ray_interpolation('5RKN', 'iso', x0', t0', deltaS_final, testCoords, ...
+                                    testInds, lensRIVolume, tolerance, RIToUse);
 
                                 rayX = x'; rayT = t';
 
@@ -1575,6 +1592,8 @@ for aAngle = 5; 1:length(incidenceAngle)
                             lambda0 = lambdaFn(rayX, x0);
 
                             deltaS0_final = deltaS_final;
+                            
+                            its = its + 1;
                         end
 
                     else
@@ -1596,7 +1615,7 @@ for aAngle = 5; 1:length(incidenceAngle)
                     finalRayT(iOrigin,:) = rayT;
 
                     % Get surface normal and RI at exit point
-                    [~, rIn] = numerical_dT_dt(rayX, volCoords(RIFlagInds,:), RIFlagInds, lensRIVolume, []); 
+                    [~, rIn] = numerical_dT_dt(rayX, volCoords(RIFlagInds,:), RIFlagInds, lensRIVolume, NaN); 
 
                     % In test case normalization seems to be very similar to dividing by RI at exit
         %           rayT = rayT/norm(rayT);
@@ -1724,12 +1743,12 @@ for aAngle = 5; 1:length(incidenceAngle)
             end
         end
 
-        if numberOfExits == 0
+        if numberOfExits == 0 | hitsCornea == 0
             propogateFinalRay = 0;
         end
         
         % extend ray path to end of z steps
-        if propogateFinalRay
+        if propogateFinalRay | useTestData
             finalRay(iOrigin,:) = rayT;
 
             if currentStep < length(zSteps)
@@ -1752,7 +1771,9 @@ for aAngle = 5; 1:length(incidenceAngle)
             rayPathArray(:,:,iOrigin) = NaN;
         end
 
-        pause(0.01)
+        if testPlot
+            pause(0.01)
+        end
     end
     
     rayPathCells{aAngle} = finalRay;
@@ -1764,26 +1785,26 @@ for aAngle = 5; 1:length(incidenceAngle)
 
     warning('on', 'MATLAB:nearlySingularMatrix')
 
-    tolerance
-    minDeltaS(minDeltaS < 1)*10^6
-    mean(minDeltaS(minDeltaS < 1))*10^6
-    
-    time = toc;
-    [aAngle time]
-    
+    if strcmp(interpType, '45RKN') 
+        tolerance
+        minDeltaS(minDeltaS < 1)*10^6
+        mean(minDeltaS(minDeltaS < 1))*10^6
+    end
+
 end
 %% Plot results
 % close all
 
 if useRealData
     
-    angleCols = winter(length(incidenceAngle));
+    angleCols = flipud(viridis(length(incidenceAngle)));
     
     outlineCol = [0.5 0.5 0.5];
     
     spotF = figure;
-    rayF = figure;
-    tipF = figure; hold on; axis equal
+    rayFX = figure; 
+    rayFY = figure; 
+    tipF = figure;
     
     acceptancePercentage = zeros(length(incidenceAngle),1);
     
@@ -1796,6 +1817,14 @@ if useRealData
     colcHeight = zeros(length(incidenceAngle),1);
     colcRadius = zeros(length(incidenceAngle),1);
     
+    rayReverseNum = zeros(length(incidenceAngle),1);
+    
+    nPlotRows = 2; % could do dynamically, but blah...
+    
+    coneTipZ = (volumeSize(3)-coneVertices(1,3))*voxelSize;
+    priorInd = find(zSteps < coneTipZ); priorInd = priorInd(end);
+    topConeInds = find(coneProfileZ*voxelSize > coneTipZ - exposedHeight/1000);
+    
     for aAngle = 1:length(incidenceAngle)
         
         finalRay = rayPathCells{aAngle};
@@ -1805,13 +1834,10 @@ if useRealData
 
         % Plot spot diagram first
         figure(spotF); 
-        subplot(1, length(incidenceAngle), aAngle)
+        subplot(nPlotRows, 5, aAngle)
         hold on; axis equal
-        set(gca,'TickDir','out');
-        
-        coneTipZ = (volumeSize(3)-coneVertices(1,3))*voxelSize;
-        priorInd = find(zSteps < coneTipZ); priorInd = priorInd(end);
-
+        set(gca,'TickDir','out','LineWidth', 1, 'FontSize', 20);
+            
         % store for acceptance angle
         rayAccepted = zeros(nOrigins, 1)*NaN;
         rayForColc = zeros(nOrigins, 1);
@@ -1851,9 +1877,10 @@ if useRealData
                 xTip = xTip - volumeSize(1)/2*voxelSize;
                 yTip = yTip - volumeSize(1)/2*voxelSize;
 
-                % Accepted if within receptor radius and angle isn't too large
+                % Accepted if within receptor radius and angle isn't too large and left above exposed part of tip
                 if sqrt(xTip.^2 + yTip.^2) <= receptorRadius/1000 & ...
-                        dot(finalRay(iOrigin,:), [0 0 1])/(norm(finalRay(iOrigin,:))*norm([0 0 1])) < receptorAcceptance/180*pi
+                        dot(finalRay(iOrigin,:), [0 0 1])/(norm(finalRay(iOrigin,:))*norm([0 0 1])) < receptorAcceptance/180*pi & ...
+                        finalIntersect(iOrigin, 3) > coneTipZ - exposedHeight/1000
                     rayAccepted(iOrigin) = 1;
                 else
                     rayAccepted(iOrigin) = 0;
@@ -1874,7 +1901,7 @@ if useRealData
                    
                    tipNorm = sqrt(xTipClip^2 + yTipClip^2);
                    
-                   line(xTipClip*1000+[-xTipClip/tipNorm*5 0], yTipClip*1000+[-yTipClip/tipNorm*5 0], 'linewidth', 1.5, 'color', 'k')
+                   line(xTipClip*1000+[-xTipClip/tipNorm*10 0], yTipClip*1000+[-yTipClip/tipNorm*10 0], 'linewidth', 1.5, 'color', 'k')
                 end
 
                 if plotLineCols
@@ -1900,22 +1927,64 @@ if useRealData
 
         exposedConeInds = find(coneProfileZ*voxelSize > coneTipZ - exposedHeight/1000);
         
-        viscircles([0 0],coneProfileR(exposedConeInds(end))*1000*voxelSize, 'color', outlineCol, 'linestyle', '-.');
+        viscircles([0 0],coneProfileR(exposedConeInds(end))*1000*voxelSize, 'color', [0.5 0 0.5]);
         
         viscircles([0 0],coneProfileR(end)*1000*voxelSize, 'color', outlineCol);
 
         ylim([-coneProfileR(end) coneProfileR(end)]*voxelSize*baseMult*1000)
         xlim([-coneProfileR(end) coneProfileR(end)]*voxelSize*baseMult*1000)
 
-        title(sprintf('%.1f deg',incidenceAngle(aAngle)))
+        set(gca, 'xtick', [-100:50:100], 'xtick', [-100:50:100])
         
-        %%% Add option to just plot these along X and Y axis
+        title(sprintf('%.1f deg',incidenceAngle(aAngle)))
 
         % Plot raypaths in X
-        figure(rayF); 
-        subplot(2, length(incidenceAngle)+1,aAngle); hold on; axis equal;
-        set(gca,'TickDir','out');
+        figure(rayFX); 
+        subplot(nPlotRows, 5, aAngle); hold on; axis equal;
+
+        title(sprintf('%.1f deg - X plane',incidenceAngle(aAngle)))
+
+        % Plot borders based on original profiles
+        % Cone
+        if metaData.displayProfiles.CinC
+            plot((volumeSize(2)/2+[-fliplr(coneProfileR) (coneProfileR)])*voxelSize,...
+                [fliplr(coneProfileZ) (coneProfileZ)]*voxelSize, 'color', outlineCol, 'linewidth',2);
+            
+            plot((volumeSize(2)/2+[-coneProfileR(end) -fliplr(cInCProfileR) (cInCProfileR) coneProfileR(end)])*voxelSize,...
+                [coneProfileZ(end) fliplr(cInCProfileZ) (cInCProfileZ) coneProfileZ(end)]*voxelSize, 'color', outlineCol, 'linewidth',2);
+        else
+            plot((volumeSize(2)/2+[-coneProfileR fliplr(coneProfileR) -coneProfileR(1)])*voxelSize,...
+                [coneProfileZ fliplr(coneProfileZ) coneProfileZ(1)]*voxelSize, 'color', outlineCol, 'linewidth',2);
+        end
         
+        plot((volumeSize(2)/2+[-fliplr(coneProfileR(topConeInds)) (coneProfileR(topConeInds)) ])*voxelSize,...
+                    [fliplr(coneProfileZ(topConeInds)) (coneProfileZ(topConeInds)) ]*voxelSize, 'color', [0.5 0 0.5], 'linewidth',3);
+        
+        % Others
+        line([0 volumeSize(2)]*voxelSize, [1 1]*corneaZ*voxelSize, 'color', outlineCol, 'linewidth',2);
+
+        if metaData.displayProfiles.EpicorneaCone
+            plot( ([0 volumeSize(2)/2-epicorneaProfileR volumeSize(2)/2+fliplr(epicorneaProfileR) volumeSize(2)])*voxelSize,...
+                [epicorneaProfileZ(1) epicorneaProfileZ fliplr(epicorneaProfileZ) epicorneaProfileZ(1)]*voxelSize, 'color', outlineCol, 'linewidth',2)
+        else
+            line([0 volumeSize(2)]*voxelSize, [1 1]*epicorneaZ*voxelSize, 'color', outlineCol, 'linewidth',2);
+        end
+        
+        line([0 volumeSize(2)/2-coneProfileR(end)]*voxelSize, [1 1]*coneBaseZ*voxelSize, 'color', outlineCol, 'linewidth',2);
+        line([volumeSize(2)/2 + coneProfileR(end) volumeSize(2)]*voxelSize, [1 1]*coneBaseZ*voxelSize, 'color', outlineCol, 'linewidth',2);
+
+        plot( ([volumeSize(2)/2-interconeProfileR 0])*voxelSize, [interconeProfileZ interconeProfileZ(end)]*voxelSize, 'color', outlineCol, 'linewidth',2)
+        plot( ([volumeSize(2)/2+interconeProfileR volumeSize(2)])*voxelSize, [interconeProfileZ interconeProfileZ(end)]*voxelSize, 'color', outlineCol, 'linewidth',2)
+
+        set(gca, 'FontSize', 20)
+        
+        % scale bar
+        if scaleBarsOnRayDiagram
+            line ([0.025 0.025], [0.5 0.7], 'linewidth', 2, 'color', 'k')
+            axis off
+        end
+        
+        % Plot actual rays on top
         % limit number of lines plotted
         tempInds = find(raysOnXZPlane);
         tempRaysOnXZPlane = raysOnXZPlane*0;
@@ -1940,10 +2009,27 @@ if useRealData
                 line([rayPath(end-1,1) extendedRay(1)], [rayPath(end-1,3) extendedRay(3)], 'color', col, 'linestyle', style)
             end
         end
+        
+        if aAngle == 1 & plotRIImageOnRayDiagram
+            subplot(nPlotRows, 5, nPlotRows*5); 
+            imshow(fliplr(permute((lensRIVolume(round(volumeSize(1)/2),:,:)-1.45)/(1.54-1.45), [2 3 1]))');
+            
+            ylim([-(volumeSize(3)*1/(volumeSize(3)*voxelSize)-volumeSize(3)) volumeSize(3)])
+        end
+        
+        % plot in Y
+        figure(rayFY); 
+        
+        subplot(nPlotRows, 5, aAngle); 
+        hold on; axis equal;
+        
+        if incidenceAngle(aAngle) == 0 | 1
+            title(sprintf('%.1f deg - Y plane',incidenceAngle(aAngle)))
+        else
+            title(sprintf('%.1f deg - Y plane (Rays lean in)',incidenceAngle(aAngle))) 
+        end
 
-        title(sprintf('%.1f deg - X plane',incidenceAngle(aAngle)))
-
-        % Plot borders based on original profiles
+        % Plot borders from original profiles
         %Cone
         if metaData.displayProfiles.CinC
             plot((volumeSize(2)/2+[-fliplr(coneProfileR) (coneProfileR)])*voxelSize,...
@@ -1956,60 +2042,38 @@ if useRealData
                 [coneProfileZ fliplr(coneProfileZ) coneProfileZ(1)]*voxelSize, 'color', outlineCol, 'linewidth',2);
         end
         
+        plot((volumeSize(2)/2+[-fliplr(coneProfileR(topConeInds)) (coneProfileR(topConeInds)) ])*voxelSize,...
+                    [fliplr(coneProfileZ(topConeInds)) (coneProfileZ(topConeInds)) ]*voxelSize, 'color', [0.5 0 0.5], 'linewidth',3);
+        
         % Others
-        line([0 volumeSize(2)]*voxelSize, [1 1]*corneaZ*voxelSize, 'color', outlineCol, 'linewidth',2);
+        line([0 volumeSize(1)]*voxelSize, [1 1]*corneaZ*voxelSize, 'color', outlineCol, 'linewidth',2);
 
         if metaData.displayProfiles.EpicorneaCone
-            plot( ([0 volumeSize(2)/2-epicorneaProfileR volumeSize(2)/2+fliplr(interconeProfileR) volumeSize(2)])*voxelSize,...
+            plot( ([0 volumeSize(2)/2-epicorneaProfileR volumeSize(2)/2+fliplr(epicorneaProfileR) volumeSize(2)])*voxelSize,...
                 [epicorneaProfileZ(1) epicorneaProfileZ fliplr(epicorneaProfileZ) epicorneaProfileZ(1)]*voxelSize, 'color', outlineCol, 'linewidth',2)
         else
             line([0 volumeSize(2)]*voxelSize, [1 1]*epicorneaZ*voxelSize, 'color', outlineCol, 'linewidth',2);
         end
+
+        line([0 volumeSize(1)/2-coneProfileR(end)]*voxelSize, [1 1]*coneBaseZ*voxelSize, 'color', outlineCol, 'linewidth',2);
+        line([volumeSize(1)/2 + coneProfileR(end) volumeSize(1)]*voxelSize, [1 1]*coneBaseZ*voxelSize, 'color', outlineCol, 'linewidth',2);
+
+        plot( ([volumeSize(1)/2-interconeProfileR 0])*voxelSize, [interconeProfileZ interconeProfileZ(end)]*voxelSize, 'color', outlineCol, 'linewidth',2)
+        plot( ([volumeSize(1)/2+interconeProfileR volumeSize(1)])*voxelSize, [interconeProfileZ interconeProfileZ(end)]*voxelSize, 'color', outlineCol, 'linewidth',2)
         
-        line([0 volumeSize(2)/2-coneProfileR(end)]*voxelSize, [1 1]*coneBaseZ*voxelSize, 'color', outlineCol, 'linewidth',2);
-        line([volumeSize(2)/2 + coneProfileR(end) volumeSize(2)]*voxelSize, [1 1]*coneBaseZ*voxelSize, 'color', outlineCol, 'linewidth',2);
-
-        plot( ([volumeSize(2)/2-interconeProfileR 0])*voxelSize, [interconeProfileZ interconeProfileZ(end)]*voxelSize, 'color', outlineCol, 'linewidth',2)
-        plot( ([volumeSize(2)/2+interconeProfileR volumeSize(2)])*voxelSize, [interconeProfileZ interconeProfileZ(end)]*voxelSize, 'color', outlineCol, 'linewidth',2)
+        set(gca, 'FontSize', 20)
         
-        % Plot based on in image
-        % Cone
-    %     tempBorder = imerode(coneBorderVolume, strel('sphere',1));
-    %     inds = find(permute(tempBorder(:, round(volumeSize(2)/2), :),[1 3 2]));
-    %     [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
-    %     plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
-    %     
-    %     % Others
-    %     inds = find(permute(corneaBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
-    %     [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
-    %     plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
-    %     
-    % %     trisurf(grinSurface.faces, grinSurface.vertices(:,1), grinSurface.vertices(:,3), grinSurface.vertices(:,2), ...
-    % %        'FaceColor','g', 'FaceAlpha',0.8);
-    %     
-    %     inds = find(permute(epicorneaBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
-    %     [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
-    %     plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
-    %     
-    %     inds = find(permute(interconeBaseBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
-    %     [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
-    %     plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
-    %     
-    %     inds = find(permute(interconeBorderVolume(:, round(volumeSize(2)/2), :),[1 3 2]));
-    %     [tempX, tempZ] = ind2sub(volumeSize([1, 3]), inds);
-    %     plot(tempX*voxelSize, tempZ*voxelSize, 'k.');
-
-        % Plot central slice
-    %     imshow(flipud( permute( rayMap(:, round(rayOrigins(1,2)/voxelSize), :), [3 1 2])))
-
-        % plot in Y
+        % scale bar
+        if scaleBarsOnRayDiagram
+            line ([0.025 0.025], [0.5 0.7], 'linewidth', 2, 'color', 'k')
+            axis off
+        end
+        
+        % Plot actual rays on top
+        % limit number of lines plotted
         tempInds = find(raysOnYZPlane);
         tempRaysOnYZPlane = raysOnYZPlane*0;
         tempRaysOnYZPlane(tempInds(1:plotSpacing:end)) = 1;
-        
-        subplot(2, length(incidenceAngle)+1, aAngle+length(incidenceAngle)+1); 
-        hold on; axis equal;
-        set(gca,'TickDir','out');
         
         for iOrigin = 1:nOrigins
             rayPath = permute(rayPathArray(:, :, iOrigin), [2 1]);
@@ -2025,31 +2089,9 @@ if useRealData
                 line([rayPath(end-1,2) extendedRay(2)], [rayPath(end-1,3) extendedRay(3)], 'color', col, 'linestyle', style);
             end
         end
-
-        if incidenceAngle(aAngle) == 0
-            title(sprintf('%.1f deg - Y plane',incidenceAngle(aAngle)))
-        else
-            title(sprintf('%.1f deg - Y plane (Rays lean in)',incidenceAngle(aAngle))) 
-        end
-
-        % Plot borders from original profiles
-        plot((volumeSize(1)/2+[-coneProfileR fliplr(coneProfileR) -coneProfileR(1)])*voxelSize,...
-            [coneProfileZ fliplr(coneProfileZ) coneProfileZ(1)]*voxelSize, 'color', outlineCol, 'linewidth',2);
-
-        % Others
-        line([0 volumeSize(1)]*voxelSize, [1 1]*corneaZ*voxelSize, 'color', outlineCol, 'linewidth',2);
-
-        %%% If flat
-        line([0 volumeSize(1)]*voxelSize, [1 1]*epicorneaZ*voxelSize, 'color', outlineCol, 'linewidth',2);
-
-        line([0 volumeSize(1)/2-coneProfileR(end)]*voxelSize, [1 1]*coneBaseZ*voxelSize, 'color', outlineCol, 'linewidth',2);
-        line([volumeSize(1)/2 + coneProfileR(end) volumeSize(1)]*voxelSize, [1 1]*coneBaseZ*voxelSize, 'color', outlineCol, 'linewidth',2);
-
-        plot( ([volumeSize(1)/2-interconeProfileR 0])*voxelSize, [interconeProfileZ interconeProfileZ(end)]*voxelSize, 'color', outlineCol, 'linewidth',2)
-        plot( ([volumeSize(1)/2+interconeProfileR volumeSize(1)])*voxelSize, [interconeProfileZ interconeProfileZ(end)]*voxelSize, 'color', outlineCol, 'linewidth',2)
         
-        if aAngle == 1
-            subplot(2, length(incidenceAngle)+1,length(incidenceAngle)+1); 
+        if aAngle == 1 & plotRIImageOnRayDiagram
+            subplot(nPlotRows, 5, nPlotRows*5); 
             imshow(fliplr(permute((lensRIVolume(round(volumeSize(1)/2),:,:)-1.45)/(1.54-1.45), [2 3 1]))');
             
             ylim([-(volumeSize(3)*1/(volumeSize(3)*voxelSize)-volumeSize(3)) volumeSize(3)])
@@ -2058,74 +2100,97 @@ if useRealData
         % Get lines of least confusion
         raysToUse = find(rayForColc);
 
-        focusXRadius(aAngle) = volumeSize(2)*voxelSize;
-        focusYRadius(aAngle) = volumeSize(2)*voxelSize;
-        colcRadius(aAngle) = volumeSize(2)*voxelSize;
-        
-        for iStep = 1:length(zSteps)
-            tempXRad = max(rayPathArray(1, iStep, raysToUse)) - min(rayPathArray(1, iStep, raysToUse));
-            if focusXRadius(aAngle) > tempXRad
-                focusXRadius(aAngle) = tempXRad;
-                focusXHeight(aAngle) = zSteps(iStep);
-                minXPoints = [min(rayPathArray(1, iStep, raysToUse)) max(rayPathArray(1, iStep, raysToUse))];
+        if ~isempty(raysToUse)
+            focusXRadius(aAngle) = volumeSize(2)*voxelSize;
+            focusYRadius(aAngle) = volumeSize(2)*voxelSize;
+            colcRadius(aAngle) = volumeSize(2)*voxelSize;
+
+            for iStep = 1:length(zSteps)
+                tempXRad = max(rayPathArray(1, iStep, raysToUse)) - min(rayPathArray(1, iStep, raysToUse));
+                if focusXRadius(aAngle) > tempXRad
+                    focusXRadius(aAngle) = tempXRad;
+                    focusXHeight(aAngle) = zSteps(iStep);
+                    minXPoints = [min(rayPathArray(1, iStep, raysToUse)) max(rayPathArray(1, iStep, raysToUse))];
+                end
+
+                tempYRad = max(rayPathArray(2, iStep, raysToUse)) - min(rayPathArray(2, iStep, raysToUse));
+                if focusYRadius(aAngle) > tempYRad
+                    focusYRadius(aAngle) = tempYRad;
+                    focusYHeight(aAngle) = zSteps(iStep);
+                    minYPoints = [min(rayPathArray(2, iStep, raysToUse)) max(rayPathArray(2, iStep, raysToUse))];
+                end
+
+                [tempColcRad, tempColcCenter] = ExactMinBoundCircle(permute(rayPathArray(1:2, iStep, raysToUse), [3 1 2]));
+                if colcRadius(aAngle) > tempColcRad
+                    colcRadius(aAngle) = tempColcRad;
+                    colcHeight(aAngle) = zSteps(iStep);
+                    minColcCenter = tempColcCenter;
+                end
             end
 
-            tempYRad = max(rayPathArray(2, iStep, raysToUse)) - min(rayPathArray(2, iStep, raysToUse));
-            if focusYRadius(aAngle) > tempYRad
-                focusYRadius(aAngle) = tempYRad;
-                focusYHeight(aAngle) = zSteps(iStep);
-                minYPoints = [min(rayPathArray(2, iStep, raysToUse)) max(rayPathArray(2, iStep, raysToUse))];
-            end
-            
-            [tempColcRad, tempColcCenter] = ExactMinBoundCircle(permute(rayPathArray(1:2, iStep, raysToUse), [3 1 2]));
-            if colcRadius(aAngle) > tempColcRad
-                colcRadius(aAngle) = tempColcRad;
-                colcHeight(aAngle) = zSteps(iStep);
-                minColcCenter = tempColcCenter;
-            end
-        end
+            figure(rayFX); 
+            subplot(nPlotRows, 5, aAngle); 
+%             line(minXPoints, [1 1]*focusXHeight(aAngle), 'color', angleCols(aAngle,:), 'linewidth', 4)
 
-        [focusXRadius(aAngle) focusXHeight(aAngle)]*1000
-        [focusYRadius(aAngle) focusYHeight(aAngle)]*1000
+            line(minColcCenter(1) + colcRadius(aAngle)*[-1 1], [1 1]*colcHeight(aAngle), 'color', angleCols(aAngle,:), 'linewidth', 4, 'linestyle', '-')
 
-        subplot(2, length(incidenceAngle)+1, aAngle); hold on; axis equal;
-        line(minXPoints, [1 1]*focusXHeight(aAngle), 'color', angleCols(aAngle,:), 'linewidth', 2)
-        
-        line(minColcCenter(1) + colcRadius(aAngle)*[-1 1], [1 1]*colcHeight(aAngle), 'color', angleCols(aAngle,:), 'linewidth', 2, 'linestyle', ':')
+            figure(rayFY); 
+            subplot(nPlotRows, 5, aAngle); 
+%             line(minYPoints, [1 1]*focusYHeight(aAngle), 'color', angleCols(aAngle,:), 'linewidth', 4)
 
-        xlim([0 volumeSize(2)*voxelSize])
-        ylim([corneaZ*voxelSize-0.15 coneTipZ+0.15])
-        
-        subplot(2, length(incidenceAngle)+1, aAngle+length(incidenceAngle)+1); hold on; axis equal;
-        line(minYPoints, [1 1]*focusYHeight(aAngle), 'color', angleCols(aAngle,:), 'linewidth', 2)
-        
-        line(minColcCenter(2) + colcRadius(aAngle)*[-1 1], [1 1]*colcHeight(aAngle), 'color', angleCols(aAngle,:), 'linewidth', 2, 'linestyle', ':')
-        
-        xlim([0 volumeSize(2)*voxelSize])
-        ylim([corneaZ*voxelSize-0.15 coneTipZ])
-        
-        % Plot on tip
-        figure(tipF)
-        
-        for i = 1:3
-            subplot(1,3,i); hold on; axis equal
-            set(gca,'TickDir','out');
-            
+            line(minColcCenter(2) + colcRadius(aAngle)*[-1 1], [1 1]*colcHeight(aAngle), 'color', angleCols(aAngle,:), 'linewidth', 4, 'linestyle', '-')
+
+            % Plot on tip
+            figure(tipF)
+
             if aAngle == 1
-                plot((volumeSize(2)/2+[-coneProfileR fliplr(coneProfileR) -coneProfileR(1)])*voxelSize,...
-                    [coneProfileZ fliplr(coneProfileZ) coneProfileZ(1)]*voxelSize, 'color', outlineCol, 'linewidth',2);
-            end
-        end
 
-        subplot(1,3,1);
-        line(mean(minColcCenter) + colcRadius(aAngle)*[-1 1], [1 1]*colcHeight(aAngle), 'color', angleCols(aAngle,:), 'linewidth', 2)
+                for i = 1:3
+                    subplot(1,3,i); hold on; axis equal
+
+                    plot((volumeSize(2)/2+[-coneProfileR fliplr(coneProfileR) -coneProfileR(1)])*voxelSize,...
+                        [coneProfileZ fliplr(coneProfileZ) coneProfileZ(1)]*voxelSize, 'color', outlineCol, 'linewidth',2);
+
+                    plot((volumeSize(2)/2+[-fliplr(coneProfileR(topConeInds)) (coneProfileR(topConeInds)) ])*voxelSize,...
+                        [fliplr(coneProfileZ(topConeInds)) (coneProfileZ(topConeInds)) ]*voxelSize, 'color', [0.5 0 0.5], 'linewidth',3);
+                end
+            end
+
+            subplot(1,3,1);
+            line(mean(minColcCenter) + colcRadius(aAngle)*[-1 1], [1 1]*colcHeight(aAngle), 'color', angleCols(aAngle,:), 'linewidth', 3)
+
+            subplot(1,3,2);
+            line(minXPoints, [1 1]*focusXHeight(aAngle), 'color', angleCols(aAngle,:), 'linewidth', 3)
+
+            subplot(1,3,3);
+            line(minYPoints, [1 1]*focusYHeight(aAngle), 'color', angleCols(aAngle,:), 'linewidth', 3)
+        else
+            focusXRadius(aAngle) = NaN;
+            focusYRadius(aAngle) = NaN;
+            colcRadius(aAngle) = NaN;
+            
+            focusXHeight(aAngle) = NaN;
+            focusYHeight(aAngle) = NaN;
+            colcHeight(aAngle) = NaN;
+        end
         
-        subplot(1,3,2);
-        line(minXPoints, [1 1]*focusXHeight(aAngle), 'color', angleCols(aAngle,:), 'linewidth', 2)
-        
-        subplot(1,3,3);
-        line(minYPoints, [1 1]*focusYHeight(aAngle), 'color', angleCols(aAngle,:), 'linewidth', 2)
+        rayReverseNum(aAngle) = sum(rayReverseCells{aAngle});
+    end
     
+    figure(rayFX);
+    for aAngle = 1:length(incidenceAngle)
+         subplot(nPlotRows, 5, aAngle);
+        
+        xlim([0 volumeSize(2)*voxelSize])
+        ylim([corneaZ*voxelSize-0.05 coneTipZ+0.15])
+    end
+    
+    figure(rayFY);
+    for aAngle = 1:length(incidenceAngle)
+         subplot(nPlotRows, 5, aAngle);
+        
+        xlim([0 volumeSize(2)*voxelSize])
+        ylim([corneaZ*voxelSize-0.05 coneTipZ+0.15])
     end
     
     figure(tipF)
@@ -2133,6 +2198,10 @@ if useRealData
         subplot(1,3,i);
         ylim(coneTipZ+[-0.15 0.15])
 
+        set(gca, 'YTick', coneTipZ+(-0.1:0.05:0.1), 'YTickLabel', -100:50:100, ...
+            'XTick', volumeSize(1)/2*voxelSize+(-0.05:0.025:0.05), 'XTickLabel', -50:25:50, ...
+            'TickDir','out', 'LineWidth', 1, 'FontSize', 20)
+        
         colormap(angleCols)
         cH = colorbar;
         set(cH, 'TickLabels', incidenceAngle, 'Ticks', ((1:length(incidenceAngle))-1)/(length(incidenceAngle)-1),'TickDir','out')
@@ -2147,52 +2216,119 @@ if useRealData
     subplot(1,3,3);
     title('Y Focus by angle')
     
+    acceptanceAngle = interp1(acceptancePercentage(acceptancePercentage > 0),incidenceAngle(acceptancePercentage > 0),0.5,'linear');
+    
+        
+    figure(spotF); set(gcf, 'position', [-1919 -149 1920 1104])
+    figure(rayFX); set(gcf, 'position', [-1919 -149 1920 1104])
+    figure(rayFY); set(gcf, 'position', [-1919 -149 1920 1104])
+    figure(tipF); set(gcf, 'position', [1 86 1680 869]) 
+    
     % Plot final results
-    figure;
-    subplot(3,3,1)
-    plot(incidenceAngle, acceptancePercentage)
+    sumF = figure; set(gcf, 'position', [1 86 1263 869]) 
+    subplot(3,3,1); hold on
+    plot(incidenceAngle, acceptancePercentage, 'k-', 'linewidth',2)
+    for aAngle = 1:length(incidenceAngle)
+        plot(incidenceAngle(aAngle), acceptancePercentage(aAngle), 'o', 'color', angleCols(aAngle,:))
+    end
     title('Acceptance function')
     ylim([0 1]); ylabel('Percentage captured'); xlabel('Angle (o)')
-    set(gca,'TickDir','out');
+    set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20);
     
-    subplot(3,3,2)
-    plot(incidenceAngle, (colcHeight - coneTipZ)*1000)
+    subplot(3,3,2); hold on
+    plot(incidenceAngle, (colcHeight - coneTipZ)*1000, 'k-', 'linewidth',2)
+    for aAngle = 1:length(incidenceAngle)
+        plot(incidenceAngle(aAngle), (colcHeight(aAngle)- coneTipZ)*1000, 'o', 'color', angleCols(aAngle,:))
+    end
     title('COLC Height from Tip')
-    line([0 10], [0 0], 'color', 'k')
-    ylim([-100 100]); ylabel('Height (um)'); xlabel('Angle (o)')
-    set(gca,'TickDir','out');
+    line([0 20], [0 0], 'color', 'k', 'linewidth',2)
+    ylim([-125 50]); ylabel('Height (um)'); xlabel('Angle (o)')
+    set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20);
     
-    subplot(3,3,3)
-    plot(incidenceAngle, colcRadius*1000)
+    subplot(3,3,3); hold on
+    plot(incidenceAngle, colcRadius*1000, 'k-', 'linewidth',2)
+    for aAngle = 1:length(incidenceAngle)
+        plot(incidenceAngle(aAngle), colcRadius(aAngle)*1000, 'o', 'color', angleCols(aAngle,:))
+    end
     title('COLC radius')
     ylim([0 40]); ylabel('Radius (um)'); xlabel('Angle (o)')
-    set(gca,'TickDir','out');
+    set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20);
     
-    subplot(3,3,5)
-    plot(incidenceAngle, (focusXHeight - coneTipZ)*1000)
+    subplot(3,3,5); hold on
+    plot(incidenceAngle, (focusXHeight - coneTipZ)*1000, 'k-', 'linewidth',2)
+    for aAngle = 1:length(incidenceAngle)
+        plot(incidenceAngle(aAngle), (focusXHeight(aAngle) - coneTipZ)*1000, 'o', 'color', angleCols(aAngle,:))
+    end
     title('X Focus Height from Tip')
-    line([0 10], [0 0], 'color', 'k')
-    ylim([-100 100]); ylabel('Height (um)'); xlabel('Angle (o)')
-    set(gca,'TickDir','out');
+    line([0 20], [0 0], 'color', 'k', 'linewidth',2)
+    ylim([-125 50]); ylabel('Height (um)'); xlabel('Angle (o)')
+    set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20);
     
-    subplot(3,3,6)
-    plot(incidenceAngle, focusXRadius*1000)
+    subplot(3,3,6); hold on
+    plot(incidenceAngle, focusXRadius*1000, 'k-', 'linewidth',2)
+    for aAngle = 1:length(incidenceAngle)
+        plot(incidenceAngle(aAngle), focusXRadius(aAngle)*1000, 'o', 'color', angleCols(aAngle,:))
+    end
     title('X Focus Radius')
     ylim([0 40]); ylabel('Radius (um)'); xlabel('Angle (o)')
-    set(gca,'TickDir','out');
+    set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20);
     
-    subplot(3,3,8)
-    plot(incidenceAngle, (focusYHeight - coneTipZ)*1000)
+    subplot(3,3,8); hold on
+    plot(incidenceAngle, (focusYHeight - coneTipZ)*1000, 'k-', 'linewidth',2)
+    for aAngle = 1:length(incidenceAngle)
+        plot(incidenceAngle(aAngle), (focusYHeight(aAngle)- coneTipZ)*1000, 'o', 'color', angleCols(aAngle,:))
+    end
     title('Y Focus Height from Tip')
-    line([0 10], [0 0], 'color', 'k')
-    ylim([-100 100]); ylabel('Height (um)'); xlabel('Angle (o)')
-    set(gca,'TickDir','out');
+    line([0 20], [0 0], 'color', 'k', 'linewidth',2)
+    ylim([-125 50]); ylabel('Height (um)'); xlabel('Angle (o)')
+    set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20);
     
-    subplot(3,3,9)
-    plot(incidenceAngle, focusYRadius*1000)
+    subplot(3,3,9); hold on
+    plot(incidenceAngle, focusYRadius*1000, 'k-', 'linewidth',2)
+    for aAngle = 1:length(incidenceAngle)
+        plot(incidenceAngle(aAngle), focusYRadius(aAngle)*1000, 'o', 'color', angleCols(aAngle,:))
+    end
     title('Y Focus Radius')
     ylim([0 40]); ylabel('Radius (um)'); xlabel('Angle (o)')
-    set(gca,'TickDir','out');
+    set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20);
+    
+    subplot(3,3,7); hold on
+    plot(incidenceAngle, rayReverseNum, 'k-', 'linewidth',2)
+    for aAngle = 1:length(incidenceAngle)
+        plot(incidenceAngle(aAngle), rayReverseNum(aAngle), 'o', 'color', angleCols(aAngle,:))
+    end
+    title('Ray reversals')
+    ylabel('Number'); xlabel('Angle (o)')
+    set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20);
+    
+    % Do some saving
+    if saveData
+        saveFile = sprintf('%s%s_SIMDATA.mat', analysisFolder, metaFile(1:end-4));
+        save(saveFile, 'rayPathCells', 'finalIntersectCells', 'finalRayCells', 'finalRayTRefractCells', 'rayReverseCells', ...
+            'dataFile', 'metaFile', 'incidenceAngle', 'receptorRadius', 'receptorAcceptance', 'exposedHeight', 'blockExposedRentry', ...
+            'xSpacing', 'plotSpacing', 'interpType', 'tolerance', 'initialDeltaS', 'iterativeFinal', 'epsilon',  'interfaceRefraction', 'blockMultipleExits', 'limitToConeBase', 'clearReverseRays',...
+            'acceptancePercentage', 'focusXHeight', 'focusXRadius', 'focusYHeight', 'focusYRadius', 'colcHeight', 'colcRadius', 'rayReverseNum', ...
+            'coneTipZ', 'corneaZ', 'epicorneaZ', 'coneBaseZ', ...
+            'coneProfileR', 'coneProfileZ', 'cInCProfileR', 'cInCProfileZ', 'epicorneaProfileR', 'epicorneaProfileZ', 'interconeProfileR', 'interconeProfileZ', ...
+            'voxelSize', 'volumeSize', 'acceptanceAngle')
+    end
+    
+    if saveFigures
+        imageFile = sprintf('%s/Figures/%s_SpotDiagram.pdf', analysisFolder, metaFile(1:end-4));
+        exportgraphics(spotF,imageFile,'ContentType','vector')
+        
+        imageFile = sprintf('%s/Figures/%s_RaysX.pdf', analysisFolder, metaFile(1:end-4));
+        exportgraphics(rayFX,imageFile,'ContentType','vector')
+        
+        imageFile = sprintf('%s/Figures/%s_RaysY.pdf', analysisFolder, metaFile(1:end-4));
+        exportgraphics(rayFY,imageFile,'ContentType','vector')
+        
+        imageFile = sprintf('%s/Figures/%s_COLCLines.pdf', analysisFolder, metaFile(1:end-4));
+        exportgraphics(tipF,imageFile,'ContentType','vector')
+        
+        imageFile = sprintf('%s/Figures/%s_Summary.pdf', analysisFolder, metaFile(1:end-4));
+        exportgraphics(sumF,imageFile,'ContentType','vector')
+    end
     
 elseif useTestData
     
@@ -2240,46 +2376,50 @@ elseif useTestData
                 startZ = find(RIFlagVolume(round(rayOrigins(iOrigin,1)/voxelSize),...
                     round(rayOrigins(iOrigin,2)/voxelSize), :));
 
-                startZ = startZ(1);
-                startZPerOrigin(iOrigin) = startZ;
-                
-                % Just a line up to enterance
-                tempRayPath(1,1:startZ) = rayOrigins(iOrigin,1)-lensCentre(1); % offset to sphere centre
-                tempRayPath(2,:) = rayOrigins(iOrigin,2) - lensCentre(2);
-%                 tempRayPath(3,:) = zSteps - lensCentre(3);
-                % Use actual z values
-                tempRayPath(3,:) = rayPathArray(3, :, iOrigin) - lensCentre(3);
-                
-                % get non stepped z values for start and end
-                tempRayPath(3,startZ) = firstIntersect(iOrigin,3)- lensCentre(3);
-                tempRayPath(3,topZ) = finalIntersect(iOrigin,3)- lensCentre(3);
-                
-                %%% Would be good to have solution as function of optical path length
-                
-                % From eqn 3 in Turduev cloaking paper (eqn 2 for non parallel rays)
-                tempRayPath(1, startZ:topZ) = tempRayPath(1,startZ)*(tempRayPath(3,startZ)*tempRayPath(3,startZ:topZ) + ...
-                    radius*sqrt(radius^2 + tempRayPath(3,startZ)^2 - tempRayPath(3,startZ:topZ).^2))/...
-                    (tempRayPath(3,startZ)^2 + radius^2);
+                if ~isempty(startZ)
+                    startZ = startZ(1);
+                    startZPerOrigin(iOrigin) = startZ;
 
-                finalR = radius;
-                finalX = tempRayPath(1,startZ)*(tempRayPath(3,startZ)*finalR + ...
-                    radius*sqrt(radius^2 + tempRayPath(3,startZ)^2 - finalR.^2))/...
-                    (tempRayPath(3,startZ)^2 + radius^2);
-                
-                % From eqn 4 in Turdev, note simplified given theta is 0
-                    % Note error in differentiation, final part of sqrt in denominator should be +2*x0^2
-                finalP = 2*tempRayPath(1,startZ)*tempRayPath(3,startZ)/(2*tempRayPath(3,startZ)^2+2*radius^2) + ...
-                    2*sqrt(2)*radius*finalR*tempRayPath(1,startZ)*-1/ ...
-                    ((2*tempRayPath(3,startZ)^2+2*radius^2)*sqrt(2*radius^2-2*finalR^2 + 2*tempRayPath(3,startZ)^2));
-                finalT = [finalP, 0, 1];
+                    % Just a line up to enterance
+                    tempRayPath(1,1:startZ) = rayOrigins(iOrigin,1)-lensCentre(1); % offset to sphere centre
+                    tempRayPath(2,:) = rayOrigins(iOrigin,2) - lensCentre(2);
+    %                 tempRayPath(3,:) = zSteps - lensCentre(3);
+                    % Use actual z values
+                    tempRayPath(3,:) = rayPathArray(3, :, iOrigin) - lensCentre(3);
 
-                % Propogate ray
-                tempRayPath(1, topZ+1:end) = (tempRayPath(3, topZ+1:end)-finalR)*finalT(1) + finalX;
-                
-                % Add sphere centre back
-                tempRayPath(1,:) = tempRayPath(1,:) + lensCentre(1);
-                tempRayPath(2,:) = tempRayPath(2,:) + lensCentre(2);
-                tempRayPath(3,:) = tempRayPath(3,:) + lensCentre(3);   
+                    % get non stepped z values for start and end
+                    tempRayPath(3,startZ) = firstIntersect(iOrigin,3)- lensCentre(3);
+                    tempRayPath(3,topZ) = finalIntersect(iOrigin,3)- lensCentre(3);
+
+                    %%% Would be good to have solution as function of optical path length
+
+                    % From eqn 3 in Turduev cloaking paper (eqn 2 for non parallel rays)
+                    tempRayPath(1, startZ:topZ) = tempRayPath(1,startZ)*(tempRayPath(3,startZ)*tempRayPath(3,startZ:topZ) + ...
+                        radius*sqrt(radius^2 + tempRayPath(3,startZ)^2 - tempRayPath(3,startZ:topZ).^2))/...
+                        (tempRayPath(3,startZ)^2 + radius^2);
+
+                    finalR = radius;
+                    finalX = tempRayPath(1,startZ)*(tempRayPath(3,startZ)*finalR + ...
+                        radius*sqrt(radius^2 + tempRayPath(3,startZ)^2 - finalR.^2))/...
+                        (tempRayPath(3,startZ)^2 + radius^2);
+
+                    % From eqn 4 in Turdev, note simplified given theta is 0
+                        % Note error in differentiation, final part of sqrt in denominator should be +2*x0^2
+                    finalP = 2*tempRayPath(1,startZ)*tempRayPath(3,startZ)/(2*tempRayPath(3,startZ)^2+2*radius^2) + ...
+                        2*sqrt(2)*radius*finalR*tempRayPath(1,startZ)*-1/ ...
+                        ((2*tempRayPath(3,startZ)^2+2*radius^2)*sqrt(2*radius^2-2*finalR^2 + 2*tempRayPath(3,startZ)^2));
+                    finalT = [finalP, 0, 1];
+
+                    % Propogate ray
+                    tempRayPath(1, topZ+1:end) = (tempRayPath(3, topZ+1:end)-finalR)*finalT(1) + finalX;
+
+                    % Add sphere centre back
+                    tempRayPath(1,:) = tempRayPath(1,:) + lensCentre(1);
+                    tempRayPath(2,:) = tempRayPath(2,:) + lensCentre(2);
+                    tempRayPath(3,:) = tempRayPath(3,:) + lensCentre(3);   
+                else
+                   startZPerOrigin(iOrigin) = NaN; 
+                end
             else
                 % outside fiber, just propogate along z
                 
@@ -2305,14 +2445,16 @@ elseif useTestData
                 
                 tempRayPath = permute(trueRayPathArray(:, :, iOrigin), [2 1]);
 
-                % Put actual start and end points into recorded path
-                rayPath(startZPerOrigin(iOrigin),:) = firstIntersect(iOrigin,:);
-                rayPath(topZ,:) = finalIntersect(iOrigin,:);
-                
-                plot((tempRayPath(:,1) - rayPath(:,1))*10^6, zSteps, 'color', rayCols(iOrigin,:))
-                
-                plot((tempRayPath(startZPerOrigin(iOrigin),1) - rayPath(startZPerOrigin(iOrigin),1))*10^6, zSteps(startZPerOrigin(iOrigin)), 'rx')
-                plot((tempRayPath(topZ,1) - rayPath(topZ,1))*10^6, zSteps(topZ), 'rx')
+                if ~isnan(startZPerOrigin(iOrigin))
+                    % Put actual start and end points into recorded path
+                    rayPath(startZPerOrigin(iOrigin),:) = firstIntersect(iOrigin,:);
+                    rayPath(topZ,:) = finalIntersect(iOrigin,:);
+
+                    plot((tempRayPath(:,1) - rayPath(:,1))*10^6, zSteps, 'color', rayCols(iOrigin,:))
+
+                    plot((tempRayPath(startZPerOrigin(iOrigin),1) - rayPath(startZPerOrigin(iOrigin),1))*10^6, zSteps(startZPerOrigin(iOrigin)), 'rx')
+                    plot((tempRayPath(topZ,1) - rayPath(topZ,1))*10^6, zSteps(topZ), 'rx')
+                end
             end
         end
         ylim([0 3])
@@ -2325,7 +2467,7 @@ elseif useTestData
         subplot(2,2,4); hold on; axis equal;
         centerRef = volumeSize/2*voxelSize;
         for iOrigin = 1:nOrigins
-            if finalIntersect(iOrigin,3) ~= 0
+            if finalIntersect(iOrigin,3) ~= 0 & ~isnan(startZPerOrigin(iOrigin))
                 plot((finalIntersect(iOrigin,1)-centerRef(1))*10^6, (finalIntersect(iOrigin,3)-radius-centerRef(3))*10^6, 'o',  'color', rayCols(iOrigin,:));
             end
         end
@@ -2435,7 +2577,7 @@ elseif useTestData
                 % Gives correct result From Merchland 5.41 and other refs 
                     %%% Was previously not dividing by RI/n0
                 firstCoord = [rayOrigins(iOrigin,1), fiberCentre(2), fiberCentre(3) - fiberLength/2];
-                [~, rStart] = numerical_dT_dt(firstCoord, volCoords(RIFlagInds,:), RIFlagInds, lensRIVolume, []);  
+                [~, rStart] = numerical_dT_dt(firstCoord, volCoords(RIFlagInds,:), RIFlagInds, lensRIVolume, NaN);  
 
                 tempRayPath(1, bottomZ:topZ) = tempRayPath(1,bottomZ)*cos(tempRayPath(3,bottomZ:topZ)*beta/rStart);
                 
@@ -2444,7 +2586,7 @@ elseif useTestData
                 finalX = tempRayPath(1,bottomZ)*cos(fiberLength*beta/rStart);
                 finalCoord = [finalX + fiberCentre(1), fiberCentre(2), fiberCentre(3) + fiberLength/2];
                 
-                [~, rEnd] = numerical_dT_dt(finalCoord, volCoords(RIFlagInds,:), RIFlagInds, lensRIVolume, []);  
+                [~, rEnd] = numerical_dT_dt(finalCoord, volCoords(RIFlagInds,:), RIFlagInds, lensRIVolume, NaN);  
 
                 % Get final vector and normalize - 5.43 in Merchland
                 finalP = -beta*tempRayPath(1,bottomZ)*sin(fiberLength*beta/rStart);
@@ -2662,7 +2804,8 @@ function lambda = surfaceLambdaFunction(x1, x0, surface)
         end
 
     elseif isempty(intersectDistance)
-            error('No intersect')
+        %%% Could increase tolerance on intersectLineMesh3d
+        error('No intersect')
     end
     
     % Same as distance value in this context
