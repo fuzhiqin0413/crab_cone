@@ -9,16 +9,16 @@ scaleUpVoxels = 1;
     voxScale = voxSize/newVoxSize; % Scale up factor on image for FDTD
     
 writeImage = 0;
-    fileNameBase = 'Cone_CinC_EC'; %'Cylinder' 'Cone_EC' 'Cone_CinC' 'Cone_CinC_EC'
+    fileNameBase = 'Cone_EC'; %'Cylinder' 'Cone_EC' 'Cone_CinC' 'Cone_CinC_EC'
 
 % targetFolder = '/Users/gavintaylor/Desktop/AnalysisImages';    
-targetFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/AnalysisVolumes/5 Micron';    
+targetFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/AnalysisVolumes/2 Micron';    
 
 create3D = 1;
     % Seems a bit smoother to scale up here than just set desired size in image
         % E.g. To get voxSize 2, a bit better to have newVoxSize as 1 and resize3DRatio 2 
         % than newVoxSize as 2 directly because of radial interpolant    
-    resize3DRatio = 5; % scales up from image, should be integer > 1
+    resize3DRatio = 2; % scales up from image, should be integer > 1
     makeSlab = 0; % Should indicate in file name
     write3D = 1;
     
@@ -31,17 +31,18 @@ tText = 'Smooth - 2.18 um'; %'-2 SD'; 'Mean';
 makeLabels = 0;
 
 % Set SD mult for cones and distances
+SDMult.ConeProfile = 0;
+
 SDMult.ConeLength = 0;
 SDMult.OuterCorneaLength = 0;
 SDMult.EpiCorneaLength = 0;
-SDMult.ConeProfile = 0;
 SDMult.CinCProfile = 0;
 SDMult.ExposedInterconeProfile = 0;
 SDMult.InternalInterconeProfile = 0;
 SDMult.EpicorneaProfile = 0;
 
 % Note, these don't automatically adjust the filename
-displayProfiles.CinC = 1; 
+displayProfiles.CinC = 0; 
 displayProfiles.EpicorneaCone = 1;
 
 %Can be from 1 - 4, can also be equal
@@ -59,10 +60,10 @@ createCylinder = 0; % instead of a cone
 if ~makeLabels
     outerValue = 1.33;
     innerValue = 1.34;
-    coneValue = 'both'; %1.52 'cylinder', 'radialTop', 'radialBase', 'linear' 'both'
+    coneValue = 'radialTop'; %1.52 'cylinder', 'radialTop', 'radialBase', 'linear' 'both'
     outerCorneaValue = 1.5;
     epicorneaValue = 1.53;
-    interconeValue = 1.47; -1; 
+    interconeValue = -1; %1.47; -1; 
 else
 % Labels
     outerValue = 0;
@@ -444,6 +445,7 @@ for i = 1:sliceSize(2)
                         % For for original linear contribution
 %                       tempRI = 1.5+(0.02)-0.00000612*tempRadius.^2;
                         
+                        % Data for FDTD was created using this
                         % New linear contribution
                         tempRI = 1.5+(1*0.01+0.01)-(0.5*1+0.8)*0.00000612*tempRadius.^2;
                         

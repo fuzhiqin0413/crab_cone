@@ -8,48 +8,61 @@ clc; close all
 
 useRealData = 1;
 
-incidenceAngle = 0:2.5:20; [0 5 10];  % deg, in XZ - plane    
+%%% Change back
+incidenceAngle = [0 10]; 0:2.5:20; [0 5 10];  % deg, in XZ - plane    
+
+interConeValueToUse = 1.40;
+
+%%% Change back
+xSpacing = 20; 5; % in voxels...
 
 if useRealData
-    dataFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/AnalysisVolumes/5 micron/';
+
     analysisFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/AnalysisResults/';
     saveData = 1;
     saveFigures = 1;
     
-    %%% All currently have 5000 um voxel resolution
+    %%% For 2 micron data
+    % Varying RI
+    dataFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/AnalysisVolumes/2 micron/Varying RI Profile/';
     
-    % Cone w/ latest radial at top
-%     dataFile = 'Volume_Cone_1000_nm_Cone_0_SD_GRIN_radialTop.mat';
-%     metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_radialTop.mat';
-
-    % Cone w/ latest radial at base
-%     dataFile = 'Volume_Cone_1000_nm_Cone_0_SD_GRIN_radialBase.mat';
-%     metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_radialBase.mat';
- 
-    % Cylinder
-%     dataFile = 'Volume_Cylinder_1000_nm_Cone_0_SD_GRIN_cylinder.mat';
-%     metaFile = 'Cylinder_1000_nm_Cone_0_SD_GRIN_cylinder.mat';
-    
-    % Cone w/ cylinder profile
-%     dataFile = 'Volume_Cone_1000_nm_Cone_0_SD_GRIN_cylinder.mat';
+    metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_both.mat';
 %     metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_cylinder.mat';
+%     metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_linear.mat';
+%     metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_radialTop.mat';
+%     metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_radialTop_TipCorrection.mat';
     
-    % Cone w/ linear profile
-%     dataFile = 'Volume_Cone_1000_nm_Cone_0_SD_GRIN_linear.mat';
-%     metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_radial.mat';
+    % Varying shape SD
+%     dataFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/AnalysisVolumes/2 micron/Varying Cone SD/';
     
-    % Cone w/ combined profile
-%     dataFile = 'Volume_Cone_1000_nm_Cone_0_SD_GRIN_both.mat';
-%     metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_both.mat';
-     
-    % Cone w/ uniform RI
-%     dataFile = 'Volume_Cone_1000_nm_Cone_0_SD_Uniform_1.52.mat';
+%     metaFile = 'Cone_1000_nm_Cone_-4_SD_Uniform_1.52.mat';
+%     metaFile = 'Cone_1000_nm_Cone_-2_SD_Uniform_1.52.mat';
 %     metaFile = 'Cone_1000_nm_Cone_0_SD_Uniform_1.52.mat';
-    
-    % Cone w/ combined profile and CinC + EC
-    dataFile = 'Volume_Cone_CinC_EC_1000_nm_Cone_0_SD_GRIN_both.mat';
-    metaFile = 'Cone_CinC_EC_1000_nm_Cone_0_SD_GRIN_both.mat';
+%     metaFile = 'Cone_1000_nm_Cone_2_SD_Uniform_1.52.mat';
+%     metaFile = 'Cone_1000_nm_Cone_-4_SD_Uniform_1.52.mat';
 
+    %%% To add: Internal structure w/ radial and uniform RI
+
+    %%% For 5 micron testing
+%     dataFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/AnalysisVolumes/5 micron/';
+
+%     metaFile = 'Cylinder_1000_nm_Cone_0_SD_GRIN_cylinder.mat';
+%     metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_both.mat';
+%     metaFile = 'Cone_1000_nm_Cone_0_SD_Uniform_1.52.mat';
+%     metaFile = 'Cone_CinC_EC_1000_nm_Cone_0_SD_GRIN_both.mat';
+
+    dataFile = sprintf('Volume_%s', metaFile);
+    
+    % Need to set so these don't have holes - note they are in voxels
+        % A low value also often causes planes across middle of cone
+        % For 5 micron test, 10, 50 and 10 were ok
+        % Going to 2 micron doubling seems ok. Could also be influenced by angle step on profiles (2 for all)
+    alphaForIntercone = 20;
+    alphaForCone = 100;
+    alphaForCinC = 20;
+    
+    dilateBorderRadius = 3; %1 - was ok for 5 micron
+    
     % Usually saved pointing down
     flipVolume = 1;    
     flipSurfaces = 1;
@@ -87,9 +100,6 @@ else
     blockExposedRentry = 0;
 end
 
-xSpacing = 5; % in voxels...
-plotSpacing = 1; % Mutiple of xSpaing to plot - only for center ray plotting
-
 trace3D = 1; % Otherwise just line across X
 
 % Options, 1, 4S, 4RKN, 5RKN, 45RKN 
@@ -103,7 +113,7 @@ interpType = '4S'; %'4S';
         % in fixed step, 10^-3 vs. 10^-4 gives rough order of magnitude error
 %     initialDeltaS = 0.5*10^-3;
     % Need for uniform
-    initialDeltaS = 1*10^-3;
+    initialDeltaS = 0.5*10^-3;
 
     % This keeps spot size surpsingly small, even on loose tolerance
         % (I guess it ends up stepping further at loose tolerance...)
@@ -133,8 +143,11 @@ justPlotCenterRays = 0;
 scaleBarsOnRayDiagram = 1;
 plotRIImageOnRayDiagram = 0;
 
-testPlot = 0;
-testPlotSurface = 0;
+%%% Adapt to grid for 3D rays
+plotSpacing = 1; % Mutiple of xSpaing to plot - only works properly center ray plotting
+
+testPlot = 1;
+testPlotSurface = 1;
 
 %% Load or create test data     
 if useRealData
@@ -156,11 +169,12 @@ if useRealData
     % Using negative coding for GRIN
     if metaData.interconeValue > 0
         RIFlagVolume = lensRIVolume < 0;
-        
+        interConeValueUsed = metaData.interconeValue;
     else
         RIFlagVolume = lensRIVolume < -1;
         
-        lensRIVolume(lensRIVolume == metaData.interconeValue) = 1.47;
+        lensRIVolume(lensRIVolume == metaData.interconeValue) = interConeValueToUse;
+        interConeValueUsed = interConeValueToUse;
     end
     
     lensRIVolume(RIFlagVolume) = -lensRIVolume(RIFlagVolume);
@@ -409,7 +423,7 @@ if useRealData
         cInCVertices(:,2) = cInCVertices(:,2) + volumeSize(2)/2;
         cInCVertices(:,3) = cInCVertices(:,3) + metaData.tipOffset*metaData.voxSize/metaData.voxSize3D;
         
-        tempShape = alphaShape(cInCVertices, 10);
+        tempShape = alphaShape(cInCVertices, alphaForCinC);
         [tempFaces, tempVertices] = boundaryFacets(tempShape);
         
         if ~isempty(forcedInds)
@@ -449,9 +463,11 @@ if useRealData
         % Shrink vertices that are inside radius at base of cone
         rGrid = sqrt(xGrid.^2 + yGrid.^2);
 
-        verticesToRemove = find(rGrid > coneBaseRadius);
-
+        % Remove some at start so this doesn't spread to wide
         cInCVertices = [xGrid, yGrid, zGrid]; 
+        cInCVertices(rGrid > coneBaseRadius*1.25, :) = []; rGrid(rGrid > coneBaseRadius*1.25) = [];
+        
+        verticesToRemove = find(rGrid > coneBaseRadius);
         
         % Step out slightly so these don't get incorperated into faces along base of cone
         cInCVertices(verticesToRemove, 1:2) = cInCVertices(verticesToRemove, 1:2)*1.1;
@@ -537,7 +553,7 @@ if useRealData
     coneVertices(:,3) = coneVertices(:,3) + metaData.tipOffset*metaData.voxSize/metaData.voxSize3D;
 
     % Switch to alpha shape to prevent degenerate triangles
-    tempShape = alphaShape(coneVertices, 50);
+    tempShape = alphaShape(coneVertices, alphaForCone);
     [tempFaces, tempVertices] = boundaryFacets(tempShape);
     
 %     tempTriangulation = delaunayTriangulation(coneVertices);
@@ -633,7 +649,7 @@ if useRealData
     interconeVertices(:,2) = interconeVertices(:,2) + volumeSize(2)/2;
     interconeVertices(:,3) = interconeVertices(:,3) + metaData.tipOffset*metaData.voxSize/metaData.voxSize3D;
     
-    % Now get a layer to force base
+    % Now get a ring to force base
     [xGrid, yGrid, zGrid] = meshgrid(1:volumeSize(1), 1:volumeSize(2), interconeProfileZ(end)+metaData.tipOffset*metaData.voxSize/metaData.voxSize3D);
     xGrid = xGrid(:); yGrid = yGrid(:); zGrid = zGrid(:);
     
@@ -653,7 +669,7 @@ if useRealData
 %     [tempFaces, tempVertices] = freeBoundary(tempTriangulation); 
     
     % as exposed cone is concave has to be done with alpha - but leads to some flattening around border
-    tempShape = alphaShape(interconeVertices, 10);
+    tempShape = alphaShape(interconeVertices, alphaForIntercone);
     [tempFaces, tempVertices] = boundaryFacets(tempShape);
 
     % remove forced inds at cap and base
@@ -802,9 +818,11 @@ if useRealData
     
     interconeNormals = meshFaceNormals(interconeSurface.vertices, interconeSurface.faces);
     
+    % Correct normal direction - should point out...
+    
     % It seems that some vertices can end up outside of the border volume..
     % Could try add border subscripts as well?
-    coneBorderVolume = imdilate(coneBorderVolume, strel('sphere',1));
+    coneBorderVolume = imdilate(coneBorderVolume, strel('sphere',dilateBorderRadius));
     
 %     tempV = RIFlagVolume*2 + coneBorderVolume;
 %     figure;   imshow(permute(tempV(round(volumeSize(1)/2),:,:)/3, [2 3 1])');
@@ -1005,7 +1023,7 @@ for aAngle = 1:length(incidenceAngle)
        periodSpotsArray = zeros(3, numPeriods, nOrigins);
     end
 
-    for iOrigin = 1:nOrigins
+    for iOrigin = 97; 1:nOrigins
         
         tempTime = toc;
         [aAngle iOrigin tempTime]
@@ -1627,7 +1645,7 @@ for aAngle = 1:length(incidenceAngle)
                         if useRealData
                             lineDef = [rayX rayT];
 
-                            [intersectPoints, intersectDistance, intersectFaces] = intersectLineMesh3d(lineDef, grinSurface.vertices, grinSurface.faces);
+                            [intersectPoints, intersectDistance, intersectFaces] = intersectLineMesh3d(lineDef, grinSurface.vertices, grinSurface.faces, 1e-15);
 
                             inds2Use = find(abs(intersectDistance) == min(abs(intersectDistance)));
 
@@ -2308,7 +2326,7 @@ if useRealData
             'dataFile', 'metaFile', 'incidenceAngle', 'receptorRadius', 'receptorAcceptance', 'exposedHeight', 'blockExposedRentry', ...
             'xSpacing', 'plotSpacing', 'interpType', 'tolerance', 'initialDeltaS', 'iterativeFinal', 'epsilon',  'interfaceRefraction', 'blockMultipleExits', 'limitToConeBase', 'clearReverseRays',...
             'acceptancePercentage', 'focusXHeight', 'focusXRadius', 'focusYHeight', 'focusYRadius', 'colcHeight', 'colcRadius', 'rayReverseNum', ...
-            'coneTipZ', 'corneaZ', 'epicorneaZ', 'coneBaseZ', ...
+            'coneTipZ', 'corneaZ', 'epicorneaZ', 'coneBaseZ', 'interConeValueUsed', ...
             'coneProfileR', 'coneProfileZ', 'cInCProfileR', 'cInCProfileZ', 'epicorneaProfileR', 'epicorneaProfileZ', 'interconeProfileR', 'interconeProfileZ', ...
             'voxelSize', 'volumeSize', 'acceptanceAngle')
     end
@@ -2719,10 +2737,18 @@ function  intersect = surfaceIntersectFunction(volumeFull, volumeBorder, x, x0, 
         if volumeBorder(voxelX(1), voxelX(2), voxelX(3))
             % inpolyhedron is really slow!
 %             intersect = inpolyhedron(surface, x);
-                
-            lineDef = [x (x-x0)];  
 
-            [~, intersectDistance] = intersectLineMesh3d(lineDef, surface.vertices, surface.faces);  
+            lineDef = [x (x-x0)/norm((x-x0))];  
+
+            [tempPoints, intersectDistance, tempFaces] = intersectLineMesh3d(lineDef, surface.vertices, surface.faces, 1e-15);  
+
+            % for debug
+%             [a, b, c] = intersectLineTriangle3d(lineDef, surface.vertices(surface.faces(tempFaces(1),:),:))             
+%             plot3(tempPoints(:,1), tempPoints(:,2), tempPoints(:,3), 'rx')
+%        
+%             if x(3) > 0.6; 
+%                 b = 1;
+%             end
             
             backInds = find(intersectDistance < 0);
             frontInds = find(intersectDistance > 0);
@@ -2742,7 +2768,7 @@ function  intersect = surfaceIntersectFunction(volumeFull, volumeBorder, x, x0, 
                 % get distance from x0
                 lineDef_x0 = [x0 (x-x0)];  
 
-                [~, intersectDistance_x0] = intersectLineMesh3d(lineDef_x0, surface.vertices, surface.faces);  
+                [~, intersectDistance_x0] = intersectLineMesh3d(lineDef_x0, surface.vertices, surface.faces, 1e-15);  
 
                 %%% The section above makes sense but I'm not certain of the logic here
                 error('Check if this section works')
@@ -2776,9 +2802,9 @@ end
 
 function lambda = surfaceLambdaFunction(x1, x0, surface)
 
-    lineDef = [x0 (x1-x0)];  
+    lineDef = [x0 (x1-x0)/norm(x1-x0)];  
 
-    [intersectPoints, intersectDistance] = intersectLineMesh3d(lineDef, surface.vertices, surface.faces);
+    [intersectPoints, intersectDistance] = intersectLineMesh3d(lineDef, surface.vertices, surface.faces, 1e-15);
     
     % Sort out intersections
     if length(intersectDistance) > 1
