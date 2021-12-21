@@ -9,12 +9,12 @@ clc; close all
 useRealData = 1;
 
 %%% Change back
-incidenceAngle = [0 10]; 0:2.5:20; [0 5 10];  % deg, in XZ - plane    
+incidenceAngle = 0:2.5:20; [0 5 10];  % deg, in XZ - plane    
 
 interConeValueToUse = 1.40;
 
 %%% Change back
-xSpacing = 20; 5; % in voxels...
+xSpacing = 5; % in voxels...
 
 if useRealData
 
@@ -146,8 +146,8 @@ plotRIImageOnRayDiagram = 0;
 %%% Adapt to grid for 3D rays
 plotSpacing = 1; % Mutiple of xSpaing to plot - only works properly center ray plotting
 
-testPlot = 1;
-testPlotSurface = 1;
+testPlot = 0;
+testPlotSurface = 0;
 
 %% Load or create test data     
 if useRealData
@@ -495,6 +495,9 @@ if useRealData
 
         cInCSurface.faces(facesToRemove,:) = [];
         
+        
+        cInCProfileR = [];
+        cInCProfileZ = [];
     end
     
     if flipSurfaces
@@ -891,7 +894,7 @@ if useRealData
     
     xStartPoints = volumeSize(1)/2:xSpacing:volumeSize(1)*1.5; 
 
-    xStartPoints = [(xStartPoints(1:end-1)+(-volumeSize(1)/2+1)*2) xStartPoints];
+    xStartPoints = [volumeSize(1)-fliplr(xStartPoints(2:end)) volumeSize(1)/2:xSpacing:volumeSize(1)*1.5];
 
     if trace3D
         [xGrid, yGrid, zGrid] = meshgrid(xStartPoints, xStartPoints, 1);
@@ -1023,7 +1026,7 @@ for aAngle = 1:length(incidenceAngle)
        periodSpotsArray = zeros(3, numPeriods, nOrigins);
     end
 
-    for iOrigin = 97; 1:nOrigins
+    for iOrigin = 1:nOrigins
         
         tempTime = toc;
         [aAngle iOrigin tempTime]
@@ -1062,6 +1065,8 @@ for aAngle = 1:length(incidenceAngle)
 
         currentPeriod = 1; % only used for graded fiber
 
+        loopSteps = 0;
+        
         while go
 
             % If outside, extend ray to grin area
@@ -1477,7 +1482,14 @@ for aAngle = 1:length(incidenceAngle)
                     
 %                     [rayX rayT deltaS*10^6 length(testInds)]
                 end
-
+                
+                % for debug
+                if loopSteps == 674
+                    b = 1;
+                end
+                xm1 = x0;
+                tmt = t0;
+                
                 x0 = rayX;
                 t0 = rayT;
 
@@ -1568,15 +1580,15 @@ for aAngle = 1:length(incidenceAngle)
 
                             SF = 1; %A from paper - saftey factor
 
-                            % included in loop on paper seems to never get hit
                             if lambda0 < 10^-9
-                               rayT = t0;
+                               rayT = t0; 
+                               rayX = x0; % not in paper but seems neccersary
                                break
                             end
 
                             %this loop steps back from overshoot
                             while ~intersectionFn(rayX, x0)
-                                if (SF >= 0.1)
+                                if SF > 0.11
                                    SF = SF - 0.1; 
                                 else
                                    SF = 0.1*SF;
@@ -1584,7 +1596,7 @@ for aAngle = 1:length(incidenceAngle)
 
                                 deltaS_final = SF*lambda0*deltaS0_final;
 
-                                %%% step ray backward with RK5 with fixed step
+                                % step ray backward with RK5 with fixed step
                                 [x, t] = ray_interpolation('5RKN', 'iso', x0', t0', deltaS_final, testCoords, ...
                                     testInds, lensRIVolume, tolerance, RIToUse);
 
@@ -1706,7 +1718,36 @@ for aAngle = 1:length(incidenceAngle)
 
                             if testPlot; plot3(rayX(1), rayX(2), rayX(3), 'm*'); end 
 
-                            % Does not exit be default
+                            % Step back a bit so that rayX will be just inside mesh instead of just outside
+                            if lambda0 > 10^-9
+                                SF = 1;
+                                while ~intersectionFn(rayX, x0) & SF > 10^-9
+                                    if SF > 0.11
+                                       SF = SF - 0.1; 
+                                    else
+                                       SF = 0.1*SF;
+                                    end
+
+                                    [x, t] = ray_interpolation('5RKN', 'iso', x0', t0', deltaS_final*SF, testCoords, ...
+                                        testInds, lensRIVolume, tolerance, RIToUse);
+
+                                    rayX = x'; rayT = t';
+                                end
+
+                                %%% If SF threshold reached and rayX isn't back inside could offset zero as below
+                                
+                            else
+                               % x0 and RayX equal, need to step X0 back to pass test.
+                                    % RayX should be inside by default (?)
+                                x0 = x0 - t0*deltaS_final;
+                            end
+                            
+                            if ~intersectionFn(rayX, x0)
+                                % Could reduce threshold on SF above...
+                                error('Should be inside after TIR')
+                            end
+                            
+                            % Does not exit by default
                             inGraded = 1;
 
                         end
@@ -1759,8 +1800,10 @@ for aAngle = 1:length(incidenceAngle)
             if any(voxelX > volumeSize) | any(voxelX < 1)
                go = 0; 
             end
+            
+            loopSteps = loopSteps + 1;
         end
-
+  
         if numberOfExits == 0 | hitsCornea == 0
             propogateFinalRay = 0;
         end
@@ -2730,7 +2773,7 @@ end
 function  intersect = surfaceIntersectFunction(volumeFull, volumeBorder, x, x0, scale, surface) 
     % Return 1 if inside
     
-    voxelX = round(x/scale);
+   voxelX = round(x/scale);
     
    if ~( any(voxelX > size(volumeFull)) | any(voxelX < 1) )
         % Check if on border voxel and fine test required
@@ -2740,9 +2783,10 @@ function  intersect = surfaceIntersectFunction(volumeFull, volumeBorder, x, x0, 
 
             lineDef = [x (x-x0)/norm((x-x0))];  
 
-            [tempPoints, intersectDistance, tempFaces] = intersectLineMesh3d(lineDef, surface.vertices, surface.faces, 1e-15);  
-
+            [~, intersectDistance] = intersectLineMesh3d(lineDef, surface.vertices, surface.faces, 1e-15);  
+             
             % for debug
+            % [tempPoints, intersectDistance, tempFaces] % add above
 %             [a, b, c] = intersectLineTriangle3d(lineDef, surface.vertices(surface.faces(tempFaces(1),:),:))             
 %             plot3(tempPoints(:,1), tempPoints(:,2), tempPoints(:,3), 'rx')
 %        
