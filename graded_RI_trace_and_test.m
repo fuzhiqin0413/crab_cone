@@ -1489,7 +1489,7 @@ for aAngle = 2; 1:length(incidenceAngle);
                 end
                 
                 % for debug
-                if rayX(3) > 0.474 %loopSteps == 390
+                if loopSteps == 387
                     b = 1;
                 end
                 xm1 = x0;

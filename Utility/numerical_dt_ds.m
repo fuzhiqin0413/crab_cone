@@ -93,6 +93,7 @@ function [dt_ds] = numerical_dt_ds(X, T, vol_coords, vol_inds, lens_volume_seper
                     
                     matB = N_of_X*permute(epsilon_of_s(i,j,:), [3,1,2]);
                     
+                    %%% Could just do if values go out of input range
                     warning('Maybe best not to use Pinv?')
                     % Just test matB, matA should be good...
                     if rank(matB) >= 3 % && rank(matA) >= 3 
