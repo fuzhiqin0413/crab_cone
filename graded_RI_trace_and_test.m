@@ -307,6 +307,9 @@ if useRealData
        
        epicorneaSurface = corneaSurface;
        epicorneaSurface.vertices = epicorneaVertices;
+       
+       epicorneaProfileR = [];
+       epicorneaProfileZ = [];
     end
     
     epicorneaZ = (metaData.coneLengthToUse + metaData.outerCorneaLengthToUse)* metaData.voxSize/metaData.voxSize3D;
@@ -976,7 +979,9 @@ finalRayCells = cell(length(incidenceAngle), 1);
 finalRayTRefractCells = cell(length(incidenceAngle), 1);
 rayReverseCells = cell(length(incidenceAngle), 1);
 
-for aAngle = 1:length(incidenceAngle)
+timePerAngle = zeros(length(incidenceAngle),1);
+
+for aAngle = 2; 1:length(incidenceAngle);
     
     tic
     
@@ -1026,10 +1031,10 @@ for aAngle = 1:length(incidenceAngle)
        periodSpotsArray = zeros(3, numPeriods, nOrigins);
     end
 
-    for iOrigin = 1:nOrigins
+    for iOrigin = 1929; 1:nOrigins;
         
         tempTime = toc;
-        [aAngle iOrigin tempTime]
+        [aAngle iOrigin round(tempTime/60)]
         
         %%% Could set up to do for series of ray angles
         rayT = startRayT; %3x1 : ray will move from bottom to top
@@ -1484,7 +1489,7 @@ for aAngle = 1:length(incidenceAngle)
                 end
                 
                 % for debug
-                if loopSteps == 674
+                if rayX(3) > 0.474 %loopSteps == 390
                     b = 1;
                 end
                 xm1 = x0;
@@ -1578,7 +1583,7 @@ for aAngle = 1:length(incidenceAngle)
                         while deltaS0_final*norm(t0) > epsilon && abs(lambda0-1) > 10^-9 
                             %%% using 10^-3 as test for zero in tests above and below
 
-                            SF = 1; %A from paper - saftey factor
+                            SF = 1.0; %A from paper - saftey factor
 
                             if lambda0 < 10^-9
                                rayT = t0; 
@@ -1720,7 +1725,7 @@ for aAngle = 1:length(incidenceAngle)
 
                             % Step back a bit so that rayX will be just inside mesh instead of just outside
                             if lambda0 > 10^-9
-                                SF = 1;
+                                SF = 1.0;
                                 while ~intersectionFn(rayX, x0) & SF > 10^-9
                                     if SF > 0.11
                                        SF = SF - 0.1; 
@@ -1728,7 +1733,7 @@ for aAngle = 1:length(incidenceAngle)
                                        SF = 0.1*SF;
                                     end
 
-                                    [x, t] = ray_interpolation('5RKN', 'iso', x0', t0', deltaS_final*SF, testCoords, ...
+                                    [x, t] = ray_interpolation('5RKN', 'iso', x0', t0', lambda0*deltaS_final*SF, testCoords, ...
                                         testInds, lensRIVolume, tolerance, RIToUse);
 
                                     rayX = x'; rayT = t';
@@ -1843,7 +1848,8 @@ for aAngle = 1:length(incidenceAngle)
     finalRayTRefractCells{aAngle} = rayPathArray;
     rayReverseCells{aAngle} = rayReversed;
     
-
+    timePerAngle(aAngle) = toc;
+    
     warning('on', 'MATLAB:nearlySingularMatrix')
 
     if strcmp(interpType, '45RKN') 
@@ -1853,6 +1859,8 @@ for aAngle = 1:length(incidenceAngle)
     end
 
 end
+
+round(timePerAngle/60)'
 %% Plot results
 % close all
 
@@ -1886,7 +1894,7 @@ if useRealData
     priorInd = find(zSteps < coneTipZ); priorInd = priorInd(end);
     topConeInds = find(coneProfileZ*voxelSize > coneTipZ - exposedHeight/1000);
     
-    for aAngle = 1:length(incidenceAngle)
+    for aAngle = 1:length(incidenceAngle);
         
         finalRay = rayPathCells{aAngle};
         finalRayTRefract = finalIntersectCells{aAngle};
@@ -2365,7 +2373,7 @@ if useRealData
     % Do some saving
     if saveData
         saveFile = sprintf('%s%s_SIMDATA.mat', analysisFolder, metaFile(1:end-4));
-        save(saveFile, 'rayPathCells', 'finalIntersectCells', 'finalRayCells', 'finalRayTRefractCells', 'rayReverseCells', ...
+        save(saveFile, 'rayPathCells', 'finalIntersectCells', 'finalRayCells', 'finalRayTRefractCells', 'rayReverseCells', 'timePerAngle', ...
             'dataFile', 'metaFile', 'incidenceAngle', 'receptorRadius', 'receptorAcceptance', 'exposedHeight', 'blockExposedRentry', ...
             'xSpacing', 'plotSpacing', 'interpType', 'tolerance', 'initialDeltaS', 'iterativeFinal', 'epsilon',  'interfaceRefraction', 'blockMultipleExits', 'limitToConeBase', 'clearReverseRays',...
             'acceptancePercentage', 'focusXHeight', 'focusXRadius', 'focusYHeight', 'focusYRadius', 'colcHeight', 'colcRadius', 'rayReverseNum', ...
@@ -2778,58 +2786,45 @@ function  intersect = surfaceIntersectFunction(volumeFull, volumeBorder, x, x0, 
    if ~( any(voxelX > size(volumeFull)) | any(voxelX < 1) )
         % Check if on border voxel and fine test required
         if volumeBorder(voxelX(1), voxelX(2), voxelX(3))
-            % inpolyhedron is really slow!
-%             intersect = inpolyhedron(surface, x);
 
-            lineDef = [x (x-x0)/norm((x-x0))];  
+            if norm(x-x0) > 0
+                lineDef = [x (x-x0)/norm((x-x0))];  
 
-            [~, intersectDistance] = intersectLineMesh3d(lineDef, surface.vertices, surface.faces, 1e-15);  
-             
-            % for debug
-            % [tempPoints, intersectDistance, tempFaces] % add above
-%             [a, b, c] = intersectLineTriangle3d(lineDef, surface.vertices(surface.faces(tempFaces(1),:),:))             
-%             plot3(tempPoints(:,1), tempPoints(:,2), tempPoints(:,3), 'rx')
-%        
-%             if x(3) > 0.6; 
-%                 b = 1;
-%             end
-            
-            backInds = find(intersectDistance < 0);
-            frontInds = find(intersectDistance > 0);
+                [tempPoints, intersectDistance] = intersectLineMesh3d(lineDef, surface.vertices, surface.faces, 1e-15);  
 
-            if length(intersectDistance) > 1
-                if isempty(backInds) | isempty(frontInds)
-                    % all inds on one side, so not in volume
-                    intersect = 0;
-                elseif ~isempty(backInds) & ~isempty(frontInds)
-                   % must be in volume as intersects on both sides
-                   intersect = 1;
-                else
-                   error('Check treatment') 
+                % for debug            
+    %             plot3(tempPoints(:,1), tempPoints(:,2), tempPoints(:,3), 'rx')
+
+                backInds = find(intersectDistance < 0);
+                frontInds = find(intersectDistance > 0);
+
+                if length(intersectDistance) > 1
+                    if isempty(backInds) | isempty(frontInds)
+                        % all inds on one side, so not in volume
+                        intersect = 0;
+                    elseif ~isempty(backInds) & ~isempty(frontInds)
+                       % must be in volume as intersects on both sides
+                       intersect = 1;
+                    end
+
+                elseif length(intersectDistance) == 1
+                    % can't be resolved unambigiously by distances
+                        % This is really slow! Also matlab normals seem to be opposite to convention
+                    intersect = inpolyhedron(surface, x, 'tol', 1e-12, 'flipNormals',true);
+
+                elseif isempty(intersectDistance)
+                   % Not intersect so can't be in volume (?)
+
+                   % Test this just in case
+                   intersect = inpolyhedron(surface, x, 'tol', 1e-12, 'flipNormals',true);
+                   if intersect ~= 0
+                      error('No line intersect but inside surface?') 
+                   end
                 end
-
-            elseif length(intersectDistance) == 1
-                % get distance from x0
-                lineDef_x0 = [x0 (x-x0)];  
-
-                [~, intersectDistance_x0] = intersectLineMesh3d(lineDef_x0, surface.vertices, surface.faces, 1e-15);  
-
-                %%% The section above makes sense but I'm not certain of the logic here
-                error('Check if this section works')
-                
-                if intersectDistance_x0 > 0 & intersectDistance < 0
-                    % has stepped out
-                    intersect = 0;
-                elseif intersectDistance_x0 < 0 & intersectDistance > 0
-                    % has stepped in ? 
-                    intersect = 1;
-                else
-                   error('Check treatment') 
-                end
-
-            elseif isempty(intersectDistance)
-               % Not intersect so can't be in volume 
-               intersect = 0;
+            else
+                % Points are equal (can't make line) so just test if inside polyhedron
+                intersect = inpolyhedron(surface, x, 'tol', 1e-12, 'flipNormals',true);
+                warning('Query points are equal in intersect')
             end
 
         elseif volumeFull(voxelX(1), voxelX(2), voxelX(3))
@@ -2846,44 +2841,50 @@ end
 
 function lambda = surfaceLambdaFunction(x1, x0, surface)
 
-    lineDef = [x0 (x1-x0)/norm(x1-x0)];  
+    if norm(x1-x0) > 0
+        lineDef = [x0 (x1-x0)/norm(x1-x0)];  
 
-    [intersectPoints, intersectDistance] = intersectLineMesh3d(lineDef, surface.vertices, surface.faces, 1e-15);
-    
-    % Sort out intersections
-    if length(intersectDistance) > 1
-        backInds = find(intersectDistance < 0);
-        frontInds = find(intersectDistance > 0);
+        [intersectPoints, intersectDistance] = intersectLineMesh3d(lineDef, surface.vertices, surface.faces, 1e-15);
 
-        [~, closestBackInd] = min(abs(intersectDistance(backInds)));
-        [~, closestFrontInd] = min(intersectDistance(frontInds));
+        % Sort out intersections
+        if length(intersectDistance) > 1
+            backInds = find(intersectDistance < 0);
+            frontInds = find(intersectDistance > 0);
 
-        if isempty(backInds) | isempty(frontInds)
-            % This should be called while x0 is inside mesh and x1 is outside
-                  % It can be that deltaS is too large
-            error('Check treatment - all inds either in front or behind')
+            [~, closestBackInd] = min(abs(intersectDistance(backInds)));
+            [~, closestFrontInd] = min(intersectDistance(frontInds));
+
+            if isempty(backInds) | isempty(frontInds)
+                % This should be called while x0 is inside mesh and x1 is outside
+                      % It can be that deltaS was too large
+                error('Check usage - all inds either in front or behind')
+            end
+
+            nearestInd = frontInds(closestFrontInd);
+
+        elseif length(intersectDistance) == 1 
+            if intersectDistance > 0
+                nearestInd = 1;
+            else
+               error('Only one intersect and behind x0') 
+            end
+
+        elseif isempty(intersectDistance)
+            error('No intersect')
         end
 
-        nearestInd = frontInds(closestFrontInd);
-
-    elseif length(intersectDistance) == 1 
-        if intersectDistance > 0
-            nearestInd = 1;
-        else
-           error('Only one intersect and behind x0') 
-        end
-
-    elseif isempty(intersectDistance)
-        %%% Could increase tolerance on intersectLineMesh3d
-        error('No intersect')
+        % Same as distance value in this context
+        lambda = norm(intersectPoints(nearestInd,:)-x0)/norm(x1-x0);
+        
+    else
+       % points are equal, just set to 0.5
+       lambda = 0.5;
+       warning('Query points are equal in lambda')
     end
-    
-    % Same as distance value in this context
-    lambda = norm(intersectPoints(nearestInd,:)-x0)/norm(x1-x0);
     
     if lambda > 1
         lambda
-        error('Large lambda step, intersect was triggered too early')
+        error('Large lambda step, intersect was triggered too early, check usage')
     elseif lambda < 0
        error('Check this') 
     end
