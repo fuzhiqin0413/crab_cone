@@ -994,7 +994,7 @@ for aAngle = 1:length(incidenceAngle);
     rayMap = zeros(volumeSize);
 
     if testPlot
-        figure; hold on; axis equal
+        figure; hold on; axis equal; set(gca,'Clipping','off')
         view(0, 0)
         if useRealData
             plot3(grinSurface.vertices(plotInds,1), grinSurface.vertices(plotInds,2),...
@@ -1031,7 +1031,7 @@ for aAngle = 1:length(incidenceAngle);
        periodSpotsArray = zeros(3, numPeriods, nOrigins);
     end
 
-    for iOrigin = 1:nOrigins;
+    for iOrigin = 1309; 1:nOrigins;
         
         tempTime = toc;
         [aAngle iOrigin round(tempTime/60)]
@@ -1739,6 +1739,8 @@ for aAngle = 1:length(incidenceAngle);
 
                                         rayX = x'; rayT = t';
                                     end
+                                    
+                                    rayT = rayT/rIn;
                                 else
                                     error('Add for treatment test cases')
                                 end
@@ -1751,13 +1753,29 @@ for aAngle = 1:length(incidenceAngle);
                                     error('TIR ray didnt step back enough - check this')
                                 end
                                 
-                                %%% Could update rIn, rOut and surfaceNormal after step back and refraction parameteres after step back 
-                                    % unlikely these have changed much?
+                                %%% Could update rIn, rOut and surfaceNormal and refraction calc after step back 
+                                    % Unlikely these have changed much? - probably just if triangle intersect has changed...
+                                    lineDef = [rayX rayT];
+                                    
+                                    [~, tempDistance, tempFaces] = intersectLineMesh3d(lineDef, grinSurface.vertices, grinSurface.faces, 1e-15);
+
+                                    inds2Use = find(abs(tempDistance) == min(abs(tempDistance)));
+
+                                    %%% Considered adjusting rayX to be intersect value but decided against 
+                                     % changes in X are all dealt with via numerical integration
+
+                                    tempIndices = tempFaces(inds2Use);
+                                    
+                                    if ~isempty(setdiff(faceIndices, tempIndices))
+                                        
+                                        %%% Untested error
+                                        error('Different triangles used')
+                                    end
                             end
                             
                             % TIR
                             rayT = rayT-2*dot(surfaceNormal,rayT)*surfaceNormal;
-                            rayT = rayT/norm(rayT)*rIn;
+                            rayT = rayT/norm(rayT)*rIn; % not rIn is scaled back
 
                             if testPlot; plot3(rayX(1), rayX(2), rayX(3), 'm*'); end 
 
@@ -1765,14 +1783,16 @@ for aAngle = 1:length(incidenceAngle);
                             % Check good triangle intersect is used 
                             [dist, proj] = distancePointMesh(rayX, grinSurface.vertices, grinSurface.faces);
                             
-                            if abs(dist - min(abs(intersectDistance))) > 0.5e-6
-                             
+                            if abs(dist - min(abs(intersectDistance))) > 0.05e-3
+                                % if this is too far off it could be a problem - check after 50 nm
+                                
                                 if testPlot
                                     plot3(rayX(:,1), rayX(:,2), rayX(:,3), 'ko')
                                     plot3(proj(:,1), proj(:,2), proj(:,3), 'k*')
                                     trisurf(grinSurface.faces(faceIndices,:), grinSurface.vertices(:,1), grinSurface.vertices(:,2), grinSurface.vertices(:,3), ...
                                         'FaceColor','k','FaceAlpha',0.8);
                                 end
+                                [acos(dot((proj-rayX), rayT) / (norm(proj-rayX) * norm(rayT)))/pi*180 abs(dist - min(abs(intersectDistance)))*1e6]
                                 
                                 % May need to after step back (if used)
                                 %%% Untested error
@@ -2840,7 +2860,6 @@ function  intersect = surfaceIntersectFunction(volumeFull, volumeBorder, x, x0, 
                         % 1e-21 catches these but could cause problems else where
 
                     [tempPoints, intersectDistance] = intersectLineMesh3d(lineDef, surface.vertices, surface.faces, 1e-15);  
-
 
                     % for debug            
         %             plot3(tempPoints(:,1), tempPoints(:,2), tempPoints(:,3), 'rx')
