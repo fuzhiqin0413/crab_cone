@@ -1031,7 +1031,7 @@ for aAngle = 1:length(incidenceAngle);
        periodSpotsArray = zeros(3, numPeriods, nOrigins);
     end
 
-    for iOrigin = 1309; 1:nOrigins;
+    for iOrigin = 1:nOrigins;
         
         tempTime = toc;
         [aAngle iOrigin round(tempTime/60)]
@@ -1589,6 +1589,8 @@ for aAngle = 1:length(incidenceAngle);
                                break
                             end
 
+                            its = its + 1;
+                            
                             %this loop steps back from overshoot
                             while ~intersectionFn(rayX, x0)
                                 if SF > 0.11
@@ -1625,8 +1627,6 @@ for aAngle = 1:length(incidenceAngle);
                             lambda0 = lambdaFn(rayX, x0);
 
                             deltaS0_final = deltaS_final;
-                            
-                            its = its + 1;
                         end
 
                         % moved variable reset after loop 
@@ -2864,18 +2864,26 @@ function  intersect = surfaceIntersectFunction(volumeFull, volumeBorder, x, x0, 
                     % for debug            
         %             plot3(tempPoints(:,1), tempPoints(:,2), tempPoints(:,3), 'rx')
 
-                    backInds = find(intersectDistance < 0);
-                    frontInds = find(intersectDistance > 0);
-
                     if length(intersectDistance) > 1
-                        if isempty(backInds) | isempty(frontInds)
-                            % all inds on one side, so should be not in volume
-                            %  but this is not always reliable for coplanar intersections
-                            intersect = 0;
+                        zeroInds = find(intersectDistance == 0);
+                        
+                        % If any inds are zero this probably wont work
+                        if isempty(zeroInds)
+                            
+                            backInds = find(intersectDistance < 0);
+                            frontInds = find(intersectDistance > 0);
 
-                        elseif ~isempty(backInds) & ~isempty(frontInds)
-                           % must be in volume as intersects on both sides
-                           intersect = 1;
+                            if isempty(backInds) | isempty(frontInds)
+                                % all inds on one side, so should be not in volume
+                                %  but this is not always reliable for coplanar intersections
+                                intersect = 0;
+
+                            elseif ~isempty(backInds) & ~isempty(frontInds)
+                               % must be in volume as intersects on both sides
+                               intersect = 1;
+                            end
+                        else
+                            intersect = inpolyhedron(surface, x, 'tol', 0, 'flipNormals',true);
                         end
 
                     elseif length(intersectDistance) == 1
@@ -2885,7 +2893,7 @@ function  intersect = surfaceIntersectFunction(volumeFull, volumeBorder, x, x0, 
                         intersect = inpolyhedron(surface, x, 'tol', 0, 'flipNormals',true);
 
                     elseif isempty(intersectDistance)
-                       % Not intersect so can't be in volume (?)
+                       % Not intersect so can't be in GRIN volume (?)
 
                        % Test this just in case
                        intersect = inpolyhedron(surface, x, 'tol', 0, 'flipNormals',true);
@@ -2926,23 +2934,31 @@ function lambda = surfaceLambdaFunction(x1, x0, surface)
         
         % Sort out intersections
         if length(intersectDistance) > 1
-            backInds = find(intersectDistance < 0);
-            frontInds = find(intersectDistance > 0);
+            zeroInd = find(intersectDistance == 0);
+            
+            if isempty(zeroInd)
+                % If no zeros there should be ind/s in front and ind/s behind
+                backInds = find(intersectDistance < 0);
+                frontInds = find(intersectDistance > 0);
 
-            [~, closestBackInd] = min(abs(intersectDistance(backInds)));
-            [~, closestFrontInd] = min(intersectDistance(frontInds));
+%                 [~, closestBackInd] = min(abs(intersectDistance(backInds)));
+                [~, closestFrontInd] = min(intersectDistance(frontInds));
 
-            if isempty(backInds) | isempty(frontInds)
-                % This should be called while x0 is inside mesh and x1 is outside
+                if isempty(backInds) | isempty(frontInds)
+                    % This should be called while x0 is inside mesh and x1 is outside
 
-                % error is often a sign of problems with intersection calculation, sometime several steps before
-                error('Check usage - all inds either in front or behind')
+                    % error is often a sign of problems with intersection calculation, sometime several steps before
+                    error('Check usage - all inds either in front or behind')
+                end
+
+                nearestInd = frontInds(closestFrontInd);
+            else
+                % if there is a zero distance lambda will be zero
+                nearestInd = zeroInd;
             end
 
-            nearestInd = frontInds(closestFrontInd);
-
         elseif length(intersectDistance) == 1 
-            if intersectDistance > 0
+            if intersectDistance >= 0
                 nearestInd = 1;
             else
                error('Only one intersect and behind x0') 
@@ -2953,7 +2969,8 @@ function lambda = surfaceLambdaFunction(x1, x0, surface)
         end
 
         % Same as distance value in this context
-        lambda = norm(intersectPoints(nearestInd,:)-x0)/norm(x1-x0);
+%         lambda = norm(intersectPoints(nearestInd,:)-x0)/norm(x1-x0);
+        lambda = intersectDistance(nearestInd,:)/norm(x1-x0);
         
     else
        % points are equal, just set to 0.5
