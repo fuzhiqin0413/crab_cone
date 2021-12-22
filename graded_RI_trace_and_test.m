@@ -981,7 +981,7 @@ rayReverseCells = cell(length(incidenceAngle), 1);
 
 timePerAngle = zeros(length(incidenceAngle),1);
 
-for aAngle = 2; 1:length(incidenceAngle);
+for aAngle = 1:length(incidenceAngle);
     
     tic
     
@@ -1031,7 +1031,7 @@ for aAngle = 2; 1:length(incidenceAngle);
        periodSpotsArray = zeros(3, numPeriods, nOrigins);
     end
 
-    for iOrigin = 1929; 1:nOrigins;
+    for iOrigin = 1:nOrigins;
         
         tempTime = toc;
         [aAngle iOrigin round(tempTime/60)]
@@ -1489,7 +1489,7 @@ for aAngle = 2; 1:length(incidenceAngle);
                 end
                 
                 % for debug
-                if loopSteps == 387
+                if loopSteps == 272
                     b = 1;
                 end
                 xm1 = x0;
@@ -1586,8 +1586,6 @@ for aAngle = 2; 1:length(incidenceAngle);
                             SF = 1.0; %A from paper - saftey factor
 
                             if lambda0 < 10^-9
-                               rayT = t0; 
-                               rayX = x0; % not in paper but seems neccersary
                                break
                             end
 
@@ -1631,6 +1629,14 @@ for aAngle = 2; 1:length(incidenceAngle);
                             its = its + 1;
                         end
 
+                        % moved variable reset after loop 
+                            % sometimes lambda0 ends up less than this but loop exits because of deltaS threshold but treatment still seems to be required
+                          
+                        if lambda0 < 10^-9
+                           rayT = t0; 
+                           rayX = x0;
+                        end    
+                        
                     else
                         [x, t] = ray_interpolation(interpType, 'iso', x0', t0', deltaS*lambda0, testCoords_forwards, ...
                             testInds_forwards, lensRIVolume, tolerance, RIToUse);
@@ -1641,19 +1647,10 @@ for aAngle = 2; 1:length(incidenceAngle);
                        pathLength = pathLength + sqrt((x0(1) - rayX(1))^2 + (x0(2) - rayX(2))^2 + (x0(3) - rayX(3))^2);
                     end
 
-
-                    % Ray might not exit if reflected, but these will get over written when it does
-                    finalIntersect(iOrigin,:) = rayX;
-
-                    finalPathLength(iOrigin,:) = pathLength;
-
-                    finalRayT(iOrigin,:) = rayT;
-
                     % Get surface normal and RI at exit point
                     [~, rIn] = numerical_dT_dt(rayX, volCoords(RIFlagInds,:), RIFlagInds, lensRIVolume, NaN); 
 
                     % In test case normalization seems to be very similar to dividing by RI at exit
-        %           rayT = rayT/norm(rayT);
                     rayT = rayT/rIn;
 
                     % Do refraction at border
@@ -1661,11 +1658,14 @@ for aAngle = 2; 1:length(incidenceAngle);
 
                         if useRealData
                             lineDef = [rayX rayT];
-
+                            
                             [intersectPoints, intersectDistance, intersectFaces] = intersectLineMesh3d(lineDef, grinSurface.vertices, grinSurface.faces, 1e-15);
 
                             inds2Use = find(abs(intersectDistance) == min(abs(intersectDistance)));
 
+                            %%% Considered adjusting rayX to be intersect value but decided against 
+                             % changes in X are all dealt with via numerical integration
+                            
                             faceIndices = intersectFaces(inds2Use);
 
                             surfaceNormal = mean(grinNormals(faceIndices,:),1);
@@ -1703,6 +1703,13 @@ for aAngle = 2; 1:length(incidenceAngle);
                         cosT = sqrt(1-sinT2);
 
                         if sinT2 < 1
+                           % leaving so store values                     
+                           finalIntersect(iOrigin,:) = rayX;
+
+                           finalPathLength(iOrigin,:) = pathLength;
+
+                           finalRayT(iOrigin,:) = rayT*rIn; % was divided previously
+                            
                            % Assuming all refracted, none reflected
                            rayT = nRatio*rayT + (nRatio*cosI-cosT)*surfaceNormal;
 
@@ -1716,39 +1723,65 @@ for aAngle = 2; 1:length(incidenceAngle);
 
                            finalRayTRefract(iOrigin,:) = rayT;
                         else
+                            % Step back a bit so that rayX will be just inside mesh instead of just outside
+                            if lambda0 > 10^-9
+                                if useRealData
+                                    SF = 1.0;
+                                    while ~intersectionFn(rayX, x0) & SF >= 10^-9
+                                        if SF > 0.11
+                                           SF = SF - 0.1; 
+                                        else
+                                           SF = 0.1*SF;
+                                        end
+
+                                        [x, t] = ray_interpolation('5RKN', 'iso', x0', t0', lambda0*deltaS_final*SF, testCoords, ...
+                                            testInds, lensRIVolume, tolerance, RIToUse);
+
+                                        rayX = x'; rayT = t';
+                                    end
+                                else
+                                    error('Add for treatment test cases')
+                                end
+                                
+                                if ~intersectionFn(rayX, x0) & SF < 10^-9
+                                    rayT = t0; 
+                                    rayX = x0; 
+                                    
+                                    %%% Untested error
+                                    error('TIR ray didnt step back enough - check this')
+                                end
+                                
+                                %%% Could update rIn, rOut and surfaceNormal after step back and refraction parameteres after step back 
+                                    % unlikely these have changed much?
+                            end
+                            
                             % TIR
                             rayT = rayT-2*dot(surfaceNormal,rayT)*surfaceNormal;
-
                             rayT = rayT/norm(rayT)*rIn;
 
                             if testPlot; plot3(rayX(1), rayX(2), rayX(3), 'm*'); end 
 
-                            % Step back a bit so that rayX will be just inside mesh instead of just outside
-                            if lambda0 > 10^-9
-                                SF = 1.0;
-                                while ~intersectionFn(rayX, x0) & SF > 10^-9
-                                    if SF > 0.11
-                                       SF = SF - 0.1; 
-                                    else
-                                       SF = 0.1*SF;
-                                    end
-
-                                    [x, t] = ray_interpolation('5RKN', 'iso', x0', t0', lambda0*deltaS_final*SF, testCoords, ...
-                                        testInds, lensRIVolume, tolerance, RIToUse);
-
-                                    rayX = x'; rayT = t';
+                                                                                    
+                            % Check good triangle intersect is used 
+                            [dist, proj] = distancePointMesh(rayX, grinSurface.vertices, grinSurface.faces);
+                            
+                            if abs(dist - min(abs(intersectDistance))) > 0.5e-6
+                             
+                                if testPlot
+                                    plot3(rayX(:,1), rayX(:,2), rayX(:,3), 'ko')
+                                    plot3(proj(:,1), proj(:,2), proj(:,3), 'k*')
+                                    trisurf(grinSurface.faces(faceIndices,:), grinSurface.vertices(:,1), grinSurface.vertices(:,2), grinSurface.vertices(:,3), ...
+                                        'FaceColor','k','FaceAlpha',0.8);
                                 end
-
-                                %%% If SF threshold reached and rayX isn't back inside could offset zero as below
                                 
-                            else
-                               % x0 and RayX equal, need to step X0 back to pass test.
-                                    % RayX should be inside by default (?)
-                                x0 = x0 - t0*deltaS_final;
+                                % May need to after step back (if used)
+                                %%% Untested error
+                                error('Difference between nearest point and intersect')
                             end
                             
+                            % Catch just in case...
                             if ~intersectionFn(rayX, x0)
-                                % Could reduce threshold on SF above...
+                                
                                 error('Should be inside after TIR')
                             end
                             
@@ -2787,46 +2820,71 @@ function  intersect = surfaceIntersectFunction(volumeFull, volumeBorder, x, x0, 
         % Check if on border voxel and fine test required
         if volumeBorder(voxelX(1), voxelX(2), voxelX(3))
 
+            % Check points aren't coincident
             if norm(x-x0) > 0
-                lineDef = [x (x-x0)/norm((x-x0))];  
+                
+                % Check angle to surface
+                %%% This takes nearly as long as line call 
+                    %%% could possibly speed up if vector to surface is pre-calculated by voxel - accuracy?
+                [~, proj] = distancePointMesh(x, surface.vertices, surface.faces);
+                
+                angle = acos(dot((proj-x), (x-x0)) / (norm(proj-x) * norm(x-x0)))/pi*180;
+                
+                %%% If this too high, will probably get lambda error with all inds on one side
+                if  abs(angle - 90) > 1          
+                % If large use line intersects - faster
+                    
+                    lineDef = [x (x-x0)/norm((x-x0))];  
 
-                [tempPoints, intersectDistance] = intersectLineMesh3d(lineDef, surface.vertices, surface.faces, 1e-15);  
+                    % tolerance of 1e-15 sometimes misses true co-planar intersections
+                        % 1e-21 catches these but could cause problems else where
 
-                % for debug            
-    %             plot3(tempPoints(:,1), tempPoints(:,2), tempPoints(:,3), 'rx')
+                    [tempPoints, intersectDistance] = intersectLineMesh3d(lineDef, surface.vertices, surface.faces, 1e-15);  
 
-                backInds = find(intersectDistance < 0);
-                frontInds = find(intersectDistance > 0);
 
-                if length(intersectDistance) > 1
-                    if isempty(backInds) | isempty(frontInds)
-                        % all inds on one side, so not in volume
-                        intersect = 0;
-                    elseif ~isempty(backInds) & ~isempty(frontInds)
-                       % must be in volume as intersects on both sides
-                       intersect = 1;
+                    % for debug            
+        %             plot3(tempPoints(:,1), tempPoints(:,2), tempPoints(:,3), 'rx')
+
+                    backInds = find(intersectDistance < 0);
+                    frontInds = find(intersectDistance > 0);
+
+                    if length(intersectDistance) > 1
+                        if isempty(backInds) | isempty(frontInds)
+                            % all inds on one side, so should be not in volume
+                            %  but this is not always reliable for coplanar intersections
+                            intersect = 0;
+
+                        elseif ~isempty(backInds) & ~isempty(frontInds)
+                           % must be in volume as intersects on both sides
+                           intersect = 1;
+                        end
+
+                    elseif length(intersectDistance) == 1
+                        % can't be resolved unambigiously by distances
+                            % This is really slow! Also matlab normals seem to be opposite to convention
+                            % Tolerance cant be used - lambda will fall short by roughly tolerance amount
+                        intersect = inpolyhedron(surface, x, 'tol', 0, 'flipNormals',true);
+
+                    elseif isempty(intersectDistance)
+                       % Not intersect so can't be in volume (?)
+
+                       % Test this just in case
+                       intersect = inpolyhedron(surface, x, 'tol', 0, 'flipNormals',true);
+                       if intersect ~= 0
+                          error('No line intersect but inside surface?') 
+                       end
                     end
-
-                elseif length(intersectDistance) == 1
-                    % can't be resolved unambigiously by distances
-                        % This is really slow! Also matlab normals seem to be opposite to convention
-                    intersect = inpolyhedron(surface, x, 'tol', 1e-12, 'flipNormals',true);
-
-                elseif isempty(intersectDistance)
-                   % Not intersect so can't be in volume (?)
-
-                   % Test this just in case
-                   intersect = inpolyhedron(surface, x, 'tol', 1e-12, 'flipNormals',true);
-                   if intersect ~= 0
-                      error('No line intersect but inside surface?') 
-                   end
+                    
+                else
+                   % If small angle problems can occur with line intersects
+                    intersect = inpolyhedron(surface, x, 'tol', 0, 'flipNormals',true);
                 end
             else
                 % Points are equal (can't make line) so just test if inside polyhedron
-                intersect = inpolyhedron(surface, x, 'tol', 1e-12, 'flipNormals',true);
-                warning('Query points are equal in intersect')
+                intersect = inpolyhedron(surface, x, 'tol', 0, 'flipNormals',true);
+%               warning('Query points are equal in intersect')
             end
-
+            
         elseif volumeFull(voxelX(1), voxelX(2), voxelX(3))
              % just inside    
             intersect = 1; 
@@ -2845,7 +2903,8 @@ function lambda = surfaceLambdaFunction(x1, x0, surface)
         lineDef = [x0 (x1-x0)/norm(x1-x0)];  
 
         [intersectPoints, intersectDistance] = intersectLineMesh3d(lineDef, surface.vertices, surface.faces, 1e-15);
-
+        % plot3(tempPoints(:,1), tempPoints(:,2), tempPoints(:,3), 'rx')
+        
         % Sort out intersections
         if length(intersectDistance) > 1
             backInds = find(intersectDistance < 0);
@@ -2856,7 +2915,8 @@ function lambda = surfaceLambdaFunction(x1, x0, surface)
 
             if isempty(backInds) | isempty(frontInds)
                 % This should be called while x0 is inside mesh and x1 is outside
-                      % It can be that deltaS was too large
+
+                % error is often a sign of problems with intersection calculation, sometime several steps before
                 error('Check usage - all inds either in front or behind')
             end
 
@@ -2879,7 +2939,7 @@ function lambda = surfaceLambdaFunction(x1, x0, surface)
     else
        % points are equal, just set to 0.5
        lambda = 0.5;
-       warning('Query points are equal in lambda')
+%        warning('Query points are equal in lambda')
     end
     
     if lambda > 1
