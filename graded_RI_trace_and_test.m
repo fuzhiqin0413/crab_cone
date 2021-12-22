@@ -1096,13 +1096,11 @@ for aAngle = 1:length(incidenceAngle);
 
                     [intersectPointsIntercone, intersectDistanceIntercone, intersectFacesIntercone] = intersectLineMesh3d(lineDef, interconeSurface.vertices, interconeSurface.faces);
 
-                    %%% Note epsilon was increased for iterative final - hopefully it's not too fine here...
-                    
                     % put miniminum intersection distances into array - could be better way to do this
                     if ~isempty(intersectDistanceGrin)
                         % Remove points with dist less than ~zero - should modify function to do this...
                         % Or outside of bounds
-                        indsOut = find(intersectDistanceGrin <= epsilon | ...
+                        indsOut = find(intersectDistanceGrin <= 1e-6 | ...
                             intersectPointsGrin(:,1) < voxelSize | intersectPointsGrin(:,1) > volumeSize(1)*voxelSize | ...
                             intersectPointsGrin(:,2) < voxelSize | intersectPointsGrin(:,2) > volumeSize(2)*voxelSize | ...
                             intersectPointsGrin(:,3) < voxelSize | intersectPointsGrin(:,3) > volumeSize(3)*voxelSize);
@@ -1115,30 +1113,30 @@ for aAngle = 1:length(incidenceAngle);
                     if ~isempty(intersectDistanceGrin); minDistArray = min(intersectDistanceGrin); else; minDistArray = Inf; end
 
                     if ~isempty(intersectDistanceCornea);  
-                        intersectPointsCornea(intersectDistanceCornea <= epsilon, :) = [];
-                        intersectFacesCornea(intersectDistanceCornea <= epsilon) = [];
-                        intersectDistanceCornea(intersectDistanceCornea <= epsilon) = [];
+                        intersectPointsCornea(intersectDistanceCornea <= 1e-6, :) = [];
+                        intersectFacesCornea(intersectDistanceCornea <= 1e-6) = [];
+                        intersectDistanceCornea(intersectDistanceCornea <= 1e-6) = [];
                     end
                     if ~isempty(intersectDistanceCornea); minDistArray = [minDistArray min(intersectDistanceCornea)]; else; minDistArray = [minDistArray Inf]; end
 
                     if ~isempty(intersectDistanceEpicornea);  
-                        intersectPointsEpicornea(intersectDistanceEpicornea <= epsilon, :) = [];
-                        intersectFacesEpicornea(intersectDistanceEpicornea <= epsilon) = [];
-                        intersectDistanceEpicornea(intersectDistanceEpicornea <= epsilon) = [];
+                        intersectPointsEpicornea(intersectDistanceEpicornea <= 1e-6, :) = [];
+                        intersectFacesEpicornea(intersectDistanceEpicornea <= 1e-6) = [];
+                        intersectDistanceEpicornea(intersectDistanceEpicornea <= 1e-6) = [];
                     end
                     if ~isempty(intersectDistanceEpicornea); minDistArray = [minDistArray min(intersectDistanceEpicornea)]; else; minDistArray = [minDistArray Inf]; end
 
                     if ~isempty(intersectDistanceCinC);  
-                        intersectPointsCinC(intersectDistanceCinC <= epsilon, :) = [];
-                        intersectFacesCinC(intersectDistanceCinC <= epsilon) = [];
-                        intersectDistanceCinC(intersectDistanceCinC <= epsilon) = [];
+                        intersectPointsCinC(intersectDistanceCinC <= 1e-6, :) = [];
+                        intersectFacesCinC(intersectDistanceCinC <= 1e-6) = [];
+                        intersectDistanceCinC(intersectDistanceCinC <= 1e-6) = [];
                     end
                     if ~isempty(intersectDistanceCinC);   minDistArray = [minDistArray min(intersectDistanceCinC)]; else; minDistArray = [minDistArray Inf]; end
 
                     if ~isempty(intersectDistanceIntercone);  
-                        intersectPointsIntercone(intersectDistanceIntercone <= epsilon, :) = [];
-                        intersectFacesIntercone(intersectDistanceIntercone <= epsilon) = [];
-                        intersectDistanceIntercone(intersectDistanceIntercone <= epsilon) = [];
+                        intersectPointsIntercone(intersectDistanceIntercone <= 1e-6, :) = [];
+                        intersectFacesIntercone(intersectDistanceIntercone <= 1e-6) = [];
+                        intersectDistanceIntercone(intersectDistanceIntercone <= 1e-6) = [];
                     end
                     if ~isempty(intersectDistanceIntercone); minDistArray = [minDistArray min(intersectDistanceIntercone)]; else; minDistArray = [minDistArray Inf]; end
 
@@ -1489,7 +1487,7 @@ for aAngle = 1:length(incidenceAngle);
                 end
                 
                 % for debug
-                if loopSteps == 272
+                if loopSteps == 645
                     b = 1;
                 end
                 xm1 = x0;
@@ -1580,12 +1578,14 @@ for aAngle = 1:length(incidenceAngle);
 
                         its = 0;
 
-                        while deltaS0_final*norm(t0) > epsilon && abs(lambda0-1) > 10^-9 
+                        while deltaS0_final*norm(t0) > epsilon && abs(lambda0-1) > 1e-9 
                             %%% using 10^-3 as test for zero in tests above and below
 
                             SF = 1.0; %A from paper - saftey factor
 
-                            if lambda0 < 10^-9
+                            if lambda0 < 1e-9
+                               rayT = t0; 
+                               rayX = x0;
                                break
                             end
 
@@ -1629,14 +1629,6 @@ for aAngle = 1:length(incidenceAngle);
                             deltaS0_final = deltaS_final;
                         end
 
-                        % moved variable reset after loop 
-                            % sometimes lambda0 ends up less than this but loop exits because of deltaS threshold but treatment still seems to be required
-                          
-                        if lambda0 < 10^-9
-                           rayT = t0; 
-                           rayX = x0;
-                        end    
-                        
                     else
                         [x, t] = ray_interpolation(interpType, 'iso', x0', t0', deltaS*lambda0, testCoords_forwards, ...
                             testInds_forwards, lensRIVolume, tolerance, RIToUse);
@@ -1724,10 +1716,10 @@ for aAngle = 1:length(incidenceAngle);
                            finalRayTRefract(iOrigin,:) = rayT;
                         else
                             % Step back a bit so that rayX will be just inside mesh instead of just outside
-                            if lambda0 > 10^-9
+                            if lambda0 > 1e-9
                                 if useRealData
                                     SF = 1.0;
-                                    while ~intersectionFn(rayX, x0) & SF >= 10^-9
+                                    while ~intersectionFn(rayX, x0) & SF >= 1e-9
                                         if SF > 0.11
                                            SF = SF - 0.1; 
                                         else
@@ -1740,46 +1732,47 @@ for aAngle = 1:length(incidenceAngle);
                                         rayX = x'; rayT = t';
                                     end
                                     
-                                    rayT = rayT/rIn;
                                 else
                                     error('Add for treatment test cases')
                                 end
                                 
-                                if ~intersectionFn(rayX, x0) & SF < 10^-9
-                                    rayT = t0; 
-                                    rayX = x0; 
-                                    
+                                if ~intersectionFn(rayX, x0)
                                     %%% Untested error
                                     error('TIR ray didnt step back enough - check this')
                                 end
                                 
                                 %%% Could update rIn, rOut and surfaceNormal and refraction calc after step back 
                                     % Unlikely these have changed much? - probably just if triangle intersect has changed...
-                                    lineDef = [rayX rayT];
-                                    
-                                    [~, tempDistance, tempFaces] = intersectLineMesh3d(lineDef, grinSurface.vertices, grinSurface.faces, 1e-15);
+                                lineDef = [rayX rayT];
 
-                                    inds2Use = find(abs(tempDistance) == min(abs(tempDistance)));
+                                [~, tempDistance, tempFaces] = intersectLineMesh3d(lineDef, grinSurface.vertices, grinSurface.faces, 1e-15);
 
-                                    %%% Considered adjusting rayX to be intersect value but decided against 
-                                     % changes in X are all dealt with via numerical integration
+                                inds2Use = find(abs(tempDistance) == min(abs(tempDistance)));
 
-                                    tempIndices = tempFaces(inds2Use);
-                                    
-                                    if ~isempty(setdiff(faceIndices, tempIndices))
-                                        
-                                        %%% Untested error
-                                        error('Different triangles used')
-                                    end
+                                %%% Considered adjusting rayX to be intersect value but decided against 
+                                 % changes in X are all dealt with via numerical integration
+
+                                tempIndices = tempFaces(inds2Use);
+
+                                if ~isempty(setdiff(faceIndices, tempIndices))
+
+                                    %%% Untested error
+                                    error('Different triangles used')
+                                end
+                            else
+                               % Just set to start point as in original iterative final
+                               rayT = t0; 
+                               rayX = x0;
                             end
+                            
+                            rayT = rayT/rIn;
                             
                             % TIR
                             rayT = rayT-2*dot(surfaceNormal,rayT)*surfaceNormal;
-                            rayT = rayT/norm(rayT)*rIn; % not rIn is scaled back
+                            rayT = rayT/norm(rayT)*rIn; % rIn is scaled back
 
                             if testPlot; plot3(rayX(1), rayX(2), rayX(3), 'm*'); end 
-
-                                                                                    
+                                                        
                             % Check good triangle intersect is used 
                             [dist, proj] = distancePointMesh(rayX, grinSurface.vertices, grinSurface.faces);
                             
@@ -1794,7 +1787,7 @@ for aAngle = 1:length(incidenceAngle);
                                 end
                                 [acos(dot((proj-rayX), rayT) / (norm(proj-rayX) * norm(rayT)))/pi*180 abs(dist - min(abs(intersectDistance)))*1e6]
                                 
-                                % May need to after step back (if used)
+                                % May need to find new points after step back (if used)
                                 %%% Untested error
                                 error('Difference between nearest point and intersect')
                             end
@@ -2931,10 +2924,11 @@ function lambda = surfaceLambdaFunction(x1, x0, surface)
 
         [intersectPoints, intersectDistance] = intersectLineMesh3d(lineDef, surface.vertices, surface.faces, 1e-15);
         % plot3(tempPoints(:,1), tempPoints(:,2), tempPoints(:,3), 'rx')
-        
+
         % Sort out intersections
         if length(intersectDistance) > 1
-            zeroInd = find(intersectDistance == 0);
+            % Have some threshold for zero...
+            zeroInd = find(abs(intersectDistance) < 1e-12);
             
             if isempty(zeroInd)
                 % If no zeros there should be ind/s in front and ind/s behind
@@ -2951,15 +2945,15 @@ function lambda = surfaceLambdaFunction(x1, x0, surface)
                     error('Check usage - all inds either in front or behind')
                 end
 
-                nearestInd = frontInds(closestFrontInd);
+                nearestDist = intersectDistance(frontInds(closestFrontInd));
             else
                 % if there is a zero distance lambda will be zero
-                nearestInd = zeroInd;
+                nearestDist = 0;
             end
 
         elseif length(intersectDistance) == 1 
             if intersectDistance >= 0
-                nearestInd = 1;
+                nearestDist = intersectDistance(1);
             else
                error('Only one intersect and behind x0') 
             end
@@ -2970,7 +2964,7 @@ function lambda = surfaceLambdaFunction(x1, x0, surface)
 
         % Same as distance value in this context
 %         lambda = norm(intersectPoints(nearestInd,:)-x0)/norm(x1-x0);
-        lambda = intersectDistance(nearestInd,:)/norm(x1-x0);
+        lambda = nearestDist/norm(x1-x0);
         
     else
        % points are equal, just set to 0.5
