@@ -15,7 +15,7 @@ incidenceAngle = 0:2.5:20; [0 5 10];  % deg, in XZ - plane
 interConeValueToUse = 1.40;
 
 %%% Change back
-xSpacing = 5; % in voxels...
+xSpacing = 5*2; % in voxels...
 
 if useRealData
 
@@ -141,7 +141,7 @@ plotRIImageOnRayDiagram = 0;
 %%% Adapt to grid for 3D rays
 plotSpacing = 1; % Mutiple of xSpaing to plot - only works properly center ray plotting
 
-testPlot = 0;
+testPlot = 1;
 testPlotSurface = 0;
 
 %% Load or create test data     
@@ -745,7 +745,7 @@ if useRealData
    imshow(permute(tempVolume(round(volumeSize(1)/2),:,:), [2 3 1])');
    
    subplot(1,2,2)
-   imshow(permute((lensRIVolume(round(volumeSize(1)/2),:,:)-1.45)/(1.54-1.45), [2 3 1])');
+   imshow(permute((lensRIVolume(round(volumeSize(1)/2),:,:)-1.35)/(1.54-1.35), [2 3 1])');
 
 elseif useTestData
     if ~xor(createLunebergLens, createGradedFiber)
@@ -987,17 +987,15 @@ rayReverseCells = cell(length(incidenceAngle), 1);
 
 timePerAngle = zeros(length(incidenceAngle),1);
 
-for aAngle = 1:length(incidenceAngle);
+for aAngle = 9; 1:length(incidenceAngle);
     
     tic
     
     startRayT = [sin(incidenceAngle(aAngle)/180*pi), 0, cos(incidenceAngle(aAngle)/180*pi)];    
 
-    rayPathArray = zeros(3, volumeSize(3), nOrigins)*NaN;
+    rayPathArray = zeros(3, length(zSteps), nOrigins)*NaN;
 
-    rayPathLengthArray = zeros(volumeSize(3), nOrigins)*NaN;
-
-    rayMap = zeros(volumeSize);
+    rayPathLengthArray = zeros(length(zSteps), nOrigins)*NaN;
 
     if testPlot
         figure; hold on; axis equal; set(gca,'Clipping','off')
@@ -1038,7 +1036,7 @@ for aAngle = 1:length(incidenceAngle);
        periodSpotsArray = zeros(3, numPeriods, nOrigins);
     end
 
-    for iOrigin = 1:nOrigins;
+    for iOrigin = 1490; 1:nOrigins;
         
         tempTime = toc;
         [aAngle iOrigin round(tempTime/60)]
@@ -1197,6 +1195,7 @@ for aAngle = 1:length(incidenceAngle);
                                 end
                         end
 
+                        %%% Can this be places in cone base limit test...?
                         propogateFinalRay = 1*go;
                     else
                         go = 0;
@@ -1394,7 +1393,7 @@ for aAngle = 1:length(incidenceAngle);
                                 case 4 % CinC (into intercone, not cone)
                                     rIn = metaData.outerCorneaValue;
 
-                                    rOut = metaData.interconeValue;
+                                    rOut = interConeValueUsed;
 
                                     surfaceNormal = mean(interconeBaseNormals(faceIndices,:),1);
 
@@ -1406,7 +1405,7 @@ for aAngle = 1:length(incidenceAngle);
                                     end
 
                                 case 5 % intercone 
-                                    rIn = metaData.interconeValue;
+                                    rIn = interConeValueUsed;
 
                                     rOut = metaData.innerValue;
 
@@ -1733,6 +1732,7 @@ for aAngle = 1:length(incidenceAngle);
                                            SF = 0.1*SF;
                                         end
 
+                                        % note that t0 wasn't scaled back...
                                         [x, t] = ray_interpolation('5RKN', 'iso', x0', t0', lambda0*deltaS_final*SF, testCoords, ...
                                             testInds, lensRIVolume, tolerance, RIToUse);
 
@@ -1820,7 +1820,7 @@ for aAngle = 1:length(incidenceAngle);
                     end
                 end
 
-                if rayT(3) < 0 & inGraded
+                if rayT(3) < 0 %& inGraded
                    % kill ray if it reverses
                    %%% Should flag for final plotting
                    go = 0; 
@@ -1832,6 +1832,10 @@ for aAngle = 1:length(incidenceAngle);
                    warning('Ray has reversed')
                    
                    rayReversed(iOrigin) = 1;
+                   
+                   if ~inGraded
+                      b = 1; 
+                   end
                 end
 
                 % At each z step, record path for plotting later 
@@ -1854,8 +1858,6 @@ for aAngle = 1:length(incidenceAngle);
 
             voxelX = round(rayX/voxelSize);
 
-    %         rayMap(voxelX(1), voxelX(2), voxelX(3)) = 1;
-
             % Check ray has exitied volume
             if any(voxelX > volumeSize) | any(voxelX < 1)
                go = 0; 
@@ -1874,9 +1876,10 @@ for aAngle = 1:length(incidenceAngle);
 
             if currentStep < length(zSteps)
                 rayT = rayT/rayT(3);
-                for i = currentStep+1:length(zSteps)
-                    rayPathArray(:, i, iOrigin) = rayX + rayT.*(zSteps(i) - rayX(3));
-                end
+                
+                rayPathArray(1, currentStep+1:end, iOrigin) = rayX(1) + rayT(1).*(zSteps(currentStep+1:end) - rayX(3));
+                rayPathArray(2, currentStep+1:end, iOrigin) = rayX(2) + rayT(2).*(zSteps(currentStep+1:end) - rayX(3));
+                rayPathArray(3, currentStep+1:end, iOrigin) = rayX(3) + rayT(3).*(zSteps(currentStep+1:end) - rayX(3));
 
                 if testPlot
                     plot3(rayPathArray(1, currentStep+1:length(zSteps), iOrigin), rayPathArray(2, currentStep+1:length(zSteps), iOrigin), ...
@@ -1897,10 +1900,10 @@ for aAngle = 1:length(incidenceAngle);
         end
     end
     
-    rayPathCells{aAngle} = finalRay;
-    finalIntersectCells{aAngle} = finalRayTRefract;
-    finalRayCells{aAngle} = finalIntersect;
-    finalRayTRefractCells{aAngle} = rayPathArray;
+    rayPathCells{aAngle} = rayPathArray; 
+    finalIntersectCells{aAngle} = finalIntersect; 
+    finalRayCells{aAngle} = finalRay; 
+    finalRayTRefractCells{aAngle} = finalRayTRefract;
     rayReverseCells{aAngle} = rayReversed;
     TIRFlagCells{aAngle} = TIRFlag;
     
@@ -1957,10 +1960,10 @@ if useRealData
          
     for aAngle = 9; 1:length(incidenceAngle);
         
-        finalRay = rayPathCells{aAngle};
-        finalRayTRefract = finalIntersectCells{aAngle};
-        finalIntersect = finalRayCells{aAngle};
-        rayPathArray = finalRayTRefractCells{aAngle};
+        rayPathArray = rayPathCells{aAngle}; 
+        finalIntersect = finalIntersectCells{aAngle};
+        finalRay = finalRayCells{aAngle};
+        finalRayTRefract = finalRayTRefractCells{aAngle};
         TIRFlag = TIRFlagCells{aAngle};
 
         % Plot spot diagram first
@@ -1981,6 +1984,9 @@ if useRealData
                 if finalIntersect(iOrigin,3) >= rayHeightReq
                     % check if final intersect is closer than last z step    
                     if abs(finalIntersect(iOrigin, 3) - coneTipZ) < abs(rayPathArray(3,priorInd,iOrigin) - coneTipZ)
+                        
+                        %%% Check this final ray is used correctly
+                        
                         % if it is less than a micron away just plot directly
                         if abs(finalIntersect(iOrigin, 3) - coneTipZ) < 10^-3
                            xTip = rayPathArray(1,priorInd,iOrigin);
