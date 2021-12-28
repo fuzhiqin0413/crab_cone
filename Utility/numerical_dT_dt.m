@@ -54,7 +54,6 @@ function [dT_dt, n_of_X, dn_partial_dX] = numerical_dT_dt(X, vol_coords, vol_ind
         dT_dt = n_of_X*dn_partial_dX; %3x1 vector
     else
         % doesn't really matter what RI is, no change in ray
-        dT_dt = [0 0 0];
-        error('Check this makes sense')
+        dT_dt = [0 0 0]';
     end
 end
