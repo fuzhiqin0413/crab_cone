@@ -1,7 +1,8 @@
 % Set up to do both tracing on data and have testing mode on either
 % lundaberg lens or graded fibre, as in nishdate 2011 papers
     
-clear; 
+% clear; 
+clearvars -except dataFolder metaFile 
 clc; close all
 
 %% Set parameters
@@ -24,22 +25,13 @@ if useRealData
     
     %%% For 2 micron data
     % Varying RI
-    dataFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/AnalysisVolumes/2 micron/Varying RI Profile/';
-    
-    metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_both.mat';
+%     dataFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/AnalysisVolumes/2 micron/Varying RI Profile/';
+%     
+%     metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_both.mat';
 %     metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_cylinder.mat';
 %     metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_linear.mat';
 %     metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_radialTop.mat';
 %     metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_radialTop_TipCorrection.mat';
-    
-    % Varying shape SD
-%     dataFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/AnalysisVolumes/2 micron/Varying Cone SD/';
-    
-%     metaFile = 'Cone_1000_nm_Cone_-4_SD_Uniform_1.52.mat';
-%     metaFile = 'Cone_1000_nm_Cone_-2_SD_Uniform_1.52.mat';
-%     metaFile = 'Cone_1000_nm_Cone_0_SD_Uniform_1.52.mat';
-%     metaFile = 'Cone_1000_nm_Cone_2_SD_Uniform_1.52.mat';
-%     metaFile = 'Cone_1000_nm_Cone_-4_SD_Uniform_1.52.mat';
 
     %%% To add: Internal structure w/ radial and uniform RI
 
@@ -133,12 +125,15 @@ blockMultipleExits = 0;
 limitToConeBase = 1;
 
 % extend on final plots - only added for real data
-extendRayLength = 1; % mm
+%%% Now done as extension of zsteps
+% extendRayLength = 1; % mm
 
 % Best to do this as I haven't really delt with them yet
 clearReverseRays = 1;
 
 plotLineCols = 0;
+colorTIR = 1; % Cant use both but not tested...
+
 justPlotCenterRays = 0;
 scaleBarsOnRayDiagram = 1;
 plotRIImageOnRayDiagram = 0;
@@ -505,9 +500,8 @@ if useRealData
     
     if flipSurfaces
         cInCSurface.vertices(:,3) = -(cInCSurface.vertices(:,3)-volumeSize(3)/2)+volumeSize(3)/2;
-        
     end
-
+    
     
     
     %%% Would be good to make a funciton for doing the rotation in these...
@@ -597,6 +591,9 @@ if useRealData
     
     % Combine cone surfaces and really hope they are water tight...
     grinSurface.vertices = vertcat(grinSurface.vertices, cInCSurface.vertices);
+    
+    % Reverse order of CinC faces so they point in same polarity (at base so will point inward)
+%     cInCSurface.faces = cInCSurface.faces(:,[3 2 1]);
     
     % update the face list
     faceUpdate = cInCSurface.faces+max(max(grinSurface.faces));
@@ -814,6 +811,14 @@ if useRealData
     % Get normals for all
     grinNormals = meshFaceNormals(grinSurface.vertices, grinSurface.faces);
     
+    if testPlotSurface
+        figure; hold on; axis equal
+        trisurf(grinSurface.faces, grinSurface.vertices(:,1), grinSurface.vertices(:,2), grinSurface.vertices(:,3), ...
+               'FaceColor','g','FaceAlpha',0.8);
+        quiver3(grinSurface.vertices(grinSurface.faces(:,1),1), grinSurface.vertices(grinSurface.faces(:,1),2), grinSurface.vertices(grinSurface.faces(:,1),3), ...
+            grinNormals(:,1)*5, grinNormals(:,2)*5, grinNormals(:,3)*5);
+    end
+    
     cInCNormals = meshFaceNormals(cInCSurface.vertices, cInCSurface.faces);
     
     corneaNormals = meshFaceNormals(corneaSurface.vertices, corneaSurface.faces);
@@ -891,7 +896,7 @@ volInds = sub2ind(volumeSize, tempX(:), tempY(:), tempZ(:));
 
 volCoords = ([tempX(:), tempY(:), tempZ(:)])*voxelSize;
 
-zSteps = (1:volumeSize(3))*voxelSize;
+zSteps = (1:volumeSize(3)*1.5)*voxelSize;
 
 if useRealData
     
@@ -977,6 +982,7 @@ rayPathCells = cell(length(incidenceAngle), 1);
 finalIntersectCells = cell(length(incidenceAngle), 1); 
 finalRayCells = cell(length(incidenceAngle), 1);
 finalRayTRefractCells = cell(length(incidenceAngle), 1);
+TIRFlagCells = cell(length(incidenceAngle), 1);
 rayReverseCells = cell(length(incidenceAngle), 1);
 
 timePerAngle = zeros(length(incidenceAngle),1);
@@ -1018,7 +1024,8 @@ for aAngle = 1:length(incidenceAngle);
 
     finalRayTRefract = zeros(nOrigins, 3)*NaN;
     finalRay = zeros(nOrigins, 3)*NaN;
-
+    
+    TIRFlag = zeros(nOrigins, 1);
     rayReversed = zeros(nOrigins, 1);
     
     if createGradedFiber
@@ -1798,6 +1805,8 @@ for aAngle = 1:length(incidenceAngle);
                                 error('Should be inside after TIR')
                             end
                             
+                            TIRFlag(iOrigin) = 1;
+                            
                             % Does not exit by default
                             inGraded = 1;
 
@@ -1811,7 +1820,7 @@ for aAngle = 1:length(incidenceAngle);
                     end
                 end
 
-                if rayT(3) < 0
+                if rayT(3) < 0 & inGraded
                    % kill ray if it reverses
                    %%% Should flag for final plotting
                    go = 0; 
@@ -1893,6 +1902,7 @@ for aAngle = 1:length(incidenceAngle);
     finalRayCells{aAngle} = finalIntersect;
     finalRayTRefractCells{aAngle} = rayPathArray;
     rayReverseCells{aAngle} = rayReversed;
+    TIRFlagCells{aAngle} = TIRFlag;
     
     timePerAngle(aAngle) = toc;
     
@@ -1936,16 +1946,22 @@ if useRealData
     
     nPlotRows = 2; % could do dynamically, but blah...
     
-    coneTipZ = (volumeSize(3)-coneVertices(1,3))*voxelSize;
+    coneTipZ = coneProfileZ(1)*voxelSize;
     priorInd = find(zSteps < coneTipZ); priorInd = priorInd(end);
     topConeInds = find(coneProfileZ*voxelSize > coneTipZ - exposedHeight/1000);
+
+    % Ray needs to get above this height to be plotted at all
+    rayHeightReq = (coneProfileZ(end)+(interconeProfileZ(end)-coneProfileZ(end))/4)*voxelSize;
     
-    for aAngle = 1:length(incidenceAngle);
+    exposedConeInds = find(coneProfileZ*voxelSize > coneTipZ - exposedHeight/1000);
+         
+    for aAngle = 9; 1:length(incidenceAngle);
         
         finalRay = rayPathCells{aAngle};
         finalRayTRefract = finalIntersectCells{aAngle};
         finalIntersect = finalRayCells{aAngle};
         rayPathArray = finalRayTRefractCells{aAngle};
+        TIRFlag = TIRFlagCells{aAngle};
 
         % Plot spot diagram first
         figure(spotF); 
@@ -1962,76 +1978,91 @@ if useRealData
         for iOrigin = 1:nOrigins
             if all(~isnan(finalRay(iOrigin,:))) & all(~isnan(rayPathArray(:,:,iOrigin))) & all(~isnan(finalIntersect(iOrigin,:)))
 
-                % check if final intersect is closer than last z step    
-                if abs(finalIntersect(iOrigin, 3) - coneTipZ) < abs(rayPathArray(3,priorInd,iOrigin) - coneTipZ)
-                    % if it is less than a micron away just plot directly
-                    if abs(finalIntersect(iOrigin, 3) - coneTipZ) < 10^-3
-                       xTip = rayPathArray(1,priorInd,iOrigin);
-                       yTip = rayPathArray(2,priorInd,iOrigin);
-                    else
-                       % should adjust with the refracted ray? (could be intersection after...)
-                       if finalIntersect(iOrigin, 3) - coneTipZ < 0
-                            % intesect is behind, can just extend refracted ray
-                            zDiff = coneTipZ - finalIntersect(iOrigin, 3);
-                            normRay = finalRayTRefract(iOrigin,:)/finalRayTRefract(iOrigin,3);
+                if finalIntersect(iOrigin,3) >= rayHeightReq
+                    % check if final intersect is closer than last z step    
+                    if abs(finalIntersect(iOrigin, 3) - coneTipZ) < abs(rayPathArray(3,priorInd,iOrigin) - coneTipZ)
+                        % if it is less than a micron away just plot directly
+                        if abs(finalIntersect(iOrigin, 3) - coneTipZ) < 10^-3
+                           xTip = rayPathArray(1,priorInd,iOrigin);
+                           yTip = rayPathArray(2,priorInd,iOrigin);
+                        else
+                           % should adjust with the refracted ray? (could be intersection after...)
+                           if finalIntersect(iOrigin, 3) - coneTipZ < 0
+                                % intesect is behind, can just extend refracted ray
+                                zDiff = coneTipZ - finalIntersect(iOrigin, 3);
+                                normRay = finalRayTRefract(iOrigin,:)/finalRayTRefract(iOrigin,3);
 
-                            xTip = finalIntersect(iOrigin, 1) + normRay(1)*zDiff;
-                            yTip = finalIntersect(iOrigin, 2) + normRay(2)*zDiff;
-                       else
-                            error('Need to add treatment') 
+                                xTip = finalIntersect(iOrigin, 1) + normRay(1)*zDiff;
+                                yTip = finalIntersect(iOrigin, 2) + normRay(2)*zDiff;
+                           else
+                                error('Need to add treatment') 
+                           end
                        end
-                   end
-                else
-                    zDiff = coneTipZ - rayPathArray(3,priorInd,iOrigin);
-                    normRay = finalRay(iOrigin,:)/finalRay(iOrigin,3);
+                    else
+                        zDiff = coneTipZ - rayPathArray(3,priorInd,iOrigin);
+                        normRay = finalRay(iOrigin,:)/finalRay(iOrigin,3);
 
-                    xTip = rayPathArray(1,priorInd,iOrigin) + normRay(1)*zDiff;
-                    yTip = rayPathArray(2,priorInd,iOrigin) + normRay(2)*zDiff;
-                end
+                        xTip = rayPathArray(1,priorInd,iOrigin) + normRay(1)*zDiff;
+                        yTip = rayPathArray(2,priorInd,iOrigin) + normRay(2)*zDiff;
+                    end
 
-                xTip = xTip - volumeSize(1)/2*voxelSize;
-                yTip = yTip - volumeSize(1)/2*voxelSize;
+                    xTip = xTip - volumeSize(1)/2*voxelSize;
+                    yTip = yTip - volumeSize(1)/2*voxelSize;
 
-                % Accepted if within receptor radius and angle isn't too large and left above exposed part of tip
-                if sqrt(xTip.^2 + yTip.^2) <= receptorRadius/1000 & ...
-                        dot(finalRay(iOrigin,:), [0 0 1])/(norm(finalRay(iOrigin,:))*norm([0 0 1])) < receptorAcceptance/180*pi & ...
-                        finalIntersect(iOrigin, 3) > coneTipZ - exposedHeight/1000
-                    rayAccepted(iOrigin) = 1;
-                else
-                    rayAccepted(iOrigin) = 0;
-                end
+                    % Accepted if within receptor radius and angle isn't too large and left above exposed part of tip
+                    if sqrt(xTip.^2 + yTip.^2) <= receptorRadius/1000 & ...
+                            dot(finalRay(iOrigin,:), [0 0 1])/(norm(finalRay(iOrigin,:))*norm([0 0 1])) < receptorAcceptance/180*pi & ...
+                            finalIntersect(iOrigin, 3) > coneTipZ - exposedHeight/1000
+                        rayAccepted(iOrigin) = 1;
+                    else
+                        rayAccepted(iOrigin) = 0;
+                    end
 
-                if abs(xTip) > coneProfileR(end)*voxelSize*baseMult | ...
-                       abs(yTip) > coneProfileR(end)*voxelSize*baseMult
-                   % Add arrow as ray is of diagram
+                    if plotLineCols
+                        col = rayCols(iOrigin,:);
+                    elseif colorTIR & TIRFlag(iOrigin)
+                        col = 'b';
+                    else
+                       col = 'k';
+                    end
+                    
+                    if finalIntersect(iOrigin, 3) > coneTipZ - exposedHeight/1000;
+                        %sqrt(xTip.^2 + yTip.^2) <= coneProfileR(1)*2.5*voxelSize
+                        plot(xTip*1000, yTip*1000, 'x', 'color', col)
+                        rayForColc(iOrigin) = 1;
+                    else
+                        plot(xTip*1000, yTip*1000, 'o', 'color', col)
+                        rayForColc(iOrigin) = 0;
+                    end
+                    
+                    if abs(xTip) > coneProfileR(end)*voxelSize*baseMult | ...
+                           abs(yTip) > coneProfileR(end)*voxelSize*baseMult
+                       % Add arrow as ray is of diagram
 
-                   % Firstly scale to border
-                   if abs(xTip) > coneProfileR(end)*voxelSize*baseMult
-                       yTipClip = yTip*(coneProfileR(end)*voxelSize*baseMult)/xTip;
-                       xTipClip = coneProfileR(end)*voxelSize*baseMult;
-                   elseif abs(yTip) > coneProfileR(end)*voxelSize*baseMult
-                       xTipClip = xTip*(coneProfileR(end)*voxelSize*baseMult)/yTip;
-                       yTipClip = coneProfileR(end)*voxelSize*baseMult;
-                   end
-                   
-                   tipNorm = sqrt(xTipClip^2 + yTipClip^2);
-                   
-                   line(xTipClip*1000+[-xTipClip/tipNorm*10 0], yTipClip*1000+[-yTipClip/tipNorm*10 0], 'linewidth', 1.5, 'color', 'k')
-                end
+                       % Firstly scale to border
+                       if abs(xTip) > coneProfileR(end)*voxelSize*baseMult & abs(xTip) > abs(yTip)
+                           % X out of range and larger than Y
+                           yTipClip = yTip*(coneProfileR(end)*voxelSize*baseMult)/abs(xTip);
+                           if xTip > 0
+                                xTipClip = coneProfileR(end)*voxelSize*baseMult;
+                           else
+                                xTipClip = -coneProfileR(end)*voxelSize*baseMult;
+                           end
+                       elseif abs(yTip) > coneProfileR(end)*voxelSize*baseMult & abs(xTip) < abs(yTip)
+                           % Y our of range and larger than X
+                           xTipClip = xTip*(coneProfileR(end)*voxelSize*baseMult)/abs(yTip);
+                           if yTip > 0
+                                yTipClip = coneProfileR(end)*voxelSize*baseMult;
+                           else
+                                yTipClip = -coneProfileR(end)*voxelSize*baseMult;
+                           end
+                       end
+                       
+                       tipNorm = sqrt(xTipClip^2 + yTipClip^2);
 
-                if plotLineCols
-                    col = rayCols(iOrigin,:);
-                else
-                   col = 'k';
-                end
+                       line(xTipClip*1000+[-xTipClip/tipNorm*10 0], yTipClip*1000+[-yTipClip/tipNorm*10 0], 'linewidth', 1.5, 'color', 'k')
+                    end
 
-                if finalIntersect(iOrigin, 3) > coneTipZ - exposedHeight/1000;
-                    %sqrt(xTip.^2 + yTip.^2) <= coneProfileR(1)*2.5*voxelSize
-                    plot(xTip*1000, yTip*1000, 'x', 'color', col)
-                    rayForColc(iOrigin) = 1;
-                else
-                    plot(xTip*1000, yTip*1000, 'o', 'color', col)
-                    rayForColc(iOrigin) = 0;
                 end
             end
         end
@@ -2040,8 +2071,6 @@ if useRealData
 
         viscircles([0 0],receptorRadius, 'color', 'r')
 
-        exposedConeInds = find(coneProfileZ*voxelSize > coneTipZ - exposedHeight/1000);
-        
         viscircles([0 0],coneProfileR(exposedConeInds(end))*1000*voxelSize, 'color', [0.5 0 0.5]);
         
         viscircles([0 0],coneProfileR(end)*1000*voxelSize, 'color', outlineCol);
@@ -2095,7 +2124,7 @@ if useRealData
         
         % scale bar
         if scaleBarsOnRayDiagram
-            line ([0.025 0.025], [0.5 0.7], 'linewidth', 2, 'color', 'k')
+            line ([0.025 0.025], [-0.1 0.1]+rayHeightReq, 'linewidth', 2, 'color', 'k')
             axis off
         end
         
@@ -2106,22 +2135,38 @@ if useRealData
         tempRaysOnXZPlane(tempInds(1:plotSpacing:end)) = 1;
 
         for iOrigin = 1:nOrigins
-            rayPath = permute(rayPathArray(:, :, iOrigin), [2 1]);
+            if finalIntersect(iOrigin,3) >= rayHeightReq
+                rayPath = permute(rayPathArray(:, :, iOrigin), [2 1]);
 
-            % plot3(rayPath(:,1), rayPath(:,2), rayPath(:,3), 'color', rayCols(iOrigin,:));
-            % shifted to 2 x 2d plots for assymetry
+                % plot3(rayPath(:,1), rayPath(:,2), rayPath(:,3), 'color', rayCols(iOrigin,:));
+                % shifted to 2 x 2d plots for assymetry
 
-            extendedRay = rayPath(end-1,:) + extendRayLength*finalRay(iOrigin,:);
+%                 if finalRay(iOrigin,3) > 0
+%                     extendedRay = rayPath(end-1,:) + extendRayLength*finalRay(iOrigin,:);
+%                 else
+%                     extendedRay = rayPath(end-1,:);
+%                 end
+                %line([rayPath(end-1,1) extendedRay(1)], [rayPath(end-1,2) extendedRay(2)], [rayPath(end-1,3) extendedRay(3)], 'color', rayCols(iOrigin,:) )
 
-            %line([rayPath(end-1,1) extendedRay(1)], [rayPath(end-1,2) extendedRay(2)], [rayPath(end-1,3) extendedRay(3)], 'color', rayCols(iOrigin,:) )
+                if rayForColc(iOrigin); style = '-'; else; style = ':'; end
 
-            if rayForColc(iOrigin); style = '-'; else; style = ':'; end
+                if plotLineCols;
+                    col = rayCols(iOrigin,:); 
+                elseif colorTIR & TIRFlag(iOrigin)
+                    col = 'b';     
+                else
+                    col = 'k'; 
+                end
 
-            if plotLineCols; col = rayCols(iOrigin,:); else; col = 'k'; end
 
-            if ~justPlotCenterRays | (justPlotCenterRays & tempRaysOnXZPlane(iOrigin))
-                plot(rayPath(:,1),  rayPath(:,3), 'color', col, 'linestyle', style);
-                line([rayPath(end-1,1) extendedRay(1)], [rayPath(end-1,3) extendedRay(3)], 'color', col, 'linestyle', style)
+                if ~justPlotCenterRays | (justPlotCenterRays & tempRaysOnXZPlane(iOrigin))
+                    plot(rayPath(:,1),  rayPath(:,3), 'color', col, 'linestyle', style);
+%                     line([rayPath(end-1,1) extendedRay(1)], [rayPath(end-1,3) extendedRay(3)], 'color', col, 'linestyle', style)
+                end
+
+                if iOrigin > 1400;
+                    b = 1;
+                end
             end
         end
         
@@ -2180,7 +2225,7 @@ if useRealData
         
         % scale bar
         if scaleBarsOnRayDiagram
-            line ([0.025 0.025], [0.5 0.7], 'linewidth', 2, 'color', 'k')
+            line ([0.025 0.025], [-0.1 0.1]+rayHeightReq, 'linewidth', 2, 'color', 'k')
             axis off
         end
         
@@ -2191,17 +2236,30 @@ if useRealData
         tempRaysOnYZPlane(tempInds(1:plotSpacing:end)) = 1;
         
         for iOrigin = 1:nOrigins
-            rayPath = permute(rayPathArray(:, :, iOrigin), [2 1]);
+            if finalIntersect(iOrigin,3) >= rayHeightReq
+                rayPath = permute(rayPathArray(:, :, iOrigin), [2 1]);
 
-            extendedRay = rayPath(end-1,:) + extendRayLength*finalRay(iOrigin,:);
+                %%% Check why this is happening - it shouldn't be
+%                 if finalRay(iOrigin,3) > 0
+%                     extendedRay = rayPath(end-1,:) + extendRayLength*finalRay(iOrigin,:);
+%                 else
+%                     extendedRay = rayPath(end-1,:);
+%                 end
 
-            if rayForColc(iOrigin); style = '-'; else; style = ':'; end
+                if rayForColc(iOrigin); style = '-'; else; style = ':'; end
 
-            if plotLineCols; col = rayCols(iOrigin,:); else; col = 'k'; end
+                if plotLineCols;
+                    col = rayCols(iOrigin,:); 
+                elseif colorTIR & TIRFlag(iOrigin)
+                    col = 'b';     
+                else
+                    col = 'k'; 
+                end
 
-            if ~justPlotCenterRays | (justPlotCenterRays & tempRaysOnYZPlane(iOrigin))
-                plot(rayPath(:,2),  rayPath(:,3), 'color', col, 'linestyle', style);
-                line([rayPath(end-1,2) extendedRay(2)], [rayPath(end-1,3) extendedRay(3)], 'color', col, 'linestyle', style);
+                if ~justPlotCenterRays | (justPlotCenterRays & tempRaysOnYZPlane(iOrigin))
+                    plot(rayPath(:,2),  rayPath(:,3), 'color', col, 'linestyle', style);
+%                     line([rayPath(end-1,2) extendedRay(2)], [rayPath(end-1,3) extendedRay(3)], 'color', col, 'linestyle', style);
+                end
             end
         end
         
@@ -2268,6 +2326,10 @@ if useRealData
 
                     plot((volumeSize(2)/2+[-fliplr(coneProfileR(topConeInds)) (coneProfileR(topConeInds)) ])*voxelSize,...
                         [fliplr(coneProfileZ(topConeInds)) (coneProfileZ(topConeInds)) ]*voxelSize, 'color', [0.5 0 0.5], 'linewidth',3);
+                    
+                    plot( ([volumeSize(1)/2-interconeProfileR 0])*voxelSize, [interconeProfileZ interconeProfileZ(end)]*voxelSize, 'color', outlineCol, 'linewidth',2)
+                    plot( ([volumeSize(1)/2+interconeProfileR volumeSize(1)])*voxelSize, [interconeProfileZ interconeProfileZ(end)]*voxelSize, 'color', outlineCol, 'linewidth',2)
+        
                 end
             end
 
@@ -2311,10 +2373,11 @@ if useRealData
     figure(tipF)
     for i = 1:3
         subplot(1,3,i);
-        ylim(coneTipZ+[-0.15 0.15])
+        ylim(coneTipZ+[-0.25 0.05])
+        xlim(volumeSize(1)/2*voxelSize+[-0.1 0.1])
 
-        set(gca, 'YTick', coneTipZ+(-0.1:0.05:0.1), 'YTickLabel', -100:50:100, ...
-            'XTick', volumeSize(1)/2*voxelSize+(-0.05:0.025:0.05), 'XTickLabel', -50:25:50, ...
+        set(gca, 'YTick', coneTipZ+(-0.25:0.05:0.05), 'YTickLabel', -250:50:50, ...
+            'XTick', volumeSize(1)/2*voxelSize+(-0.1:0.05:0.1), 'XTickLabel', -100:50:100, ...
             'TickDir','out', 'LineWidth', 1, 'FontSize', 20)
         
         colormap(angleCols)
@@ -2331,7 +2394,9 @@ if useRealData
     subplot(1,3,3);
     title('Y Focus by angle')
     
-    acceptanceAngle = interp1(acceptancePercentage(acceptancePercentage > 0),incidenceAngle(acceptancePercentage > 0),0.5,'linear');
+    [~, uInd] = unique(acceptancePercentage);
+    uInd = sort(uInd);
+    acceptanceAngle = interp1(acceptancePercentage(uInd), incidenceAngle(uInd),0.5,'linear');
     
         
     figure(spotF); set(gcf, 'position', [-1919 -149 1920 1104])
@@ -2343,75 +2408,76 @@ if useRealData
     sumF = figure; set(gcf, 'position', [1 86 1263 869]) 
     subplot(3,3,1); hold on
     plot(incidenceAngle, acceptancePercentage, 'k-', 'linewidth',2)
-    for aAngle = 1:length(incidenceAngle)
-        plot(incidenceAngle(aAngle), acceptancePercentage(aAngle), 'o', 'color', angleCols(aAngle,:))
-    end
+    plot(acceptanceAngle, 0.5, 'kd','markersize',10, 'linewidth',2)
+%     for aAngle = 1:length(incidenceAngle)
+%         plot(incidenceAngle(aAngle), acceptancePercentage(aAngle), 'o', 'color', angleCols(aAngle,:))
+%     end
     title('Acceptance function')
     ylim([0 1]); ylabel('Percentage captured'); xlabel('Angle (o)')
     set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20);
     
     subplot(3,3,2); hold on
     plot(incidenceAngle, (colcHeight - coneTipZ)*1000, 'k-', 'linewidth',2)
-    for aAngle = 1:length(incidenceAngle)
-        plot(incidenceAngle(aAngle), (colcHeight(aAngle)- coneTipZ)*1000, 'o', 'color', angleCols(aAngle,:))
-    end
+%     for aAngle = 1:length(incidenceAngle)
+%         plot(incidenceAngle(aAngle), (colcHeight(aAngle)- coneTipZ)*1000, 'o', 'color', angleCols(aAngle,:))
+%     end
     title('COLC Height from Tip')
     line([0 20], [0 0], 'color', 'k', 'linewidth',2)
-    ylim([-125 50]); ylabel('Height (um)'); xlabel('Angle (o)')
-    set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20);
+    ylim([-250 100]); ylabel('Height (um)'); xlabel('Angle (o)')
+    set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20, 'YTick', [-200 -100 0 100]);
     
     subplot(3,3,3); hold on
     plot(incidenceAngle, colcRadius*1000, 'k-', 'linewidth',2)
-    for aAngle = 1:length(incidenceAngle)
-        plot(incidenceAngle(aAngle), colcRadius(aAngle)*1000, 'o', 'color', angleCols(aAngle,:))
-    end
+%     for aAngle = 1:length(incidenceAngle)
+%         plot(incidenceAngle(aAngle), colcRadius(aAngle)*1000, 'o', 'color', angleCols(aAngle,:))
+%     end
     title('COLC radius')
-    ylim([0 40]); ylabel('Radius (um)'); xlabel('Angle (o)')
-    set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20);
+    ylim([0 75]); ylabel('Radius (um)'); xlabel('Angle (o)')
+    set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20, 'YTick', [0 25 50 75]);
     
     subplot(3,3,5); hold on
     plot(incidenceAngle, (focusXHeight - coneTipZ)*1000, 'k-', 'linewidth',2)
-    for aAngle = 1:length(incidenceAngle)
-        plot(incidenceAngle(aAngle), (focusXHeight(aAngle) - coneTipZ)*1000, 'o', 'color', angleCols(aAngle,:))
-    end
+%     for aAngle = 1:length(incidenceAngle)
+%         plot(incidenceAngle(aAngle), (focusXHeight(aAngle) - coneTipZ)*1000, 'o', 'color', angleCols(aAngle,:))
+%     end
     title('X Focus Height from Tip')
     line([0 20], [0 0], 'color', 'k', 'linewidth',2)
-    ylim([-125 50]); ylabel('Height (um)'); xlabel('Angle (o)')
-    set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20);
+    ylim([-250 100]); ylabel('Height (um)'); xlabel('Angle (o)')
+    set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20, 'YTick', [-200 -100 0 100]);
     
     subplot(3,3,6); hold on
     plot(incidenceAngle, focusXRadius*1000, 'k-', 'linewidth',2)
-    for aAngle = 1:length(incidenceAngle)
-        plot(incidenceAngle(aAngle), focusXRadius(aAngle)*1000, 'o', 'color', angleCols(aAngle,:))
-    end
+%     for aAngle = 1:length(incidenceAngle)
+%         plot(incidenceAngle(aAngle), focusXRadius(aAngle)*1000, 'o', 'color', angleCols(aAngle,:))
+%     end
     title('X Focus Radius')
-    ylim([0 40]); ylabel('Radius (um)'); xlabel('Angle (o)')
-    set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20);
+    ylim([0 75]); ylabel('Radius (um)'); xlabel('Angle (o)')
+    set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20, 'YTick', [0 25 50 75]);
     
     subplot(3,3,8); hold on
     plot(incidenceAngle, (focusYHeight - coneTipZ)*1000, 'k-', 'linewidth',2)
-    for aAngle = 1:length(incidenceAngle)
-        plot(incidenceAngle(aAngle), (focusYHeight(aAngle)- coneTipZ)*1000, 'o', 'color', angleCols(aAngle,:))
-    end
+%     for aAngle = 1:length(incidenceAngle)
+%         plot(incidenceAngle(aAngle), (focusYHeight(aAngle)- coneTipZ)*1000, 'o', 'color', angleCols(aAngle,:))
+%     end
     title('Y Focus Height from Tip')
     line([0 20], [0 0], 'color', 'k', 'linewidth',2)
-    ylim([-125 50]); ylabel('Height (um)'); xlabel('Angle (o)')
-    set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20);
+    ylim([-250 100]); ylabel('Height (um)'); xlabel('Angle (o)')
+    set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20, 'YTick', [-200 -100 0 100]);
     
     subplot(3,3,9); hold on
     plot(incidenceAngle, focusYRadius*1000, 'k-', 'linewidth',2)
-    for aAngle = 1:length(incidenceAngle)
-        plot(incidenceAngle(aAngle), focusYRadius(aAngle)*1000, 'o', 'color', angleCols(aAngle,:))
-    end
+%     for aAngle = 1:length(incidenceAngle)
+%         plot(incidenceAngle(aAngle), focusYRadius(aAngle)*1000, 'o', 'color', angleCols(aAngle,:))
+%     end
     title('Y Focus Radius')
-    ylim([0 40]); ylabel('Radius (um)'); xlabel('Angle (o)')
-    set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20);
+    ylim([0 75]); ylabel('Radius (um)'); xlabel('Angle (o)')
+    set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20, 'YTick', [0 25 50 75]);
     
     subplot(3,3,7); hold on
     plot(incidenceAngle, rayReverseNum, 'k-', 'linewidth',2)
-    for aAngle = 1:length(incidenceAngle)
-        plot(incidenceAngle(aAngle), rayReverseNum(aAngle), 'o', 'color', angleCols(aAngle,:))
-    end
+%     for aAngle = 1:length(incidenceAngle)
+%         plot(incidenceAngle(aAngle), rayReverseNum(aAngle), 'o', 'color', angleCols(aAngle,:))
+%     end
     title('Ray reversals')
     ylabel('Number'); xlabel('Angle (o)')
     set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20);
@@ -2419,11 +2485,11 @@ if useRealData
     % Do some saving
     if saveData
         saveFile = sprintf('%s%s_SIMDATA.mat', analysisFolder, metaFile(1:end-4));
-        save(saveFile, 'rayPathCells', 'finalIntersectCells', 'finalRayCells', 'finalRayTRefractCells', 'rayReverseCells', 'timePerAngle', ...
+        save(saveFile, 'rayPathCells', 'finalIntersectCells', 'finalRayCells', 'finalRayTRefractCells', 'rayReverseCells', 'timePerAngle', 'TIRFlagCells', ...
             'dataFile', 'metaFile', 'incidenceAngle', 'receptorRadius', 'receptorAcceptance', 'exposedHeight', 'blockExposedRentry', ...
             'xSpacing', 'plotSpacing', 'interpType', 'tolerance', 'initialDeltaS', 'iterativeFinal', 'epsilon',  'interfaceRefraction', 'blockMultipleExits', 'limitToConeBase', 'clearReverseRays',...
             'acceptancePercentage', 'focusXHeight', 'focusXRadius', 'focusYHeight', 'focusYRadius', 'colcHeight', 'colcRadius', 'rayReverseNum', ...
-            'coneTipZ', 'corneaZ', 'epicorneaZ', 'coneBaseZ', 'interConeValueUsed', ...
+            'coneTipZ', 'corneaZ', 'epicorneaZ', 'coneBaseZ', 'interConeValueUsed', 'zSteps', ...
             'coneProfileR', 'coneProfileZ', 'cInCProfileR', 'cInCProfileZ', 'epicorneaProfileR', 'epicorneaProfileZ', 'interconeProfileR', 'interconeProfileZ', ...
             'voxelSize', 'volumeSize', 'acceptanceAngle')
     end
@@ -2829,6 +2895,9 @@ function  intersect = surfaceIntersectFunction(volumeFull, volumeBorder, x, x0, 
     
    voxelX = round(x/scale);
     
+   %%% All mesh functions (distance, intersect and inpoly) are slow
+        % inpoly is slowest but accepts mesh normals - provide to speed up
+   
    if ~( any(voxelX > size(volumeFull)) | any(voxelX < 1) )
         % Check if on border voxel and fine test required
         if volumeBorder(voxelX(1), voxelX(2), voxelX(3))
@@ -2843,8 +2912,10 @@ function  intersect = surfaceIntersectFunction(volumeFull, volumeBorder, x, x0, 
                 
                 angle = acos(dot((proj-x), (x-x0)) / (norm(proj-x) * norm(x-x0)))/pi*180;
                 
-                %%% If this too high, will probably get lambda error with all inds on one side
-                if  abs(angle - 90) > 1          
+%              [abs(angle - 90) inpolyhedron(surface, x, 'tol', 0, 'flipNormals',true)]
+                
+                %%% If this too low, will probably get lambda error with all inds on one side
+                if  abs(angle - 90) > 3          
                 % If large use line intersects - faster
                     
                     lineDef = [x (x-x0)/norm((x-x0))];  
@@ -2881,7 +2952,7 @@ function  intersect = surfaceIntersectFunction(volumeFull, volumeBorder, x, x0, 
 
                     elseif length(intersectDistance) == 1
                         % can't be resolved unambigiously by distances
-                            % This is really slow! Also matlab normals seem to be opposite to convention
+                            % This is really slow! Note matlab normals seem to be opposite to convention
                             % Tolerance cant be used - lambda will fall short by roughly tolerance amount
                         intersect = inpolyhedron(surface, x, 'tol', 0, 'flipNormals',true);
 
@@ -2973,8 +3044,9 @@ function lambda = surfaceLambdaFunction(x1, x0, surface)
     end
     
     if lambda > 1
-        lambda
-        error('Large lambda step, intersect was triggered too early, check usage')
+        [lambda inpolyhedron(surface, x, 'tol', 0, 'flipNormals',true)]
+        
+        error('Large lambda step, intersect was triggered too early, check threshold in intersection function')
     elseif lambda < 0
        error('Check this') 
     end
