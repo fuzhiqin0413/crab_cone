@@ -15,7 +15,8 @@ incidenceAngle = 0:2.5:20; [0 5 10];  % deg, in XZ - plane
 interConeValueToUse = 1.40;
 
 %%% Change back
-xSpacing = 5*2; % in voxels...
+xSpacing = 5; % in voxels...
+    plotSpacing = 2; % Integer mutiple of xSpaing to plot 
 
 if useRealData
 
@@ -60,6 +61,7 @@ if useRealData
     createGradedFiber = 0;
     createLunebergLens = 0;
     plotReferenceFiber = 0;
+    plotRIImageOnRayDiagram = 0;
     useTestData = 0;
     
     receptorRadius = 30; % micron - night basically 0 out, 5 at 70 out for for day
@@ -135,8 +137,7 @@ plotColorsOnSummary = 0;
 
 justPlotCenterRays = 0;
 scaleBarsOnRayDiagram = 1;
-
-plotSpacing = 2; % Mutiple of xSpaing to plot - only works properly center ray plotting
+acceptanceUsingReceptor = 1;
 
 testPlot = 0;
 testPlotSurface = 0;
@@ -898,21 +899,15 @@ zSteps = (1:volumeSize(3)*1.5)*voxelSize;
 if useRealData
     
     xStartPoints = volumeSize(1)/2:xSpacing:volumeSize(1)*1.5; 
+    xStartPointsOrig = xStartPoints;
 
-    xPlotPoints = xStartPoints*0; xPlotPoints(1:plotSpacing:end) = 1;
-    
     xStartPoints = [volumeSize(1)-fliplr(xStartPoints(2:end)) xStartPoints];
-    
-    xPlotPoints = [fliplr(xPlotPoints(2:end)) xPlotPoints];
-    
+
     if trace3D
         [xGrid, yGrid, zGrid] = meshgrid(xStartPoints, xStartPoints, 1);
         
         rayOrigins = [xGrid(:), yGrid(:), zGrid(:)]*voxelSize; 
         
-        [xPlot, yPlot] = meshgrid(xPlotPoints, xPlotPoints);
-        
-        plotOrigins = xPlot(:) & yPlot(:);
     else
         rayOrigins = [xStartPoints(:), ones(numel(xStartPoints),1)*volumeSize(2)/2,  ...
             ones(numel(xStartPoints),1)]*voxelSize; 
@@ -992,7 +987,7 @@ rayReverseCells = cell(length(incidenceAngle), 1);
 
 timePerAngle = zeros(length(incidenceAngle),1);
 
-for aAngle = 1; 1:length(incidenceAngle);
+for aAngle = 1:length(incidenceAngle);
     
     tic
     
@@ -1028,7 +1023,7 @@ for aAngle = 1; 1:length(incidenceAngle);
     finalRayTRefract = zeros(nOrigins, 3)*NaN;
     finalRay = zeros(nOrigins, 3)*NaN;
     
-    TIRFlag = zeros(nOrigins, 1);
+    TIRFlag = zeros(nOrigins, 2);
     rayReversed = zeros(nOrigins, 1);
     
     if createGradedFiber
@@ -1041,7 +1036,7 @@ for aAngle = 1; 1:length(incidenceAngle);
        periodSpotsArray = zeros(3, numPeriods, nOrigins);
     end
 
-    for iOrigin = 512; 1:nOrigins;
+    for iOrigin = 1:nOrigins;
         
         tempTime = toc;
         [aAngle iOrigin round(tempTime/60)]
@@ -1196,10 +1191,12 @@ for aAngle = 1; 1:length(incidenceAngle);
                                 faceIndices = intersectFacesIntercone(inds2Use);
 
                                 if limitToConeBase & numberOfExits == 0 
+                                    % Block ray as it can't have entered cone yet 
                                     go = 0;
                                 end
                         end
 
+                        %%% Seems like there could be a better place for this...
                         propogateFinalRay = 1*go;
                     else
                         go = 0;
@@ -1345,13 +1342,22 @@ for aAngle = 1; 1:length(incidenceAngle);
                                     rayT = nRatio*rayT + (nRatio*cosI-cosT)*surfaceNormal;
 
                                     inGraded = 1;
+                                    
+                                    % now multiplied by initial RI
+                                    rayT = rayT/norm(rayT)*rOut;
 
                                     if testPlot; plot3(rayX(1), rayX(2), rayX(3), 'go'); end
                                 else
                                     % TIR
                                     rayT = rayT-2*dot(surfaceNormal,rayT)*surfaceNormal;
 
-                                    inGraded = 0; % ??? 
+                                    rayT = rayT/norm(rayT);
+                                    
+                                    inGraded = 0; % ???
+                                    
+                                    intersectResult = 0;
+                                    
+                                    warning('TIR away from GRIN region')
 
                                     if testPlot; plot3(rayX(1), rayX(2), rayX(3), 'g*'); end
                                 end
@@ -1359,11 +1365,11 @@ for aAngle = 1; 1:length(incidenceAngle);
                             else
                                 inGraded = 1; 
 
+                                rayT = rayT*rOut;
+                                
                                 if testPlot; plot3(rayX(1), rayX(2), rayX(3), 'gd'); end
                             end
 
-                            % now multiplied by initial RI
-                            rayT = rayT/norm(rayT)*rOut;
                        else
                            propogateFinalRay = 0;
 
@@ -1412,7 +1418,6 @@ for aAngle = 1; 1:length(incidenceAngle);
                                     rOut = metaData.innerValue;
 
                                     surfaceNormal = mean(interconeNormals(faceIndices,:),1);
-
                             end
 
                             % Test normal points against ray
@@ -1435,9 +1440,15 @@ for aAngle = 1; 1:length(incidenceAngle);
                                 % TIR
                                 rayT = rayT-2*dot(surfaceNormal,rayT)*surfaceNormal;
 
+                                if minIntersect == 5
+                                    % Check for TIR from intercone 
+                                    TIRFlag(iOrigin,2) = TIRFlag(iOrigin,2) + 1;
+                                end
+                                
                                 if testPlot; plot3(rayX(1), rayX(2), rayX(3), 'k*'); end
                             end
 
+                            rayT = rayT/norm(rayT);
                         else
                             if testPlot; plot3(rayX(1), rayX(2), rayX(3), 'kd'); end
                         end
@@ -1800,7 +1811,7 @@ for aAngle = 1; 1:length(incidenceAngle);
                                 error('Should be inside after TIR')
                             end
                             
-                            TIRFlag(iOrigin) = 1;
+                            TIRFlag(iOrigin,1) = TIRFlag(iOrigin,1) + 1;
                             
                             % Does not exit by default
                             inGraded = 1;
@@ -1923,12 +1934,13 @@ if useRealData
         saveFile = sprintf('%s/Data/%s_SIMDATA.mat', analysisFolder, metaFile(1:end-4));
         save(saveFile, 'rayPathCells', 'finalIntersectCells', 'finalRayCells', 'finalRayTRefractCells', 'rayReverseCells', 'timePerAngle', 'TIRFlagCells', ...
             'dataFile', 'metaFile', 'incidenceAngle', 'receptorRadius', 'receptorAcceptance', 'exposedHeight', 'blockExposedRentry', ...
-            'xSpacing', 'plotSpacing', 'interpType', 'tolerance', 'initialDeltaS', 'iterativeFinal', 'epsilon',  'interfaceRefraction', 'blockMultipleExits', 'limitToConeBase', 'clearReverseRays',...
-            'acceptancePercentage', 'focusXHeight', 'focusXRadius', 'focusYHeight', 'focusYRadius', 'colcHeight', 'colcRadius', 'rayReverseNum', ...
-            'nOrigins', 'plotLineCols', 'colorTIR', 'plotOrigins', 'scaleBarsOnRayDiagram', 'plotColorsOnSummary', 'justPlotCenterRays', 'raysOnXZPlane', 'raysOnYZPlane', ...
+            'xSpacing', 'plotSpacing', 'interpType', 'tolerance', 'initialDeltaS', 'iterativeFinal', 'epsilon',  'interfaceRefraction', 'blockMultipleExits', 'limitToConeBase', 'clearReverseRays', 'trace3D', ...
+            'alphaForIntercone', 'alphaForCone', 'alphaForCinC', 'dilateBorderRadius', 'flipVolume', 'flipSurfaces', ...
+            'acceptancePercentage', 'focusXHeight', 'focusXRadius', 'focusYHeight', 'focusYRadius', 'colcHeight', 'colcRadius', 'rayReverseNum', 'TIRPercengtage', 'acceptanceAngle', ...
+            'nOrigins', 'plotLineCols', 'colorTIR', 'plotOrigins', 'scaleBarsOnRayDiagram', 'plotColorsOnSummary', 'justPlotCenterRays', 'raysOnXZPlane', 'raysOnYZPlane', 'plotRIImageOnRayDiagram', 'acceptanceUsingReceptor', ...
             'coneTipZ', 'corneaZ', 'epicorneaZ', 'coneBaseZ', 'interConeValueUsed', 'zSteps', ...
             'coneProfileR', 'coneProfileZ', 'cInCProfileR', 'cInCProfileZ', 'epicorneaProfileR', 'epicorneaProfileZ', 'interconeProfileR', 'interconeProfileZ', ...
-            'voxelSize', 'volumeSize', 'metaData', 'acceptanceAngle')
+            'voxelSize', 'volumeSize', 'xStartPointsOrig', 'rayOrigins', 'metaData')
     end
     
     if saveFigures

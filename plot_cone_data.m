@@ -8,6 +8,7 @@ rayFY = figure;
 tipF = figure;
 
 acceptancePercentage = zeros(length(incidenceAngle),1);
+TIRPercengtage = zeros(length(incidenceAngle),1);
 
 focusXHeight = zeros(length(incidenceAngle),1);
 focusXRadius = zeros(length(incidenceAngle),1);
@@ -25,6 +26,17 @@ nPlotRows = 2; % could do dynamically, but blah...
 coneTipZ = coneProfileZ(1)*voxelSize;
 priorInd = find(zSteps < coneTipZ); priorInd = priorInd(end);
 topConeInds = find(coneProfileZ*voxelSize > coneTipZ - exposedHeight/1000);
+
+% Get plot points
+xPlotPoints = xStartPointsOrig*0; xPlotPoints(1:plotSpacing:end) = 1;
+        
+xPlotPoints = [fliplr(xPlotPoints(2:end)) xPlotPoints];
+ 
+if trace3D
+    [xPlot, yPlot] = meshgrid(xPlotPoints, xPlotPoints);
+
+    plotOrigins = xPlot(:) & yPlot(:);
+end
 
 % Ray needs to get above this height to be plotted at all
 rayHeightReq = (coneProfileZ(end)+(interconeProfileZ(end)-coneProfileZ(end))/4)*voxelSize;
@@ -47,7 +59,7 @@ for aAngle = 1:length(incidenceAngle);
 
     % store for acceptance angle
     rayAccepted = zeros(nOrigins, 1)*NaN;
-    rayForColc = zeros(nOrigins, 1);
+    rayForColc = zeros(nOrigins, 1)*NaN;
 
     baseMult = 1.5;
 
@@ -99,7 +111,7 @@ for aAngle = 1:length(incidenceAngle);
 
                 if plotLineCols
                     col = rayCols(iOrigin,:);
-                elseif colorTIR & TIRFlag(iOrigin)
+                elseif colorTIR & TIRFlag(iOrigin,1)
                     col = 'b';
                 else
                    col = 'k';
@@ -146,10 +158,23 @@ for aAngle = 1:length(incidenceAngle);
         end
     end
 
-    acceptancePercentage(aAngle) = sum( rayAccepted(~isnan(rayAccepted)))/sum(~isnan(rayAccepted));
+    if acceptanceUsingReceptor      
+        acceptancePercentage(aAngle) = sum( rayAccepted(~isnan(rayAccepted)))/sum(~isnan(rayAccepted));
 
-    viscircles([0 0],receptorRadius, 'color', 'r')
-
+        viscircles([0 0],receptorRadius, 'color', 'r')
+    else
+       % use COLC and dont plot recetpor
+       acceptancePercentage(aAngle) = sum( rayForColc(~isnan(rayForColc)))/sum(~isnan(rayForColc));
+    end
+       
+    % Get TIR rays in COLC
+    tempInds = find(rayForColc == 1);
+    
+    TIRPercengtage(aAngle) = sum(TIRFlag(tempInds,1)>0)/sum( rayForColc(~isnan(rayForColc)));
+    
+    rayForColc(isnan(rayForColc)) = 0;
+    
+    % Finalize spot plotting
     viscircles([0 0],coneProfileR(exposedConeInds(end))*1000*voxelSize, 'color', [0.5 0 0.5]);
 
     viscircles([0 0],coneProfileR(end)*1000*voxelSize, 'color', outlineCol);
@@ -231,7 +256,7 @@ for aAngle = 1:length(incidenceAngle);
 
             if plotLineCols;
                 col = rayCols(iOrigin,:); 
-            elseif colorTIR & TIRFlag(iOrigin)
+            elseif colorTIR & TIRFlag(iOrigin,1)
                 col = 'b';     
             else
                 col = 'k'; 
@@ -325,7 +350,7 @@ for aAngle = 1:length(incidenceAngle);
 
             if plotLineCols;
                 col = rayCols(iOrigin,:); 
-            elseif colorTIR & TIRFlag(iOrigin)
+            elseif colorTIR & TIRFlag(iOrigin,1)
                 col = 'b';     
             else
                 col = 'k'; 
@@ -490,8 +515,25 @@ if plotColorsOnSummary
     end
 end
 title('Acceptance function')
-ylim([0 1]); ylabel('Percentage captured'); xlabel('Angle (o)')
-set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20);
+ylim([0 1]); 
+if acceptanceUsingReceptor
+    ylabel('% entering receptor'); 
+else
+    ylabel('% passing cone tip'); 
+end
+xlabel('Angle (deg)')
+set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20,'YTick',[0 0.25 0.5 0.75 1],'XTick',[0 5 10 15 20]);
+
+subplot(3,3,4); hold on
+plot(incidenceAngle, TIRPercengtage, 'k-', 'linewidth',2)
+if plotColorsOnSummary
+    for aAngle = 1:length(incidenceAngle)
+        plot(incidenceAngle(aAngle), TIRPercengtage(aAngle), 'o', 'color', angleCols(aAngle,:))
+    end
+end
+title('TIR Inclusion')
+ylim([0 1]); xlim([0 20]); ylabel('% TIR in COLC'); xlabel('Angle (deg)')
+set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20,'YTick',[0 0.25 0.5 0.75 1],'XTick',[0 5 10 15 20]);
 
 subplot(3,3,2); hold on
 plot(incidenceAngle, (colcHeight - coneTipZ)*1000, 'k-', 'linewidth',2)
@@ -502,8 +544,8 @@ if plotColorsOnSummary
 end
 title('COLC Height from Tip')
 line([0 20], [0 0], 'color', 'k', 'linewidth',2)
-ylim([-250 100]); ylabel('Height (um)'); xlabel('Angle (o)')
-set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20, 'YTick', [-200 -100 0 100]);
+ylim([-250 100]); ylabel('Height (um)'); xlabel('Angle (deg)')
+set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20, 'YTick', [-200 -100 0 100],'XTick',[0 5 10 15 20]);
 
 subplot(3,3,3); hold on
 plot(incidenceAngle, colcRadius*1000, 'k-', 'linewidth',2)
@@ -513,8 +555,8 @@ if plotColorsOnSummary
     end
 end
 title('COLC radius')
-ylim([0 75]); ylabel('Radius (um)'); xlabel('Angle (o)')
-set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20, 'YTick', [0 25 50 75]);
+ylim([0 75]); ylabel('Radius (um)'); xlabel('Angle (deg)')
+set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20, 'YTick', [0 25 50 75],'XTick',[0 5 10 15 20]);
 
 subplot(3,3,5); hold on
 plot(incidenceAngle, (focusXHeight - coneTipZ)*1000, 'k-', 'linewidth',2)
@@ -525,8 +567,8 @@ if plotColorsOnSummary
 end
 title('X Focus Height from Tip')
 line([0 20], [0 0], 'color', 'k', 'linewidth',2)
-ylim([-250 100]); ylabel('Height (um)'); xlabel('Angle (o)')
-set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20, 'YTick', [-200 -100 0 100]);
+ylim([-250 100]); ylabel('Height (um)'); xlabel('Angle (deg)')
+set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20, 'YTick', [-200 -100 0 100],'XTick',[0 5 10 15 20]);
 
 subplot(3,3,6); hold on
 plot(incidenceAngle, focusXRadius*1000, 'k-', 'linewidth',2)
@@ -536,8 +578,8 @@ if plotColorsOnSummary
     end
 end
 title('X Focus Radius')
-ylim([0 75]); ylabel('Radius (um)'); xlabel('Angle (o)')
-set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20, 'YTick', [0 25 50 75]);
+ylim([0 75]); ylabel('Radius (um)'); xlabel('Angle (deg)')
+set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20, 'YTick', [0 25 50 75],'XTick',[0 5 10 15 20]);
 
 subplot(3,3,8); hold on
 plot(incidenceAngle, (focusYHeight - coneTipZ)*1000, 'k-', 'linewidth',2)
@@ -548,8 +590,8 @@ if plotColorsOnSummary
 end
 title('Y Focus Height from Tip')
 line([0 20], [0 0], 'color', 'k', 'linewidth',2)
-ylim([-250 100]); ylabel('Height (um)'); xlabel('Angle (o)')
-set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20, 'YTick', [-200 -100 0 100]);
+ylim([-250 100]); ylabel('Height (um)'); xlabel('Angle (deg)')
+set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20, 'YTick', [-200 -100 0 100],'XTick',[0 5 10 15 20]);
 
 subplot(3,3,9); hold on
 plot(incidenceAngle, focusYRadius*1000, 'k-', 'linewidth',2)
@@ -559,8 +601,8 @@ if plotColorsOnSummary
     end
 end
 title('Y Focus Radius')
-ylim([0 75]); ylabel('Radius (um)'); xlabel('Angle (o)')
-set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20, 'YTick', [0 25 50 75]);
+ylim([0 75]); ylabel('Radius (um)'); xlabel('Angle (deg)')
+set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20, 'YTick', [0 25 50 75],'XTick',[0 5 10 15 20]);
 
 subplot(3,3,7); hold on
 plot(incidenceAngle, rayReverseNum, 'k-', 'linewidth',2)
@@ -570,5 +612,5 @@ if plotColorsOnSummary
     end
 end
 title('Ray reversals')
-ylabel('Number'); xlabel('Angle (o)')
-set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20);
+ylabel('Number'); xlabel('Angle (deg)')
+set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20,'XTick',[0 5 10 15 20]);
