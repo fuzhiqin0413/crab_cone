@@ -142,6 +142,8 @@ acceptanceUsingReceptor = 1;
 testPlot = 0;
 testPlotSurface = 0;
 
+loopLim = 10000;
+
 %% Load or create test data     
 if useRealData
     temp = load(sprintf('%s%s',dataFolder, dataFile));
@@ -328,12 +330,16 @@ if useRealData
     % Shrink vertices that are inside radius at base of cone
     rGrid = sqrt(xGrid.^2 + yGrid.^2);
     
-    if ~isnan(metaData.coneProfileToUse(end))
+    if ~isnan(metaData.coneProfileToUse(end)) & ~metaData.createCylinder
         coneBaseRadius = metaData.coneProfileToUse(end)*metaData.voxSize/metaData.voxSize3D;
-        verticesToRemove = find(rGrid < coneBaseRadius);
-    else
+        
+    elseif isnan(metaData.coneProfileToUse(end)) & ~metaData.createCylinder
         error('Need to get last good value in cone profile')
+    elseif metaData.createCylinder
+        coneBaseRadius = max(metaData.coneProfileToUse)*metaData.voxSize/metaData.voxSize3D;
     end
+    
+    verticesToRemove = find(rGrid < coneBaseRadius);
     
     interconeBaseVertices = [xGrid, yGrid, zGrid];
     
@@ -373,7 +379,12 @@ if useRealData
     interconeBaseBorderVolume = polygon2voxel(interconeBaseSurface, volumeSize, 'none');
 
 
+    
     if metaData.displayProfiles.CinC
+        if metaData.createCylinder
+            error('Not coded') 
+        end
+        
         % Make CinC profile at base of cone
         cInCProfileR = metaData.CinCProfileToUse*metaData.voxSize/metaData.voxSize3D;
         cInCProfileZ = metaData.coneXRef*metaData.voxSize/metaData.voxSize3D;
@@ -491,7 +502,6 @@ if useRealData
 
         cInCSurface.faces(facesToRemove,:) = [];
         
-        
         cInCProfileR = [];
         cInCProfileZ = [];
     end
@@ -535,14 +545,21 @@ if useRealData
     xGrid = xGrid(:); yGrid = yGrid(:); zGrid = zGrid(:);
     rGrid = sqrt(xGrid.^2 + yGrid.^2);
 
-    firstInds = find(rGrid < coneProfileR(1));
+    if ~metaData.createCylinder
+        firstInds = find(rGrid < coneProfileR(1));
+    else
+        firstInds = find(rGrid < profileMax);
+    end
     
     coneVertices = [ [xGrid(firstInds), yGrid(firstInds), coneProfileZ(1)*zGrid(firstInds)]', coneVertices']'; 
     
-    % end cap is to be removed
-    endInds = find(rGrid < coneProfileR(end));
+    if ~metaData.createCylinder
+        endInds = find(rGrid < coneProfileR(end));
+    else
+        endInds = find(rGrid < profileMax);
+    end
     
-    coneVertices = [ [xGrid(firstInds), yGrid(firstInds), (coneProfileZ(end)+1)*zGrid(firstInds)]', coneVertices']'; 
+    coneVertices = [ [xGrid(endInds), yGrid(endInds), (coneProfileZ(end)+1)*zGrid(endInds)]', coneVertices']'; 
     
     forcedInds = find(coneVertices(:,3) == (coneProfileZ(end)+1));
     
@@ -1815,7 +1832,24 @@ for aAngle = 1:length(incidenceAngle);
                             
                             % Does not exit by default
                             inGraded = 1;
-
+                            
+                            % check if ray is oscillating without position changing
+                            if all(rayX == x0) & lastTIRStep == loopSteps-1 & all((rayT-t0)+rayDiff < 1e-9)
+                                % note really sure how this can happen
+                                    % occurs when lambda0 equals zero and ray actually doesn't move
+                                
+                                if testPlot; plot3(rayX(1), rayX(2), rayX(3), 'rd', 'markersize',10); end
+                                
+                                go = 0;
+                                
+                                propogateFinalRay = 0;
+                                
+                                warning('Ray direction was oscillating at TIR')
+                            end
+                            
+                            lastTIRStep = loopSteps;
+                            
+                            rayDiff = rayT-t0;
                         end
                     else 
                        if testPlot; plot3(rayX(1), rayX(2), rayX(3), 'mo'); end
@@ -1858,6 +1892,17 @@ for aAngle = 1:length(incidenceAngle);
                 end
             end
 
+            % check if sim seems ot have gone too long
+            
+            if loopSteps > loopLim
+                go = 0;
+                
+                propogateFinalRay = 0;
+                
+                % could change to a warning but probably should investigate
+                error('Loop steps exceeded limit')
+            end
+            
             voxelX = round(rayX/voxelSize);
 
             % Check ray has exitied volume
@@ -2445,10 +2490,11 @@ function lambda = surfaceLambdaFunction(x1, x0, surface)
         [intersectPoints, intersectDistance] = intersectLineMesh3d(lineDef, surface.vertices, surface.faces);
         % plot3(tempPoints(:,1), tempPoints(:,2), tempPoints(:,3), 'rx')
 
+        % Have some threshold for zero...
+        zeroInd = find(abs(intersectDistance) < 1e-9);
+        
         % Sort out intersections
         if length(intersectDistance) > 1
-            % Have some threshold for zero...
-            zeroInd = find(abs(intersectDistance) < 1e-9);
             
             if isempty(zeroInd)
                 % If no zeros there should be ind/s in front and ind/s behind
@@ -2472,10 +2518,14 @@ function lambda = surfaceLambdaFunction(x1, x0, surface)
             end
 
         elseif length(intersectDistance) == 1 
-            if intersectDistance >= 0
-                nearestDist = intersectDistance(1);
+            if isempty(zeroInd)
+                if intersectDistance >= 0
+                    nearestDist = intersectDistance(1);
+                else
+                   error('Only one intersect and behind x0') 
+                end
             else
-               error('Only one intersect and behind x0') 
+                nearestDist = 0;
             end
 
         elseif isempty(intersectDistance)

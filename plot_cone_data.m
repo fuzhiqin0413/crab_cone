@@ -119,10 +119,12 @@ for aAngle = 1:length(incidenceAngle);
 
                 if finalIntersect(iOrigin, 3) > coneTipZ - exposedHeight/1000;
                     %sqrt(xTip.^2 + yTip.^2) <= coneProfileR(1)*2.5*voxelSize
-                    if plotOrigins(iOrigin); plot(xTip*1000, yTip*1000, 'x', 'color', col); end
+                    %if plotOrigins(iOrigin); plot(xTip*1000, yTip*1000, 'x', 'color', col); end
+                    plot(xTip*1000, yTip*1000, '.', 'color', col,'markersize',6);
                     rayForColc(iOrigin) = 1;
                 else
-                    if plotOrigins(iOrigin); plot(xTip*1000, yTip*1000, 'o', 'color', col); end
+                    %if plotOrigins(iOrigin); plot(xTip*1000, yTip*1000, 'o', 'color', col); end
+                    h = plot(xTip*1000, yTip*1000, 'o', 'color', col,'markersize',4); 
                     rayForColc(iOrigin) = 0;
                 end
 
@@ -175,10 +177,16 @@ for aAngle = 1:length(incidenceAngle);
     rayForColc(isnan(rayForColc)) = 0;
     
     % Finalize spot plotting
-    viscircles([0 0],coneProfileR(exposedConeInds(end))*1000*voxelSize, 'color', [0.5 0 0.5]);
+    if ~metaData.createCylinder
+        viscircles([0 0],coneProfileR(exposedConeInds(end))*1000*voxelSize, 'color', [0.5 0 0.5]);
 
-    viscircles([0 0],coneProfileR(end)*1000*voxelSize, 'color', outlineCol);
-
+        viscircles([0 0],coneProfileR(end)*1000*voxelSize, 'color', outlineCol);
+    else
+        profileMax = max(metaData.coneProfileToUse)*metaData.voxSize/metaData.voxSize3D;
+        
+        viscircles([0 0], profileMax*1000*voxelSize, 'color', [0.5 0 0.5]);
+    end 
+    
     ylim([-coneProfileR(end) coneProfileR(end)]*voxelSize*baseMult*1000)
     xlim([-coneProfileR(end) coneProfileR(end)]*voxelSize*baseMult*1000)
 
@@ -194,20 +202,30 @@ for aAngle = 1:length(incidenceAngle);
 
     % Plot borders based on original profiles
     % Cone
-    if metaData.displayProfiles.CinC
+    if metaData.displayProfiles.CinC & ~metaData.createCylinder
         plot((volumeSize(2)/2+[-fliplr(coneProfileR) (coneProfileR)])*voxelSize,...
             [fliplr(coneProfileZ) (coneProfileZ)]*voxelSize, 'color', outlineCol, 'linewidth',2);
 
         plot((volumeSize(2)/2+[-coneProfileR(end) -fliplr(cInCProfileR) (cInCProfileR) coneProfileR(end)])*voxelSize,...
             [coneProfileZ(end) fliplr(cInCProfileZ) (cInCProfileZ) coneProfileZ(end)]*voxelSize, 'color', outlineCol, 'linewidth',2);
-    else
+    
+    elseif ~metaData.displayProfiles.CinC & ~metaData.createCylinder
         plot((volumeSize(2)/2+[-coneProfileR fliplr(coneProfileR) -coneProfileR(1)])*voxelSize,...
+            [coneProfileZ fliplr(coneProfileZ) coneProfileZ(1)]*voxelSize, 'color', outlineCol, 'linewidth',2);
+    
+    elseif metaData.createCylinder
+        plot((volumeSize(2)/2+profileMax*[-1*ones(1,length(coneProfileZ)), ones(1,length(coneProfileZ)), -1])*voxelSize,...
             [coneProfileZ fliplr(coneProfileZ) coneProfileZ(1)]*voxelSize, 'color', outlineCol, 'linewidth',2);
     end
 
-    plot((volumeSize(2)/2+[-fliplr(coneProfileR(topConeInds)) (coneProfileR(topConeInds)) ])*voxelSize,...
-                [fliplr(coneProfileZ(topConeInds)) (coneProfileZ(topConeInds)) ]*voxelSize, 'color', [0.5 0 0.5], 'linewidth',3);
-
+    if ~metaData.createCylinder
+        plot((volumeSize(2)/2+[-fliplr(coneProfileR(topConeInds)) (coneProfileR(topConeInds)) ])*voxelSize,...
+                    [fliplr(coneProfileZ(topConeInds)) (coneProfileZ(topConeInds)) ]*voxelSize, 'color', [0.5 0 0.5], 'linewidth',3);
+    else
+        plot((volumeSize(2)/2+profileMax*[-1*ones(1,length(topConeInds)), ones(1,length(topConeInds))])*voxelSize,...
+                    [fliplr(coneProfileZ(topConeInds)) (coneProfileZ(topConeInds)) ]*voxelSize, 'color', [0.5 0 0.5], 'linewidth',3);
+    end
+    
     % Others
     line([0 volumeSize(2)]*voxelSize, [1 1]*corneaZ*voxelSize, 'color', outlineCol, 'linewidth',2);
 
@@ -291,20 +309,30 @@ for aAngle = 1:length(incidenceAngle);
 
     % Plot borders from original profiles
     %Cone
-    if metaData.displayProfiles.CinC
+    if metaData.displayProfiles.CinC & ~metaData.createCylinder
         plot((volumeSize(2)/2+[-fliplr(coneProfileR) (coneProfileR)])*voxelSize,...
             [fliplr(coneProfileZ) (coneProfileZ)]*voxelSize, 'color', outlineCol, 'linewidth',2);
 
         plot((volumeSize(2)/2+[-coneProfileR(end) -fliplr(cInCProfileR) (cInCProfileR) coneProfileR(end)])*voxelSize,...
             [coneProfileZ(end) fliplr(cInCProfileZ) (cInCProfileZ) coneProfileZ(end)]*voxelSize, 'color', outlineCol, 'linewidth',2);
-    else
+    
+    elseif ~metaData.displayProfiles.CinC & ~metaData.createCylinder
         plot((volumeSize(2)/2+[-coneProfileR fliplr(coneProfileR) -coneProfileR(1)])*voxelSize,...
+            [coneProfileZ fliplr(coneProfileZ) coneProfileZ(1)]*voxelSize, 'color', outlineCol, 'linewidth',2);
+    
+    elseif metaData.createCylinder
+        plot((volumeSize(2)/2+profileMax*[-1*ones(1,length(coneProfileZ)), ones(1,length(coneProfileZ)), -1])*voxelSize,...
             [coneProfileZ fliplr(coneProfileZ) coneProfileZ(1)]*voxelSize, 'color', outlineCol, 'linewidth',2);
     end
 
-    plot((volumeSize(2)/2+[-fliplr(coneProfileR(topConeInds)) (coneProfileR(topConeInds)) ])*voxelSize,...
-                [fliplr(coneProfileZ(topConeInds)) (coneProfileZ(topConeInds)) ]*voxelSize, 'color', [0.5 0 0.5], 'linewidth',3);
-
+    if ~metaData.createCylinder
+        plot((volumeSize(2)/2+[-fliplr(coneProfileR(topConeInds)) (coneProfileR(topConeInds)) ])*voxelSize,...
+                    [fliplr(coneProfileZ(topConeInds)) (coneProfileZ(topConeInds)) ]*voxelSize, 'color', [0.5 0 0.5], 'linewidth',3);
+    else
+        plot((volumeSize(2)/2+profileMax*[-1*ones(1,length(topConeInds)), ones(1,length(topConeInds))])*voxelSize,...
+                    [fliplr(coneProfileZ(topConeInds)) (coneProfileZ(topConeInds)) ]*voxelSize, 'color', [0.5 0 0.5], 'linewidth',3);
+    end
+    
     % Others
     line([0 volumeSize(1)]*voxelSize, [1 1]*corneaZ*voxelSize, 'color', outlineCol, 'linewidth',2);
 
@@ -378,7 +406,13 @@ for aAngle = 1:length(incidenceAngle);
         focusYRadius(aAngle) = volumeSize(2)*voxelSize;
         colcRadius(aAngle) = volumeSize(2)*voxelSize;
 
-        for iStep = 1:length(zSteps)
+        if aAngle == 1    
+            topStep = length(zSteps);
+        else
+            topStep = colcHeight(aAngle-1)/voxelSize;
+        end
+        
+        for iStep = 1:topStep
             tempXRad = max(rayPathArray(1, iStep, raysToUse)) - min(rayPathArray(1, iStep, raysToUse));
             if focusXRadius(aAngle) > tempXRad
                 focusXRadius(aAngle) = tempXRad;
@@ -421,12 +455,20 @@ for aAngle = 1:length(incidenceAngle);
             for i = 1:3
                 subplot(1,3,i); hold on; axis equal
 
-                plot((volumeSize(2)/2+[-coneProfileR fliplr(coneProfileR) -coneProfileR(1)])*voxelSize,...
-                    [coneProfileZ fliplr(coneProfileZ) coneProfileZ(1)]*voxelSize, 'color', outlineCol, 'linewidth',2);
+                if ~metaData.createCylinder
+                    plot((volumeSize(2)/2+[-coneProfileR fliplr(coneProfileR) -coneProfileR(1)])*voxelSize,...
+                        [coneProfileZ fliplr(coneProfileZ) coneProfileZ(1)]*voxelSize, 'color', outlineCol, 'linewidth',2);
 
-                plot((volumeSize(2)/2+[-fliplr(coneProfileR(topConeInds)) (coneProfileR(topConeInds)) ])*voxelSize,...
-                    [fliplr(coneProfileZ(topConeInds)) (coneProfileZ(topConeInds)) ]*voxelSize, 'color', [0.5 0 0.5], 'linewidth',3);
-
+                    plot((volumeSize(2)/2+[-fliplr(coneProfileR(topConeInds)) (coneProfileR(topConeInds)) ])*voxelSize,...
+                        [fliplr(coneProfileZ(topConeInds)) (coneProfileZ(topConeInds)) ]*voxelSize, 'color', [0.5 0 0.5], 'linewidth',3);
+                else
+                    plot((volumeSize(2)/2+profileMax*[-1*ones(1,length(coneProfileZ)), ones(1,length(coneProfileZ)), -1])*voxelSize,...
+                        [coneProfileZ fliplr(coneProfileZ) coneProfileZ(1)]*voxelSize, 'color', outlineCol, 'linewidth',2);
+                    
+                    plot((volumeSize(2)/2+profileMax*[-1*ones(1,length(topConeInds)), ones(1,length(topConeInds))])*voxelSize,...
+                        [fliplr(coneProfileZ(topConeInds)) (coneProfileZ(topConeInds)) ]*voxelSize, 'color', [0.5 0 0.5], 'linewidth',3);
+                end
+                
                 plot( ([volumeSize(1)/2-interconeProfileR 0])*voxelSize, [interconeProfileZ interconeProfileZ(end)]*voxelSize, 'color', outlineCol, 'linewidth',2)
                 plot( ([volumeSize(1)/2+interconeProfileR volumeSize(1)])*voxelSize, [interconeProfileZ interconeProfileZ(end)]*voxelSize, 'color', outlineCol, 'linewidth',2)
 
@@ -474,13 +516,18 @@ figure(tipF)
 for i = 1:3
     subplot(1,3,i);
     ylim(coneTipZ+[-0.25 0.05])
-    xlim(volumeSize(1)/2*voxelSize+[-0.1 0.1])
+    
+    if ~metaData.createCylinder
+        xlim(volumeSize(1)/2*voxelSize+[-0.1 0.1])
+    else
+        xlim(volumeSize(1)/2*voxelSize+[-0.125 0.125])
+    end
 
     set(gca, 'YTick', coneTipZ+(-0.25:0.05:0.05), 'YTickLabel', -250:50:50, ...
         'XTick', volumeSize(1)/2*voxelSize+(-0.1:0.05:0.1), 'XTickLabel', -100:50:100, ...
         'TickDir','out', 'LineWidth', 1, 'FontSize', 20)
 
-    colormap(angleCols)
+    colormap(angleCols);
     cH = colorbar;
     set(cH, 'TickLabels', incidenceAngle, 'Ticks', ((1:length(incidenceAngle))-1)/(length(incidenceAngle)-1),'TickDir','out')
 end
