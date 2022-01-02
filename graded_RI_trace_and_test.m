@@ -1004,7 +1004,7 @@ rayReverseCells = cell(length(incidenceAngle), 1);
 
 timePerAngle = zeros(length(incidenceAngle),1);
 
-for aAngle = 1:length(incidenceAngle);
+for aAngle = 2; 1:length(incidenceAngle);
     
     tic
     
@@ -1053,7 +1053,7 @@ for aAngle = 1:length(incidenceAngle);
        periodSpotsArray = zeros(3, numPeriods, nOrigins);
     end
 
-    for iOrigin = 1:nOrigins;
+    for iOrigin = 2413; 1:nOrigins;
         
         tempTime = toc;
         [aAngle iOrigin round(tempTime/60)]
@@ -1093,6 +1093,10 @@ for aAngle = 1:length(incidenceAngle);
         currentPeriod = 1; % only used for graded fiber
 
         loopSteps = 0;
+        
+        lastTIRStep = 0;
+        
+        rayDiff = [1 1 1];
         
         while go
 
@@ -2491,7 +2495,9 @@ function lambda = surfaceLambdaFunction(x1, x0, surface)
         % plot3(tempPoints(:,1), tempPoints(:,2), tempPoints(:,3), 'rx')
 
         % Have some threshold for zero...
-        zeroInd = find(abs(intersectDistance) < 1e-9);
+            % Note that lambda0 thershold is 1e-9. 
+            % In iterative final delta can go to 1e-6, so this should be 1e-15 so that threshold is meaningfull
+        zeroInd = find(abs(intersectDistance) < 1e-15);
         
         % Sort out intersections
         if length(intersectDistance) > 1
@@ -2506,12 +2512,36 @@ function lambda = surfaceLambdaFunction(x1, x0, surface)
 
                 if isempty(backInds) | isempty(frontInds)
                     % This should be called while x0 is inside mesh and x1 is outside
-
-                    % error is often a sign of problems with intersection calculation, sometime several steps before
-                    error('Check usage - all inds either in front or behind')
+                    %  but this is not always reliable for coplanar intersections, so check with angle calc
+                    
+                    [closestDist, proj] = distancePointMesh(x0, surface.vertices, surface.faces);
+                
+                    angle = acos(dot((proj-x0), (x1-x0)) / (norm(proj-x0) * norm(x1-x0)))/pi*180;
+                    if  abs(angle - 90) < 3
+                        % don't really know actualy distance ...
+                        
+                        if min(abs(intersectDistance)) < norm(x1-x0)
+                            % Use intersect distance if less than normal
+                            nearestDist = min(abs(intersectDistance));
+                            
+                            warning('Distance to intersect unknown, using absolute in lambda0 calc')
+                        elseif closestDist < norm(x1-x0)
+                            % Use closest distance if less than normal
+                            nearestDist = closestDist;
+                            
+                            warning('Distance to intersect unknown, using closest in lambda0 calc')
+                        else
+                            %%% Could just use 0?
+                            error('Unsure which distance to use in lambda0 calc')
+                        end
+                        
+                    else
+                        % error has been a sign of problems with intersection calculation, sometimes several steps before
+                        error('Check usage - all inds either in front or behind and angle is large')
+                    end
+                else
+                    nearestDist = intersectDistance(frontInds(closestFrontInd));
                 end
-
-                nearestDist = intersectDistance(frontInds(closestFrontInd));
             else
                 % if there is a zero distance lambda will be zero
                 nearestDist = 0;
