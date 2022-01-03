@@ -406,7 +406,7 @@ for aAngle = 1:length(incidenceAngle);
         focusYRadius(aAngle) = volumeSize(2)*voxelSize;
         colcRadius(aAngle) = volumeSize(2)*voxelSize;
 
-        if aAngle == 1    
+        if aAngle == 1 
             topStep = length(zSteps);
         else
             topStep = colcHeight(aAngle-1)/voxelSize;
@@ -541,10 +541,22 @@ title('X Focus by angle')
 subplot(1,3,3);
 title('Y Focus by angle')
 
-[~, uInd] = unique(acceptancePercentage);
-uInd = sort(uInd);
-acceptanceAngle = interp1(acceptancePercentage(uInd), incidenceAngle(uInd),0.5,'linear');
+% for some reason this didn't work on cylinder so solved directly. 
+    % Should take last crossover if there is some fluctuation.
+% [~, uInd] = unique(acceptancePercentage);
+% uInd = sort(uInd);
+% acceptanceAngle = interp1(acceptancePercentage(uInd), incidenceAngle(uInd), 0.5, 'linear');
 
+lowInds = find(acceptancePercentage > 0.5);
+if ~isempty(lowInds)
+    % Take last
+    lowInds = lowInds(end);
+%     if  acceptancePercentage(lowInds + 1) > 0
+        slope = (acceptancePercentage(lowInds + 1) - acceptancePercentage(lowInds))/...
+            (incidenceAngle(lowInds + 1) - incidenceAngle(lowInds));
+        acceptanceAngle = incidenceAngle(lowInds) + (0.5 - acceptancePercentage(lowInds))/slope
+%     end
+end
 
 figure(spotF); set(gcf, 'position', [-1919 -149 1920 1104])
 figure(rayFX); set(gcf, 'position', [-1919 -149 1920 1104])

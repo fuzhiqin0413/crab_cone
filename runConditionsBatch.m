@@ -6,7 +6,7 @@ dataFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/Ana
 
 % metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_both.mat'; graded_RI_trace_and_test
 % metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_cylinder.mat'; graded_RI_trace_and_test
-metaFile = 'Cylinder_1000_nm_Cone_0_SD_GRIN_cylinder.mat'; graded_RI_trace_and_test
+% metaFile = 'Cylinder_1000_nm_Cone_0_SD_GRIN_cylinder.mat'; graded_RI_trace_and_test
 metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_linear.mat'; graded_RI_trace_and_test
 metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_radialTop.mat'; graded_RI_trace_and_test
 metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_radialTop_TipCorrection.mat'; graded_RI_trace_and_test

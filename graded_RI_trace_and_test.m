@@ -1004,7 +1004,7 @@ rayReverseCells = cell(length(incidenceAngle), 1);
 
 timePerAngle = zeros(length(incidenceAngle),1);
 
-for aAngle = 2; 1:length(incidenceAngle);
+for aAngle = 1:length(incidenceAngle);
     
     tic
     
@@ -1053,7 +1053,7 @@ for aAngle = 2; 1:length(incidenceAngle);
        periodSpotsArray = zeros(3, numPeriods, nOrigins);
     end
 
-    for iOrigin = 2413; 1:nOrigins;
+    for iOrigin = 1:nOrigins;
         
         tempTime = toc;
         [aAngle iOrigin round(tempTime/60)]
@@ -2495,9 +2495,10 @@ function lambda = surfaceLambdaFunction(x1, x0, surface)
         % plot3(tempPoints(:,1), tempPoints(:,2), tempPoints(:,3), 'rx')
 
         % Have some threshold for zero...
-            % Note that lambda0 thershold is 1e-9. 
-            % In iterative final delta can go to 1e-6, so this should be 1e-15 so that threshold is meaningfull
-        zeroInd = find(abs(intersectDistance) < 1e-15);
+            % Note that lambda0 threshold is 1e-9. 
+            % In iterative final delta can go to 1e-6 to 1e-12 - threshold here can make main loop threshold redundant
+            %%% Used 1e-9 for both, cylinder cone, (linear and on?), 1e-15 for cylinder cylinder
+        zeroInd = find(abs(intersectDistance) < 1e-9);
         
         % Sort out intersections
         if length(intersectDistance) > 1
@@ -2531,12 +2532,15 @@ function lambda = surfaceLambdaFunction(x1, x0, surface)
                             
                             warning('Distance to intersect unknown, using closest in lambda0 calc')
                         else
-                            %%% Could just use 0?
+                            %%% Could just use 0 or 0.5?
                             error('Unsure which distance to use in lambda0 calc')
                         end
                         
                     else
                         % error has been a sign of problems with intersection calculation, sometimes several steps before
+                        [inpolyhedron(surface, x1, 'tol', 0, 'flipNormals',true) ...
+                            inpolyhedron(surface, x1, 'tol', 0, 'flipNormals',true) norm(x1-x0) min(abs(intersectDistance))]
+                        
                         error('Check usage - all inds either in front or behind and angle is large')
                     end
                 else
@@ -2573,7 +2577,8 @@ function lambda = surfaceLambdaFunction(x1, x0, surface)
     end
     
     if lambda > 1
-        [lambda inpolyhedron(surface, x1, 'tol', 0, 'flipNormals',true)]
+        [lambda inpolyhedron(surface, x1, 'tol', 0, 'flipNormals',true) ...
+            inpolyhedron(surface, x1, 'tol', 0, 'flipNormals',true) norm(x1-x0) min(abs(intersectDistance))]
         
         error('Large lambda step, intersect was triggered too early, check threshold in intersection function')
     elseif lambda < 0
