@@ -25,6 +25,8 @@ RIOrignal = 1.52-0.000004914*(radius/max(radius)*80).^2;
 
 RIEndLongitudional = 1.5+(1*0.01+0.01)-(0.5*1+0.8)*0.00000612*(radius/max(radius)*80).^2;
 
+RIEndTest = 1.5+(1*0.01+0.01)-(0.5*1+0.8)*0.00000612*80^2*(radius/max(radius)).^2;
+
 RIStartLongitudional = 1.5+(0*0.01+0.01)-(0.5*0+0.8)*0.00000612*(radius/max(radius)*80).^2;
 
 figure; hold on
@@ -37,6 +39,8 @@ h5 = plot(radius, RIStartLongitudional);
 
 h6 = plot(radiusFiber*1000, RIFiberEqn_matchFn);
 h7 = plot(radiusFiber*1000, RIFiberEqn_matchTip);
+
+plot = plot(radius, RIEndTest, 'kx');
 
 ylim([1.35 1.55])
 

@@ -139,7 +139,7 @@ justPlotCenterRays = 0;
 scaleBarsOnRayDiagram = 1;
 acceptanceUsingReceptor = 1;
 
-testPlot = 0;
+testPlot = 1;
 testPlotSurface = 0;
 
 loopLim = 10000;
@@ -608,8 +608,10 @@ if useRealData
     grinSurface.vertices = vertcat(grinSurface.vertices, cInCSurface.vertices);
     
     % Reverse order of CinC faces so they point in same polarity (at base so will point inward)
-%     cInCSurface.faces = cInCSurface.faces(:,[3 2 1]);
-    
+    if metaData.displayProfiles.CinC
+        cInCSurface.faces = cInCSurface.faces(:,[3 2 1]);
+    end
+
     % update the face list
     faceUpdate = cInCSurface.faces+max(max(grinSurface.faces));
     grinSurface.faces = vertcat(grinSurface.faces,faceUpdate);
@@ -826,16 +828,6 @@ if useRealData
     % Get normals for all
     grinNormals = meshFaceNormals(grinSurface.vertices, grinSurface.faces);
     
-    if testPlotSurface
-        figure; hold on; axis equal
-        trisurf(grinSurface.faces, grinSurface.vertices(:,1), grinSurface.vertices(:,2), grinSurface.vertices(:,3), ...
-               'FaceColor','g','FaceAlpha',0.8);
-        quiver3(grinSurface.vertices(grinSurface.faces(:,1),1), grinSurface.vertices(grinSurface.faces(:,1),2), grinSurface.vertices(grinSurface.faces(:,1),3), ...
-            grinNormals(:,1)*5, grinNormals(:,2)*5, grinNormals(:,3)*5);
-    end
-    
-    cInCNormals = meshFaceNormals(cInCSurface.vertices, cInCSurface.faces);
-    
     corneaNormals = meshFaceNormals(corneaSurface.vertices, corneaSurface.faces);
     
     epicorneaNormals = meshFaceNormals(epicorneaSurface.vertices, epicorneaSurface.faces);
@@ -843,6 +835,35 @@ if useRealData
     interconeBaseNormals = meshFaceNormals(interconeBaseSurface.vertices, interconeBaseSurface.faces);
     
     interconeNormals = meshFaceNormals(interconeSurface.vertices, interconeSurface.faces);
+    
+    if testPlotSurface
+        %%% Direction of open surfaces does not seem to matter, but cone normals all need to point in
+        figure; hold on; axis equal
+        trisurf(grinSurface.faces, grinSurface.vertices(:,1), grinSurface.vertices(:,2), grinSurface.vertices(:,3), ...
+               'FaceColor','g','FaceAlpha',0.8);
+        quiver3(grinSurface.vertices(grinSurface.faces(:,1),1), grinSurface.vertices(grinSurface.faces(:,1),2), grinSurface.vertices(grinSurface.faces(:,1),3), ...
+            grinNormals(:,1)*5, grinNormals(:,2)*5, grinNormals(:,3)*5);
+
+        trisurf(corneaSurface.faces, corneaSurface.vertices(:,1), corneaSurface.vertices(:,2), corneaSurface.vertices(:,3), ...
+           'FaceColor','m','FaceAlpha',0.8);
+       quiver3(corneaSurface.vertices(corneaSurface.faces(:,1),1), corneaSurface.vertices(corneaSurface.faces(:,1),2), corneaSurface.vertices(corneaSurface.faces(:,1),3), ...
+            corneaNormals(:,1)*5, corneaNormals(:,2)*5, corneaNormals(:,3)*5);
+           
+        trisurf(epicorneaSurface.faces, epicorneaSurface.vertices(:,1), epicorneaSurface.vertices(:,2), epicorneaSurface.vertices(:,3), ...
+           'FaceColor','c','FaceAlpha',0.8);
+       quiver3(epicorneaSurface.vertices(epicorneaSurface.faces(:,1),1), epicorneaSurface.vertices(epicorneaSurface.faces(:,1),2), epicorneaSurface.vertices(epicorneaSurface.faces(:,1),3), ...
+            epicorneaNormals(:,1)*5, epicorneaNormals(:,2)*5, epicorneaNormals(:,3)*5);
+       
+       trisurf(interconeBaseSurface.faces, interconeBaseSurface.vertices(:,1), interconeBaseSurface.vertices(:,2), interconeBaseSurface.vertices(:,3), ...
+           'FaceColor','b','FaceAlpha',0.8);
+       quiver3(interconeBaseSurface.vertices(interconeBaseSurface.faces(:,1),1), interconeBaseSurface.vertices(interconeBaseSurface.faces(:,1),2), interconeBaseSurface.vertices(interconeBaseSurface.faces(:,1),3), ...
+            interconeBaseNormals(:,1)*5, interconeBaseNormals(:,2)*5, interconeBaseNormals(:,3)*5);
+       
+       trisurf(interconeSurface.faces, interconeSurface.vertices(:,1), interconeSurface.vertices(:,2), interconeSurface.vertices(:,3), ...
+           'FaceColor','b','FaceAlpha',0.8);
+       quiver3(interconeSurface.vertices(interconeSurface.faces(:,1),1), interconeSurface.vertices(interconeSurface.faces(:,1),2), interconeSurface.vertices(interconeSurface.faces(:,1),3), ...
+            interconeNormals(:,1)*5, interconeNormals(:,2)*5, interconeNormals(:,3)*5);
+    end
     
     % Correct normal direction - should point out...
     
@@ -1004,7 +1025,7 @@ rayReverseCells = cell(length(incidenceAngle), 1);
 
 timePerAngle = zeros(length(incidenceAngle),1);
 
-for aAngle = 1:length(incidenceAngle);
+for aAngle = 8; 1:length(incidenceAngle);
     
     tic
     
@@ -1053,7 +1074,7 @@ for aAngle = 1:length(incidenceAngle);
        periodSpotsArray = zeros(3, numPeriods, nOrigins);
     end
 
-    for iOrigin = 1:nOrigins;
+    for iOrigin = 2102; 1:nOrigins;
         
         tempTime = toc;
         [aAngle iOrigin round(tempTime/60)]
@@ -1605,7 +1626,7 @@ for aAngle = 1:length(incidenceAngle);
                     
                     lambda0 = lambdaFn(rayX, x0);
 
-                    if iterativeFinal
+                    if iterativeFinal && ~isnan(lambda0)
                         % Test intersection, leaving could just be a rounding point           
                         deltaS0_final = deltaS;
 
@@ -1623,7 +1644,7 @@ for aAngle = 1:length(incidenceAngle);
                             end
 
                             its = its + 1;
-                            
+
                             %this loop steps back from overshoot
                             while ~intersectionFn(rayX, x0)
                                 if SF > 0.11
@@ -1659,10 +1680,14 @@ for aAngle = 1:length(incidenceAngle);
                             %update parameters for next loop
                             lambda0 = lambdaFn(rayX, x0);
 
+                            if isnan(lambda0)
+                               break;
+                            end
+
                             deltaS0_final = deltaS_final;
                         end
 
-                    else
+                    elseif ~iterativeFinal && ~isnan(lambda0)
                         [x, t] = ray_interpolation(interpType, 'iso', x0', t0', deltaS*lambda0, testCoords_forwards, ...
                             testInds_forwards, lensRIVolume, tolerance, RIToUse);
 
@@ -1679,18 +1704,18 @@ for aAngle = 1:length(incidenceAngle);
                     rayT = rayT/rIn;
 
                     % Do refraction at border
-                    if interfaceRefraction
+                    if interfaceRefraction && ~isnan(lambda0)
 
                         if useRealData
                             lineDef = [rayX rayT];
-                            
+
                             [intersectPoints, intersectDistance, intersectFaces] = intersectLineMesh3d(lineDef, grinSurface.vertices, grinSurface.faces);
 
                             inds2Use = find(abs(intersectDistance) == min(abs(intersectDistance)));
 
                             %%% Considered adjusting rayX to be intersect value but decided against 
                              % changes in X are all dealt with via numerical integration
-                            
+
                             faceIndices = intersectFaces(inds2Use);
 
                             surfaceNormal = mean(grinNormals(faceIndices,:),1);
@@ -1734,7 +1759,7 @@ for aAngle = 1:length(incidenceAngle);
                            finalPathLength(iOrigin,:) = pathLength;
 
                            finalRayT(iOrigin,:) = rayT*rIn; % was divided previously
-                            
+
                            % Assuming all refracted, none reflected
                            rayT = nRatio*rayT + (nRatio*cosI-cosT)*surfaceNormal;
 
@@ -1765,16 +1790,16 @@ for aAngle = 1:length(incidenceAngle);
 
                                         rayX = x'; rayT = t';
                                     end
-                                    
+
                                 else
                                     error('Add for treatment test cases')
                                 end
-                                
+
                                 if ~intersectionFn(rayX, x0)
                                     %%% Untested error
                                     error('TIR ray didnt step back enough - check this')
                                 end
-                                
+
                                 %%% Could update rIn, rOut and surfaceNormal and refraction calc after step back 
                                     % Unlikely these have changed much? - probably just if triangle intersect has changed...
                                 lineDef = [rayX rayT];
@@ -1798,21 +1823,21 @@ for aAngle = 1:length(incidenceAngle);
                                rayT = t0; 
                                rayX = x0;
                             end
-                            
+
                             rayT = rayT/rIn;
-                            
+
                             % TIR
                             rayT = rayT-2*dot(surfaceNormal,rayT)*surfaceNormal;
                             rayT = rayT/norm(rayT)*rIn; % rIn is scaled back
 
                             if testPlot; plot3(rayX(1), rayX(2), rayX(3), 'm*'); end 
-                                                        
+
                             % Check good triangle intersect is used 
                             [dist, proj] = distancePointMesh(rayX, grinSurface.vertices, grinSurface.faces);
-                            
+
                             if abs(dist - min(abs(intersectDistance))) > 0.05e-3
                                 % if this is too far off it could be a problem - check after 50 nm
-                                
+
                                 if testPlot
                                     plot3(rayX(:,1), rayX(:,2), rayX(:,3), 'ko')
                                     plot3(proj(:,1), proj(:,2), proj(:,3), 'k*')
@@ -1820,47 +1845,55 @@ for aAngle = 1:length(incidenceAngle);
                                         'FaceColor','k','FaceAlpha',0.8);
                                 end
                                 [acos(dot((proj-rayX), rayT) / (norm(proj-rayX) * norm(rayT)))/pi*180 abs(dist - min(abs(intersectDistance)))*1e6]
-                                
+
                                 % May need to find new points after step back (if used)
                                 %%% Untested error
                                 error('Difference between nearest point and intersect')
                             end
-                            
+
                             % Catch just in case...
                             if ~intersectionFn(rayX, x0)
-                                
+
                                 error('Should be inside after TIR')
                             end
-                            
+
                             TIRFlag(iOrigin,1) = TIRFlag(iOrigin,1) + 1;
-                            
+
                             % Does not exit by default
                             inGraded = 1;
-                            
+
                             % check if ray is oscillating without position changing
                             if all(rayX == x0) & lastTIRStep == loopSteps-1 & all((rayT-t0)+rayDiff < 1e-9)
                                 % note really sure how this can happen
                                     % occurs when lambda0 equals zero and ray actually doesn't move
-                                
+
                                 if testPlot; plot3(rayX(1), rayX(2), rayX(3), 'rd', 'markersize',10); end
-                                
+
                                 go = 0;
-                                
+
                                 propogateFinalRay = 0;
-                                
+
                                 warning('Ray direction was oscillating at TIR')
                             end
-                            
+
                             lastTIRStep = loopSteps;
-                            
+
                             rayDiff = rayT-t0;
                         end
-                    else 
+                    elseif ~interfaceRefraction && ~isnan(lambda0)
                        if testPlot; plot3(rayX(1), rayX(2), rayX(3), 'mo'); end
 
                        inGraded = 0;
 
                        numberOfExits = numberOfExits + 1;
+                    end
+                   
+                    if isnan(lambda0)
+                       go = 0; 
+
+                       propogateFinalRay = 0; 
+                       
+                       if testPlot; plot3(rayX(1), rayX(2), rayX(3), 'mx', 'markersize', 8); end
                     end
                 end
 
@@ -2556,7 +2589,15 @@ function lambda = surfaceLambdaFunction(x1, x0, surface)
                 if intersectDistance >= 0
                     nearestDist = intersectDistance(1);
                 else
-                   error('Only one intersect and behind x0') 
+                    if x0(3) < 0.193
+                        %%% A few missing faces at very base of cone
+                            % Ray exit should be calculated properly, but won't be able to get lambda.
+                            %%% Remove if faces fixed...
+                        nearestDist = NaN;
+                        warning('Ray went through missing face at cone base')
+                    else
+                        error('Only one intersect and behind x0') 
+                    end
                 end
             else
                 nearestDist = 0;
@@ -2571,8 +2612,8 @@ function lambda = surfaceLambdaFunction(x1, x0, surface)
         lambda = nearestDist/norm(x1-x0);
         
     else
-       % points are equal, just set to 0.5
-       lambda = 0.5;
+       % points are equal, set to zero to break
+       lambda = 0;
 %        warning('Query points are equal in lambda')
     end
     

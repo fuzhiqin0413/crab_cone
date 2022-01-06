@@ -7,12 +7,12 @@ dataFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/Ana
 % metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_both.mat'; graded_RI_trace_and_test
 % metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_cylinder.mat'; graded_RI_trace_and_test
 % metaFile = 'Cylinder_1000_nm_Cone_0_SD_GRIN_cylinder.mat'; graded_RI_trace_and_test
-metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_linear.mat'; graded_RI_trace_and_test
-metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_radialTop.mat'; graded_RI_trace_and_test
-metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_radialTop_TipCorrection.mat'; graded_RI_trace_and_test
+% metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_linear.mat'; graded_RI_trace_and_test
+% metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_radialTop.mat'; graded_RI_trace_and_test
+% metaFile = 'Cone_1000_nm_Cone_0_SD_GRIN_radialTop_TipCorrection.mat'; graded_RI_trace_and_test
 
 % internal structures
-dataFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/AnalysisVolumes/2 micron/Extra internal structures/Radial RI';
+dataFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/AnalysisVolumes/2 micron/Extra internal structures/Radial RI/';
 
 metaFile = 'Cone_CinC_1000_nm_Cone_0_SD_GRIN_radialTop.mat'; graded_RI_trace_and_test
 metaFile = 'Cone_CinC_EC_1000_nm_Cone_0_SD_GRIN_radialTop.mat'; graded_RI_trace_and_test
@@ -29,7 +29,7 @@ metaFile = 'Cone_EC_1000_nm_Cone_0_SD_GRIN_radialTop.mat'; graded_RI_trace_and_t
 % metaFile = 'Cone_1000_nm_Cone_-4_SD_Uniform_1.52.mat'; graded_RI_trace_and_test
 % 
 % % internal structures
-% dataFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/AnalysisVolumes/2 micron/Extra internal structures/Uniform RI';
+% dataFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/AnalysisVolumes/2 micron/Extra internal structures/Uniform RI/';
 % 
 % metaFile = 'Cone_CinC_1000_nm_Cone_0_SD_Uniform_1.52.mat'; graded_RI_trace_and_test
 % metaFile = 'Cone_CinC_EC_1000_nm_Cone_0_SD_Uniform_1.52.mat'; graded_RI_trace_and_test
