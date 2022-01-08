@@ -43,7 +43,7 @@ rayHeightReq = (coneProfileZ(end)+(interconeProfileZ(end)-coneProfileZ(end))/4)*
 
 exposedConeInds = find(coneProfileZ*voxelSize > coneTipZ - exposedHeight/1000);
 
-for aAngle = 1:length(incidenceAngle);
+for aAngle = 1:5; 1:length(incidenceAngle);
 
     rayPathArray = rayPathCells{aAngle}; 
     finalIntersect = finalIntersectCells{aAngle};

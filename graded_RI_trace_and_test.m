@@ -139,7 +139,7 @@ justPlotCenterRays = 0;
 scaleBarsOnRayDiagram = 1;
 acceptanceUsingReceptor = 1;
 
-testPlot = 1;
+testPlot = 0;
 testPlotSurface = 0;
 
 loopLim = 10000;
@@ -1025,7 +1025,7 @@ rayReverseCells = cell(length(incidenceAngle), 1);
 
 timePerAngle = zeros(length(incidenceAngle),1);
 
-for aAngle = 8; 1:length(incidenceAngle);
+for aAngle = 1:length(incidenceAngle);
     
     tic
     
@@ -1074,7 +1074,7 @@ for aAngle = 8; 1:length(incidenceAngle);
        periodSpotsArray = zeros(3, numPeriods, nOrigins);
     end
 
-    for iOrigin = 2102; 1:nOrigins;
+    for iOrigin = 1:nOrigins;
         
         tempTime = toc;
         [aAngle iOrigin round(tempTime/60)]
@@ -2611,6 +2611,13 @@ function lambda = surfaceLambdaFunction(x1, x0, surface)
 %         lambda = norm(intersectPoints(nearestInd,:)-x0)/norm(x1-x0);
         lambda = nearestDist/norm(x1-x0);
         
+        % Seem to need a threshold here as well...
+        if lambda > 1 && lambda < 1 + 1e-9
+            lambda = 1;
+        elseif lambda < 0 && lambda > -1e-9
+            lambda = 0;
+        end
+        
     else
        % points are equal, set to zero to break
        lambda = 0;
@@ -2618,7 +2625,7 @@ function lambda = surfaceLambdaFunction(x1, x0, surface)
     end
     
     if lambda > 1
-        [lambda inpolyhedron(surface, x1, 'tol', 0, 'flipNormals',true) ...
+        [lambda inpolyhedron(surface, x0, 'tol', 0, 'flipNormals',true) ...
             inpolyhedron(surface, x1, 'tol', 0, 'flipNormals',true) norm(x1-x0) min(abs(intersectDistance))]
         
         error('Large lambda step, intersect was triggered too early, check threshold in intersection function')

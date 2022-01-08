@@ -9,7 +9,7 @@ scaleUpVoxels = 1;
     voxScale = voxSize/newVoxSize; % Scale up factor on image for FDTD
     
 writeImage = 0;
-    fileNameBase = 'Cone_EC'; %'Cylinder' 'Cone_EC' 'Cone_CinC' 'Cone_CinC_EC'
+    fileNameBase = 'Cone'; %'Cylinder' 'Cone_EC' 'Cone_CinC' 'Cone_CinC_EC'
 
 % targetFolder = '/Users/gavintaylor/Desktop/AnalysisImages';    
 targetFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/AnalysisVolumes/2 Micron';    
@@ -43,7 +43,7 @@ SDMult.EpicorneaProfile = 0;
 
 % Note, these don't automatically adjust the filename
 displayProfiles.CinC = 0; 
-displayProfiles.EpicorneaCone = 1;
+displayProfiles.EpicorneaCone = 0;
 
 %Can be from 1 - 4, can also be equal
 interconeOnLeft = NaN;
@@ -60,7 +60,7 @@ createCylinder = 0; % instead of a cone
 if ~makeLabels
     outerValue = 1.33;
     innerValue = 1.34;
-    coneValue = 'radialTop'; %1.52 'cylinder', 'radialTop', 'radialBase', 'linear' 'both'
+    coneValue = 'radialBase'; %1.52 'cylinder', 'radialTop', 'radialBase', 'linear' 'both'
     outerCorneaValue = 1.5;
     epicorneaValue = 1.53;
     interconeValue = -1; %1.47; -1; 
