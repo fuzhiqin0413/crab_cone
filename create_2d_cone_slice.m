@@ -60,7 +60,7 @@ createCylinder = 0; % instead of a cone
 if ~makeLabels
     outerValue = 1.33;
     innerValue = 1.34;
-    coneValue = 'radialBase'; %1.52 'cylinder', 'radialTop', 'radialBase', 'linear' 'both'
+    coneValue = 'cylinder'; %1.52 'cylinder', 'radialTop', 'radialBase', 'linear' 'both'
     outerCorneaValue = 1.5;
     epicorneaValue = 1.53;
     interconeValue = -1; %1.47; -1; 
@@ -435,6 +435,13 @@ for i = 1:sliceSize(2)
                         % note this radius is not rescaled and will produce lower values than radial at radius > |80| 
                         tempRI = 1.52*sech(pi*tempRadius*voxSize/2/cylinderRILength);
                         
+                        %%% Manually add distance after cylinder in filename
+                        % Longer length
+%                         tempRI = 1.52*sech(pi*tempRadius*voxSize/2/(cylinderRILength+36));
+                        
+                        % Shorter length
+%                         tempRI = 1.52*sech(pi*tempRadius*voxSize/2/(cylinderRILength-36));
+                        
                     case 'radialTop'
                         % rescale relative diameter to 80
                         tempRadius = tempRadius/fullRad*80;
@@ -620,6 +627,7 @@ if writeImage | write3D
     if ischar(coneValue)
         if ~tipGradientCorrection
             fileName = sprintf('%s_%i_nm_Cone_%i_SD_GRIN_%s',fileNameBase, round(voxSize*1000), SDMult.ConeProfile, coneValue);
+%             fileName = sprintf('%s_%i_nm_Cone_%i_SD_GRIN_%sm36',fileNameBase, round(voxSize*1000), SDMult.ConeProfile, coneValue);
         else
             fileName = sprintf('%s_%i_nm_Cone_%i_SD_GRIN_%s_TipCorrection',fileNameBase, round(voxSize*1000), SDMult.ConeProfile, coneValue);
         end

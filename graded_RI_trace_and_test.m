@@ -1632,7 +1632,8 @@ for aAngle = 1:length(incidenceAngle);
 
                         its = 0;
 
-                        while deltaS0_final*norm(t0) > epsilon && abs(lambda0-1) > 1e-9 
+                        % Top test could just be written as lambda0 < 1+1e-9
+                        while deltaS0_final*norm(t0) > epsilon && abs(lambda0-1.0) > 1e-9 
                             %%% using 10^-3 as test for zero in tests above and below
 
                             SF = 1.0; %A from paper - saftey factor
@@ -1777,6 +1778,7 @@ for aAngle = 1:length(incidenceAngle);
                             if lambda0 > 1e-9
                                 if useRealData
                                     SF = 1.0;
+                                    % Note sure if SF test is requied, but safer
                                     while ~intersectionFn(rayX, x0) & SF >= 1e-9
                                         if SF > 0.11
                                            SF = SF - 0.1; 

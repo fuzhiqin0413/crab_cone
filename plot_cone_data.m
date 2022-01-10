@@ -43,7 +43,7 @@ rayHeightReq = (coneProfileZ(end)+(interconeProfileZ(end)-coneProfileZ(end))/4)*
 
 exposedConeInds = find(coneProfileZ*voxelSize > coneTipZ - exposedHeight/1000);
 
-for aAngle = 1:5; 1:length(incidenceAngle);
+for aAngle = 1:length(incidenceAngle);
 
     rayPathArray = rayPathCells{aAngle}; 
     finalIntersect = finalIntersectCells{aAngle};
@@ -626,8 +626,8 @@ if plotColorsOnSummary
 end
 title('X Focus Height from Tip')
 line([0 20], [0 0], 'color', 'k', 'linewidth',2)
-ylim([-250 100]); ylabel('Height (um)'); xlabel('Angle (deg)')
-set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20, 'YTick', [-200 -100 0 100],'XTick',[0 5 10 15 20]);
+ylim([-250 50]); ylabel('Height (um)'); xlabel('Angle (deg)')
+set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20, 'YTick', -250:50:50,'XTick',[0 5 10 15 20]);
 
 subplot(3,3,6); hold on
 plot(incidenceAngle, focusXRadius*1000, 'k-', 'linewidth',2)
