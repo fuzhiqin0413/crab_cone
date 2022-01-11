@@ -1,6 +1,7 @@
 angleCols = flipud(viridis(length(incidenceAngle)));
     
 outlineCol = [0.5 0.5 0.5];
+baseMult = 1.5; % Size of spot diagram relative to base of cone
 
 spotF = figure;
 rayFX = figure; 
@@ -26,6 +27,12 @@ nPlotRows = 2; % could do dynamically, but blah...
 coneTipZ = coneProfileZ(1)*voxelSize;
 priorInd = find(zSteps < coneTipZ); priorInd = priorInd(end);
 topConeInds = find(coneProfileZ*voxelSize > coneTipZ - exposedHeight/1000);
+
+warning('Swap this to use firstIntersect when saved')
+%%% In which case following ind wont be needed
+coneBaseZ = coneProfileZ(end)*voxelSize;
+followingInd = find(zSteps < coneBaseZ); followingInd = followingInd(end);
+plotFailedBase = 1;
 
 % Get plot points
 xPlotPoints = xStartPointsOrig*0; xPlotPoints(1:plotSpacing:end) = 1;
@@ -61,10 +68,27 @@ for aAngle = 1:length(incidenceAngle);
     rayAccepted = zeros(nOrigins, 1)*NaN;
     rayForColc = zeros(nOrigins, 1)*NaN;
 
-    baseMult = 1.5;
-
     for iOrigin = 1:nOrigins
-        if all(~isnan(finalRay(iOrigin,:))) & all(~isnan(rayPathArray(:,:,iOrigin))) & all(~isnan(finalIntersect(iOrigin,:)))
+        % Good to test, but a bit of hack to account for the fact that there is can be a missing faces along the intercone - cone base interface (seems to just occur on cylinder)
+        %%% Switch to check intersect is at height of cone base using firstIntersect when saved
+       
+        % problem seems to be that ray sneaks in base or around side of cone, so check for change in direction at base
+        rayTm1 = rayPathArray(:,followingInd,iOrigin) - rayPathArray(:,followingInd-1,iOrigin);
+        rayTp1 = rayPathArray(:,followingInd+1,iOrigin) - rayPathArray(:,followingInd,iOrigin);
+        
+        baseTest = any(rayTm1 - rayTp1 ~= 0);
+        
+        if metaData.displayProfiles.CinC
+            % limit to near border otherwise rays going into CinC will flag the test
+            if sqrt((rayPathArray(1,followingInd,iOrigin) - volumeSize(1)/2*voxelSize)^2 + ...
+                    (rayPathArray(2,followingInd,iOrigin) - volumeSize(2)/2*voxelSize)^2) < coneProfileR(end)*voxelSize*0.95
+                    
+                baseTest = 1;
+            end  
+        end
+        
+        if all(~isnan(finalRay(iOrigin,:))) && all(all(~isnan(rayPathArray(:,:,iOrigin)))) && ...
+                all(~isnan(finalIntersect(iOrigin,:))) && baseTest
 
             if finalIntersect(iOrigin,3) >= rayHeightReq
                 % check if final intersect is closer than last z step    
@@ -98,7 +122,7 @@ for aAngle = 1:length(incidenceAngle);
                 end
 
                 xTip = xTip - volumeSize(1)/2*voxelSize;
-                yTip = yTip - volumeSize(1)/2*voxelSize;
+                yTip = yTip - volumeSize(2)/2*voxelSize;
 
                 % Accepted if within receptor radius and angle isn't too large and left above exposed part of tip
                 if sqrt(xTip.^2 + yTip.^2) <= receptorRadius/1000 & ...
@@ -108,7 +132,7 @@ for aAngle = 1:length(incidenceAngle);
                 else
                     rayAccepted(iOrigin) = 0;
                 end
-
+                
                 if plotLineCols
                     col = rayCols(iOrigin,:);
                 elseif colorTIR & TIRFlag(iOrigin,1)
@@ -157,6 +181,33 @@ for aAngle = 1:length(incidenceAngle);
                 end
 
             end
+        elseif ~baseTest
+            % Nan final intersect so it's not plotted
+            finalIntersect(iOrigin,3) = NaN;
+        end
+        
+        if ~baseTest & plotFailedBase
+            temp = gcf;
+            figure; hold on; axis equal
+%             trisurf(grinSurface.faces, grinSurface.vertices(:,1), grinSurface.vertices(:,2), grinSurface.vertices(:,3), ...
+%                        'FaceColor','g','FaceAlpha',0.1);
+            % Just plot circle as surface isn't saved
+            if ~metaData.createCylinder
+                r = coneProfileR(end)*voxelSize;
+            else
+                r = profileMax*voxelSize;
+            end
+            
+            teta=-pi:0.01:pi;
+            x = r*cos(teta)+volumeSize(1)/2*voxelSize;
+            y = r*sin(teta)+volumeSize(2)/2*voxelSize;
+            plot3(x,y,ones(1,numel(x))*coneBaseZ)
+            
+            plot3(rayPathArray(1,:,iOrigin), rayPathArray(2,:,iOrigin), rayPathArray(3,:,iOrigin),'r','linewidth',1)
+            plot3(rayPathArray(1,followingInd,iOrigin), rayPathArray(2,followingInd,iOrigin), rayPathArray(3,followingInd,iOrigin),'mx','linewidth',1)
+            
+            title(sprintf('%i %i', aAngle, iOrigin))
+            figure(temp)
         end
     end
 
@@ -406,6 +457,8 @@ for aAngle = 1:length(incidenceAngle);
         focusYRadius(aAngle) = volumeSize(2)*voxelSize;
         colcRadius(aAngle) = volumeSize(2)*voxelSize;
 
+        %%% Limits COLC search to height of COLC in previous angle (so can't rise back up)
+            % However, X and Y focus heights can... could use seperate top step for each?
         if aAngle == 1 
             topStep = length(zSteps);
         else

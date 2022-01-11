@@ -733,7 +733,7 @@ if useRealData
     %     plot3(coneVertices(:,1), coneVertices(:,2), coneVertices(:,3), '.')
         hold on; axis equal
         trisurf(grinSurface.faces, grinSurface.vertices(:,1), grinSurface.vertices(:,2), grinSurface.vertices(:,3), ...
-           'FaceColor','g','FaceAlpha',0.8);
+           'FaceColor','g','FaceAlpha',0.1);
 
     %     plot3(corneaVertices(:,1), corneaVertices(:,2), corneaVertices(:,3), '.')
         trisurf(corneaSurface.faces, corneaSurface.vertices(:,1), corneaSurface.vertices(:,2), corneaSurface.vertices(:,3), ...
@@ -1020,6 +1020,7 @@ rayPathCells = cell(length(incidenceAngle), 1);
 finalIntersectCells = cell(length(incidenceAngle), 1); 
 finalRayCells = cell(length(incidenceAngle), 1);
 finalRayTRefractCells = cell(length(incidenceAngle), 1);
+firstIntersectCells = cell(length(incidenceAngle), 1); 
 TIRFlagCells = cell(length(incidenceAngle), 1);
 rayReverseCells = cell(length(incidenceAngle), 1);
 
@@ -1282,8 +1283,10 @@ for aAngle = 1:length(incidenceAngle);
                 end
 
                 if go
-                    firstIntersect(iOrigin,:) = rayX;
-
+                    if all(isnan(firstIntersect))
+                        firstIntersect(iOrigin,:) = rayX;
+                    end
+                    
                     voxelX = round(rayX/voxelSize); 
 
                     % extend ray path up to intersection
@@ -1992,6 +1995,7 @@ for aAngle = 1:length(incidenceAngle);
     finalRayTRefractCells{aAngle} = finalRayTRefract;
     rayReverseCells{aAngle} = rayReversed;
     TIRFlagCells{aAngle} = TIRFlag;
+    firstIntersectCells{aAngle} = firstIntersect;
     
     timePerAngle(aAngle) = toc;
     
@@ -2011,12 +2015,12 @@ round(timePerAngle/60)'
 
 if useRealData
     
-    plot_cone_data
+%     plot_cone_data
     
     % Do some saving
     if saveData
         saveFile = sprintf('%s/Data/%s_SIMDATA.mat', analysisFolder, metaFile(1:end-4));
-        save(saveFile, 'rayPathCells', 'finalIntersectCells', 'finalRayCells', 'finalRayTRefractCells', 'rayReverseCells', 'timePerAngle', 'TIRFlagCells', ...
+        save(saveFile, 'rayPathCells', 'finalIntersectCells', 'finalRayCells', 'finalRayTRefractCells', 'rayReverseCells', 'timePerAngle', 'TIRFlagCells', ...% 'firstIntersectCells', ...
             'dataFile', 'metaFile', 'incidenceAngle', 'receptorRadius', 'receptorAcceptance', 'exposedHeight', 'blockExposedRentry', ...
             'xSpacing', 'plotSpacing', 'interpType', 'tolerance', 'initialDeltaS', 'iterativeFinal', 'epsilon',  'interfaceRefraction', 'blockMultipleExits', 'limitToConeBase', 'clearReverseRays', 'trace3D', ...
             'alphaForIntercone', 'alphaForCone', 'alphaForCinC', 'dilateBorderRadius', 'flipVolume', 'flipSurfaces', ...
