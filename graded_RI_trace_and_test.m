@@ -21,8 +21,8 @@ xSpacing = 5; % in voxels...
 if useRealData
 
     analysisFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/AnalysisResults/';
-    saveData = 1;
-    saveFigures = 1;
+    saveData = 1; %%%
+    saveFigures = 1; %%%
     
     %%% For 2 micron data
     % Varying RI
@@ -170,6 +170,12 @@ if useRealData
         
         lensRIVolume(lensRIVolume == metaData.interconeValue) = interConeValueToUse;
         interConeValueUsed = interConeValueToUse;
+    end
+    
+    if isnumeric(metaData.coneValue)
+       fixedConeRI = 1;
+    else
+       fixedConeRI = 0; 
     end
     
     lensRIVolume(RIFlagVolume) = -lensRIVolume(RIFlagVolume);
@@ -1112,6 +1118,8 @@ for aAngle = 1:length(incidenceAngle);
         
         hitsCornea = 0;
 
+        previousIntersectValue = 0; minIntersect = 0;
+        
         currentPeriod = 1; % only used for graded fiber
 
         loopSteps = 0;
@@ -1124,12 +1132,14 @@ for aAngle = 1:length(incidenceAngle);
 
             % If outside, extend ray to grin area
             if ~inGraded
+                
                 x0 = rayX;
                 t0 = rayT;
 
                 % entering, need to find intersect to graded volume
                 if useRealData
-
+                    previousIntersectValue = minIntersect;
+                    
                     % X and T combined on input, T needs to point back
                     lineDef = [rayX rayT];
 
@@ -1283,13 +1293,9 @@ for aAngle = 1:length(incidenceAngle);
                 end
 
                 if go
-                    if all(isnan(firstIntersect))
-                        firstIntersect(iOrigin,:) = rayX;
-                    end
-                    
                     voxelX = round(rayX/voxelSize); 
-
-                    % extend ray path up to intersection
+                    
+                    % extend ray path up to intersection - just for recording/plotting
                     misingSteps = find(zSteps > x0(3) & zSteps < rayX(3));
 
                     if ~isempty(misingSteps)
@@ -1306,24 +1312,7 @@ for aAngle = 1:length(incidenceAngle);
                         currentStep = misingSteps(end);
                     end
 
-                    % Entering into graded region
-                    if useTestData | (useRealData & minIntersect == 1)
-
-                        if numberOfExits > 0 
-                            if testPlot
-                               plot3(rayX(1), rayX(2), rayX(3), 'ro', 'markersize', 8)
-
-                               plot3(grinSurface.vertices(grinSurface.faces(faceIndices,:),1), grinSurface.vertices(grinSurface.faces(faceIndices,:),2), ...
-                                   grinSurface.vertices(grinSurface.faces(faceIndices,:),3), 'rx')
-
-                               trisurf(grinSurface.faces(faceIndices,:), grinSurface.vertices(:,1), grinSurface.vertices(:,2), grinSurface.vertices(:,3), ...
-                                    'FaceColor','r');
-                            end
-                            
-                           % Changing epsilon or deltaS may help 
-                           warning('ray is reentering') 
-                        end
-
+                    if useTestData | (useRealData & minIntersect == 1) | (useRealData & fixedConeRI & minIntersect == 1 & previousIntersectValue ~= 1)
                        if useRealData
                             rTemp = vertexExteriorRI(grinSurface.faces(faceIndices,:)); 
                             rTemp = mean(rTemp(:));
@@ -1332,8 +1321,13 @@ for aAngle = 1:length(incidenceAngle);
                        else
                           enteringFromExposed = 0; 
                        end
+                    end    
                         
-                       if ~(blockMultipleExits & numberOfExits > 0) & ~(blockExposedRentry & enteringFromExposed) & hitsCornea
+                    % Entering into graded region
+                    if useTestData | (useRealData & minIntersect == 1) & ~fixedConeRI
+                        
+                        % Check conditions are ok
+                       if ~(blockMultipleExits & numberOfExits > 0) & ~(blockExposedRentry & enteringFromExposed) & (hitsCornea | useTestData)
                             % Get interior RI at entry point
                             [~, rOut] = numerical_dT_dt(rayX, volCoords(RIFlagInds,:), RIFlagInds, lensRIVolume, NaN);
 
@@ -1344,14 +1338,10 @@ for aAngle = 1:length(incidenceAngle);
                                     rIn = mean(rIn(:));    
 
                                     surfaceNormal = mean(grinNormals(faceIndices,:),1);
-
-                                    surfaceNormal = surfaceNormal/norm(surfaceNormal);
-
+                                    
                                 elseif useTestData
                                     if createLunebergLens
                                         surfaceNormal = rayX - volumeSize/2*voxelSize;
-
-                                        surfaceNormal = surfaceNormal/norm(surfaceNormal);
 
                                         % Should be very close to 1, but allowing this removes notch in error profile
                                             % However, it does increase error spot slightly
@@ -1367,9 +1357,7 @@ for aAngle = 1:length(incidenceAngle);
                                     rIn = exteriorRI;
                                 end
 
-                                % Test from surface tracer
-                %                 sqrt((grinNormals(faceIndex(1),1)-rayT(1))^2+(grinNormals(faceIndex(1),2)-rayT(2))^2+...
-                %                         (grinNormals(faceIndex(1),3)-rayT(3))^2) < sqrt(2)
+                                surfaceNormal = surfaceNormal/norm(surfaceNormal);
 
                                 % Test normal points against ray
                                 if acos(dot(rayT, surfaceNormal)/(norm(surfaceNormal)*norm(rayT))) < pi/2
@@ -1390,6 +1378,25 @@ for aAngle = 1:length(incidenceAngle);
                                     
                                     % now multiplied by initial RI
                                     rayT = rayT/norm(rayT)*rOut;
+                                    
+                                    if all(isnan(firstIntersect))
+                                        firstIntersect(iOrigin,:) = rayX;
+                                    end
+
+                                    if numberOfExits > 0 
+                                        if testPlot
+                                           plot3(rayX(1), rayX(2), rayX(3), 'ro', 'markersize', 8)
+
+                                           plot3(grinSurface.vertices(grinSurface.faces(faceIndices,:),1), grinSurface.vertices(grinSurface.faces(faceIndices,:),2), ...
+                                               grinSurface.vertices(grinSurface.faces(faceIndices,:),3), 'rx')
+
+                                           trisurf(grinSurface.faces(faceIndices,:), grinSurface.vertices(:,1), grinSurface.vertices(:,2), grinSurface.vertices(:,3), ...
+                                                'FaceColor','r');
+                                        end
+
+                                       % Changing epsilon or deltaS may help 
+                                       warning('ray is reentering') 
+                                    end
 
                                     if testPlot; plot3(rayX(1), rayX(2), rayX(3), 'go'); end
                                 else
@@ -1398,7 +1405,7 @@ for aAngle = 1:length(incidenceAngle);
 
                                     rayT = rayT/norm(rayT);
                                     
-                                    inGraded = 0; % ???
+                                    inGraded = 0;
                                     
                                     intersectResult = 0;
                                     
@@ -1421,7 +1428,7 @@ for aAngle = 1:length(incidenceAngle);
                            go = 0;
                        end
 
-                    elseif useRealData & minIntersect > 1
+                    elseif (useRealData & minIntersect > 1) | (useRealData & fixedConeRI)
 
                         if interfaceRefraction
                             % do refraction between layers
@@ -1429,6 +1436,29 @@ for aAngle = 1:length(incidenceAngle);
                             %%% currently sets RI assuming ray comes from base
                                 % Could test direction to normal and invert if negative?
                             switch minIntersect
+                                case 1 % cone
+                                    % coming fromt outside
+                                    if previousIntersectValue ~= 1
+                                        rIn = vertexExteriorRI(grinSurface.faces(faceIndices,:));
+                                        rIn = mean(rIn(:)); 
+                                        
+                                        rOut = metaData.coneValue;
+                                        
+                                        if ~(~(blockMultipleExits & numberOfExits > 0) & ~(blockExposedRentry & enteringFromExposed) & hitsCornea)
+                                            propogateFinalRay = 0;
+
+                                            go = 0;
+                                        end
+                                    else
+                                       % coming from inside 
+                                       rIn = metaData.coneValue;
+                                       
+                                       rOut = vertexExteriorRI(grinSurface.faces(faceIndices,:));
+                                       rOut = mean(rOut(:)); 
+                                    end
+                                    
+                                    surfaceNormal = mean(grinNormals(faceIndices,:),1);
+                                    
                                 case 2 % cornea
                                     rIn = metaData.outerValue;
 
@@ -1465,6 +1495,8 @@ for aAngle = 1:length(incidenceAngle);
                                     surfaceNormal = mean(interconeNormals(faceIndices,:),1);
                             end
 
+                            surfaceNormal = surfaceNormal/norm(surfaceNormal);
+                            
                             % Test normal points against ray
                             if acos(dot(rayT, surfaceNormal)/(norm(surfaceNormal)*norm(rayT))) < pi/2
                                 surfaceNormal = -surfaceNormal;
@@ -1477,9 +1509,43 @@ for aAngle = 1:length(incidenceAngle);
                             cosT = sqrt(1-sinT2);
 
                             if sinT2 < 1
+                                % Ray is leaving from inside of grin
+                                if minIntersect == 1 & previousIntersectValue == 1 
+                                   finalIntersect(iOrigin,:) = rayX;
+
+                                   finalRayT(iOrigin,:) = rayT;
+                                   
+                                   numberOfExits = numberOfExits + 1;
+                                    
+                                % Ray is entering grin    
+                                elseif minIntersect == 1 & previousIntersectValue ~= 1
+                                    if all(isnan(firstIntersect(iOrigin,:)))
+                                        firstIntersect(iOrigin,:) = rayX;
+                                    end
+
+                                    if numberOfExits > 0 
+                                        if testPlot
+                                           plot3(rayX(1), rayX(2), rayX(3), 'ro', 'markersize', 8)
+
+                                           plot3(grinSurface.vertices(grinSurface.faces(faceIndices,:),1), grinSurface.vertices(grinSurface.faces(faceIndices,:),2), ...
+                                               grinSurface.vertices(grinSurface.faces(faceIndices,:),3), 'rx')
+
+                                           trisurf(grinSurface.faces(faceIndices,:), grinSurface.vertices(:,1), grinSurface.vertices(:,2), grinSurface.vertices(:,3), ...
+                                                'FaceColor','r');
+                                        end
+
+                                       % Changing epsilon or deltaS may help 
+                                       warning('ray is reentering') 
+                                    end
+                                end
+                                
                                 % Assuming all refracted, none reflected
                                 rayT = nRatio*rayT + (nRatio*cosI-cosT)*surfaceNormal;
-
+                                    
+                                if minIntersect == 1 & previousIntersectValue == 1 
+                                    finalRayTRefract(iOrigin,:) = rayT;
+                                end
+                                
                                 if testPlot; plot3(rayX(1), rayX(2), rayX(3), 'ko'); end
                             else
                                 % TIR
@@ -1488,6 +1554,8 @@ for aAngle = 1:length(incidenceAngle);
                                 if minIntersect == 5
                                     % Check for TIR from intercone 
                                     TIRFlag(iOrigin,2) = TIRFlag(iOrigin,2) + 1;
+                                elseif minIntersect == 1 & previousIntersectValue == 1 
+                                    TIRFlag(iOrigin,1) = TIRFlag(iOrigin,1) + 1;
                                 end
                                 
                                 if testPlot; plot3(rayX(1), rayX(2), rayX(3), 'k*'); end
@@ -1902,20 +1970,6 @@ for aAngle = 1:length(incidenceAngle);
                     end
                 end
 
-                if rayT(3) < 0 %& inGraded
-                   % kill ray if it reverses
-                   %%% Should flag for final plotting
-                   go = 0; 
-
-                   propogateFinalRay = 0;
-
-                   if testPlot; plot3(rayX(1), rayX(2), rayX(3), 'rd', 'markersize', 8); end
-
-                   warning('Ray has reversed')
-                   
-                   rayReversed(iOrigin) = 1;
-                end
-
                 % At each z step, record path for plotting later 
                 if rayX(3) >= zSteps(currentStep+1)
                     if currentStep + 1 < length(zSteps)
@@ -1934,8 +1988,21 @@ for aAngle = 1:length(incidenceAngle);
                 end
             end
 
-            % check if sim seems ot have gone too long
+            if rayT(3) < 0
+               % kill ray if it reverses
+               %%% Should flag for final plotting
+               go = 0; 
+
+               propogateFinalRay = 0;
+
+               if testPlot; plot3(rayX(1), rayX(2), rayX(3), 'rd', 'markersize', 8); end
+
+               warning('Ray has reversed')
+
+               rayReversed(iOrigin) = 1;
+            end
             
+            % check if sim seems ot have gone too long
             if loopSteps > loopLim
                 go = 0;
                 
@@ -1981,6 +2048,7 @@ for aAngle = 1:length(incidenceAngle);
             finalRayTRefract(iOrigin,:) = NaN;
 
             finalIntersect(iOrigin,:) = NaN;
+            firstIntersect(iOrigin,:) = NaN;
             rayPathArray(:,:,iOrigin) = NaN;
         end
 
@@ -2015,12 +2083,12 @@ round(timePerAngle/60)'
 
 if useRealData
     
-%     plot_cone_data
+    plot_cone_data
     
     % Do some saving
     if saveData
         saveFile = sprintf('%s/Data/%s_SIMDATA.mat', analysisFolder, metaFile(1:end-4));
-        save(saveFile, 'rayPathCells', 'finalIntersectCells', 'finalRayCells', 'finalRayTRefractCells', 'rayReverseCells', 'timePerAngle', 'TIRFlagCells', ...% 'firstIntersectCells', ...
+        save(saveFile, 'rayPathCells', 'finalIntersectCells', 'finalRayCells', 'finalRayTRefractCells', 'rayReverseCells', 'timePerAngle', 'TIRFlagCells', 'firstIntersectCells', ...
             'dataFile', 'metaFile', 'incidenceAngle', 'receptorRadius', 'receptorAcceptance', 'exposedHeight', 'blockExposedRentry', ...
             'xSpacing', 'plotSpacing', 'interpType', 'tolerance', 'initialDeltaS', 'iterativeFinal', 'epsilon',  'interfaceRefraction', 'blockMultipleExits', 'limitToConeBase', 'clearReverseRays', 'trace3D', ...
             'alphaForIntercone', 'alphaForCone', 'alphaForCinC', 'dilateBorderRadius', 'flipVolume', 'flipSurfaces', ...

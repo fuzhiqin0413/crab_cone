@@ -22,8 +22,7 @@ data_GRIN_radialTop_tipCorr = load('Cone_1000_nm_Cone_0_SD_GRIN_radialTop_TipCor
 
 data_GRIN_cylinder = load('Cone_1000_nm_Cone_0_SD_GRIN_cylinder_SIMDATA.mat');
 data_GRIN_cylinder_m36 = load('Cone_1000_nm_Cone_0_SD_GRIN_cylinder_m36_SIMDATA.mat');
-%%% When added uncomment and swap legends
-% data_GRIN_cylinder_p36 = load('Cone_1000_nm_Cone_0_SD_GRIN_cylinder_p36_SIMDATA.mat');
+data_GRIN_cylinder_p36 = load('Cone_1000_nm_Cone_0_SD_GRIN_cylinder_p36_SIMDATA.mat');
 data_GRIN_cylinder_shape = load('Cylinder_1000_nm_Cone_0_SD_GRIN_cylinder_SIMDATA.mat');
 
 % Load data from internal structures (w/ varying RI)
@@ -101,8 +100,8 @@ subplot(1,nPlots,3); hold on
 h1 = plot(data_GRIN_cylinder.incidenceAngle, data_GRIN_cylinder.acceptancePercentage, 'linewidth',2, 'color', cols(2,:));
 plot(data_GRIN_cylinder.acceptanceAngle, 0.5, 'd','markersize',10, 'linewidth',2, 'color', cols(2,:))
 
-% h2 = plot(data_GRIN_cylinder_p36.incidenceAngle, data_GRIN_cylinder_p36.acceptancePercentage, 'linewidth',2, 'color', cols(4,:));
-% plot(data_GRIN_cylinder_p36.acceptanceAngle, 0.5, 'd','markersize',10, 'linewidth',2, 'color', cols(4,:))
+h2 = plot(data_GRIN_cylinder_p36.incidenceAngle, data_GRIN_cylinder_p36.acceptancePercentage, 'linewidth',2, 'color', cols(4,:));
+plot(data_GRIN_cylinder_p36.acceptanceAngle, 0.5, 'd','markersize',10, 'linewidth',2, 'color', cols(4,:))
 
 h3 = plot(data_GRIN_cylinder_m36.incidenceAngle, data_GRIN_cylinder_m36.acceptancePercentage, 'linewidth',2, 'color', cols(3,:));
 plot(data_GRIN_cylinder_m36.acceptanceAngle, 0.5, 'd','markersize',10, 'linewidth',2, 'color', cols(3,:))
@@ -110,8 +109,7 @@ plot(data_GRIN_cylinder_m36.acceptanceAngle, 0.5, 'd','markersize',10, 'linewidt
 h4 = plot(data_GRIN_cylinder_shape.incidenceAngle, data_GRIN_cylinder_shape.acceptancePercentage, 'linewidth',2, 'color', cols(5,:));
 plot(data_GRIN_cylinder_shape.acceptanceAngle, 0.5, 'd','markersize',10, 'linewidth',2, 'color', cols(5,:))
 
-% legend([h1 h2 h3 h4], {'Theory-equal', 'Theory-plus', 'Theory-minus', 'Cylinder'},'Location','southwest')
-legend([h1 h3 h4], {'Theory-equal', 'Theory-minus', 'Cylinder'},'Location','southwest')
+legend([h1 h2 h3 h4], {'Theory-equal', 'Theory-plus', 'Theory-minus', 'Cylinder'},'Location','southwest')
 ylabel('% entering receptor'); 
 xlabel('Angle (deg)')
 set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20,'YTick',[0 0.25 0.5 0.75 1],'XTick',[0 5 10 15 20]);
@@ -162,14 +160,13 @@ set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20,'YTick',[0 0.25 0.5 0.75
 subplot(1,nPlots,3); hold on
 h1 = plot(data_GRIN_cylinder.incidenceAngle, data_GRIN_cylinder.TIRPercengtage, 'linewidth',2, 'color', cols(2,:));
 
-% h2 = plot(data_GRIN_cylinder_p36.incidenceAngle, data_GRIN_cylinder_p36.TIRPercengtage, 'linewidth',2, 'color', cols(4,:));
+h2 = plot(data_GRIN_cylinder_p36.incidenceAngle, data_GRIN_cylinder_p36.TIRPercengtage, 'linewidth',2, 'color', cols(4,:));
 
 h3 = plot(data_GRIN_cylinder_m36.incidenceAngle, data_GRIN_cylinder_m36.TIRPercengtage, 'linewidth',2, 'color', cols(3,:));
 
 h4 = plot(data_GRIN_cylinder_shape.incidenceAngle, data_GRIN_cylinder_shape.TIRPercengtage, 'linewidth',2, 'color', cols(5,:));
 
-% legend([h1 h2 h3 h4], {'Theory-equal', 'Theory-plus', 'Theory-minus', 'Cylinder'},'Location','southwest')
-legend([h1 h3 h4], {'Theory-equal', 'Theory-minus', 'Cylinder'},'Location','southwest')
+legend([h1 h2 h3 h4], {'Theory-equal', 'Theory-plus', 'Theory-minus', 'Cylinder'},'Location','southwest')
 ylim([0 1]); xlim([0 20]); ylabel('% TIR in COLC'); xlabel('Angle (deg)')
 set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20,'YTick',[0 0.25 0.5 0.75 1],'XTick',[0 5 10 15 20]);
 
@@ -217,15 +214,14 @@ set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20, 'YTick', -150:50:50,'XT
 subplot(1,nPlots,3); hold on
 h1 = plot(data_GRIN_cylinder.incidenceAngle, (data_GRIN_cylinder.colcHeight- data_GRIN_cylinder.coneTipZ)*1000, 'linewidth',2, 'color', cols(2,:));
 
-% h2 = plot(data_GRIN_cylinder_p36.incidenceAngle, (data_GRIN_cylinder_p36.colcHeight- data_GRIN_cylinder_p36.coneTipZ)*1000, 'linewidth',2, 'color', cols(4,:));
+h2 = plot(data_GRIN_cylinder_p36.incidenceAngle, (data_GRIN_cylinder_p36.colcHeight- data_GRIN_cylinder_p36.coneTipZ)*1000, 'linewidth',2, 'color', cols(4,:));
 
 h3 = plot(data_GRIN_cylinder_m36.incidenceAngle, (data_GRIN_cylinder_m36.colcHeight- data_GRIN_cylinder_m36.coneTipZ)*1000, 'linewidth',2, 'color', cols(3,:));
 
 h4 = plot(data_GRIN_cylinder_shape.incidenceAngle, (data_GRIN_cylinder_shape.colcHeight- data_GRIN_cylinder_shape.coneTipZ)*1000, 'linewidth',2, 'color', cols(5,:));
 
 line([0 20], [0 0], 'color', outlineCol, 'linewidth',2,'linestyle',':')
-% legend([h1 h2 h3 h4], {'Theory-equal', 'Theory-plus', 'Theory-minus', 'Cylinder'},'Location','southwest')
-legend([h1 h3 h4], {'Theory-equal', 'Theory-minus', 'Cylinder'},'Location','southwest')
+legend([h1 h2 h3 h4], {'Theory-equal', 'Theory-plus', 'Theory-minus', 'Cylinder'},'Location','southwest')
 ylim([-150 50]); ylabel('COLC Height (um)'); xlabel('Angle (deg)')
 set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20, 'YTick', -150:50:50,'XTick',[0 5 10 15 20]);
 
@@ -271,14 +267,13 @@ set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20, 'YTick', 0:10:50,'XTick
 subplot(1,nPlots,3); hold on
 h1 = plot(data_GRIN_cylinder.incidenceAngle, data_GRIN_cylinder.colcRadius*1000, 'linewidth',2, 'color', cols(2,:));
 
-% h2 = plot(data_GRIN_cylinder_p36.incidenceAngle, data_GRIN_cylinder_p36.colcRadius*1000, 'linewidth',2, 'color', cols(4,:));
+h2 = plot(data_GRIN_cylinder_p36.incidenceAngle, data_GRIN_cylinder_p36.colcRadius*1000, 'linewidth',2, 'color', cols(4,:));
 
 h3 = plot(data_GRIN_cylinder_m36.incidenceAngle, data_GRIN_cylinder_m36.colcRadius*1000, 'linewidth',2, 'color', cols(3,:));
 
 h4 = plot(data_GRIN_cylinder_shape.incidenceAngle, data_GRIN_cylinder_shape.colcRadius*1000, 'linewidth',2, 'color', cols(5,:));
 
-% legend([h1 h2 h3 h4], {'Theory-equal', 'Theory-plus', 'Theory-minus', 'Cylinder'},'Location','southwest')
-legend([h1 h3 h4], {'Theory-equal', 'Theory-minus', 'Cylinder'},'Location','southwest')
+legend([h1 h2 h3 h4], {'Theory-equal', 'Theory-plus', 'Theory-minus', 'Cylinder'},'Location','southwest')
 ylim([0 50]); ylabel('COLC Radius (um)'); xlabel('Angle (deg)')
 set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20, 'YTick', 0:10:50,'XTick',[0 5 10 15 20]);
 
@@ -325,15 +320,14 @@ set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20, 'YTick', -250:50:50,'XT
 subplot(1,nPlots,3); hold on
 h1 = plot(data_GRIN_cylinder.incidenceAngle, (data_GRIN_cylinder.focusXHeight- data_GRIN_cylinder.coneTipZ)*1000, 'linewidth',2, 'color', cols(2,:));
 
-% h2 = plot(data_GRIN_cylinder_p36.incidenceAngle, (data_GRIN_cylinder_p36.focusXHeight- data_GRIN_cylinder_p36.coneTipZ)*1000, 'linewidth',2, 'color', cols(4,:));
+h2 = plot(data_GRIN_cylinder_p36.incidenceAngle, (data_GRIN_cylinder_p36.focusXHeight- data_GRIN_cylinder_p36.coneTipZ)*1000, 'linewidth',2, 'color', cols(4,:));
 
 h3 = plot(data_GRIN_cylinder_m36.incidenceAngle, (data_GRIN_cylinder_m36.focusXHeight- data_GRIN_cylinder_m36.coneTipZ)*1000, 'linewidth',2, 'color', cols(3,:));
 
 h4 = plot(data_GRIN_cylinder_shape.incidenceAngle, (data_GRIN_cylinder_shape.focusXHeight- data_GRIN_cylinder_shape.coneTipZ)*1000, 'linewidth',2, 'color', cols(5,:));
 
 line([0 20], [0 0], 'color', outlineCol, 'linewidth',2,'linestyle',':')
-% legend([h1 h2 h3 h4], {'Theory-equal', 'Theory-plus', 'Theory-minus', 'Cylinder'},'Location','southwest')
-legend([h1 h3 h4], {'Theory-equal', 'Theory-minus', 'Cylinder'},'Location','southwest')
+legend([h1 h2 h3 h4], {'Theory-equal', 'Theory-plus', 'Theory-minus', 'Cylinder'},'Location','southwest')
 ylim([-250 50]); ylabel('X-Focus Height (um)'); xlabel('Angle (deg)')
 set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20, 'YTick', -250:50:50,'XTick',[0 5 10 15 20]);
 
@@ -379,14 +373,13 @@ set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20, 'YTick', 0:25:75,'XTick
 subplot(1,nPlots,3); hold on
 h1 = plot(data_GRIN_cylinder.incidenceAngle, data_GRIN_cylinder.focusXRadius*1000, 'linewidth',2, 'color', cols(2,:));
 
-% h2 = plot(data_GRIN_cylinder_p36.incidenceAngle, data_GRIN_cylinder_p36.focusXRadius*1000, 'linewidth',2, 'color', cols(4,:));
+h2 = plot(data_GRIN_cylinder_p36.incidenceAngle, data_GRIN_cylinder_p36.focusXRadius*1000, 'linewidth',2, 'color', cols(4,:));
 
 h3 = plot(data_GRIN_cylinder_m36.incidenceAngle, data_GRIN_cylinder_m36.focusXRadius*1000, 'linewidth',2, 'color', cols(3,:));
 
 h4 = plot(data_GRIN_cylinder_shape.incidenceAngle, data_GRIN_cylinder_shape.focusXRadius*1000, 'linewidth',2, 'color', cols(5,:));
 
-% legend([h1 h2 h3 h4], {'Theory-equal', 'Theory-plus', 'Theory-minus', 'Cylinder'},'Location','southwest')
-legend([h1 h3 h4], {'Theory-equal', 'Theory-minus', 'Cylinder'},'Location','southwest')
+legend([h1 h2 h3 h4], {'Theory-equal', 'Theory-plus', 'Theory-minus', 'Cylinder'},'Location','southwest')
 ylim([0 75]); ylabel('X-Focus Radius (um)'); xlabel('Angle (deg)')
 set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20, 'YTick', 0:25:75,'XTick',[0 5 10 15 20]);
 
@@ -433,15 +426,14 @@ set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20, 'YTick', -250:50:50,'XT
 subplot(1,nPlots,3); hold on
 h1 = plot(data_GRIN_cylinder.incidenceAngle, (data_GRIN_cylinder.focusYHeight- data_GRIN_cylinder.coneTipZ)*1000, 'linewidth',2, 'color', cols(2,:));
 
-% h2 = plot(data_GRIN_cylinder_p36.incidenceAngle, (data_GRIN_cylinder_p36.focusYHeight- data_GRIN_cylinder_p36.coneTipZ)*1000, 'linewidth',2, 'color', cols(4,:));
+h2 = plot(data_GRIN_cylinder_p36.incidenceAngle, (data_GRIN_cylinder_p36.focusYHeight- data_GRIN_cylinder_p36.coneTipZ)*1000, 'linewidth',2, 'color', cols(4,:));
 
 h3 = plot(data_GRIN_cylinder_m36.incidenceAngle, (data_GRIN_cylinder_m36.focusYHeight- data_GRIN_cylinder_m36.coneTipZ)*1000, 'linewidth',2, 'color', cols(3,:));
 
 h4 = plot(data_GRIN_cylinder_shape.incidenceAngle, (data_GRIN_cylinder_shape.focusYHeight- data_GRIN_cylinder_shape.coneTipZ)*1000, 'linewidth',2, 'color', cols(5,:));
 
 line([0 20], [0 0], 'color', outlineCol, 'linewidth',2,'linestyle',':')
-% legend([h1 h2 h3 h4], {'Theory-equal', 'Theory-plus', 'Theory-minus', 'Cylinder'},'Location','southwest')
-legend([h1 h3 h4], {'Theory-equal', 'Theory-minus', 'Cylinder'},'Location','southwest')
+legend([h1 h2 h3 h4], {'Theory-equal', 'Theory-plus', 'Theory-minus', 'Cylinder'},'Location','southwest')
 ylim([-250 50]); ylabel('Y-Focus Height (um)'); xlabel('Angle (deg)')
 set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20, 'YTick', -250:50:50,'XTick',[0 5 10 15 20]);
 
@@ -487,14 +479,13 @@ set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20, 'YTick', 0:25:75,'XTick
 subplot(1,nPlots,3); hold on
 h1 = plot(data_GRIN_cylinder.incidenceAngle, data_GRIN_cylinder.focusYRadius*1000, 'linewidth',2, 'color', cols(2,:));
 
-% h2 = plot(data_GRIN_cylinder_p36.incidenceAngle, data_GRIN_cylinder_p36.focusYRadius*1000, 'linewidth',2, 'color', cols(4,:));
+h2 = plot(data_GRIN_cylinder_p36.incidenceAngle, data_GRIN_cylinder_p36.focusYRadius*1000, 'linewidth',2, 'color', cols(4,:));
 
 h3 = plot(data_GRIN_cylinder_m36.incidenceAngle, data_GRIN_cylinder_m36.focusYRadius*1000, 'linewidth',2, 'color', cols(3,:));
 
 h4 = plot(data_GRIN_cylinder_shape.incidenceAngle, data_GRIN_cylinder_shape.focusYRadius*1000, 'linewidth',2, 'color', cols(5,:));
 
-% legend([h1 h2 h3 h4], {'Theory-equal', 'Theory-plus', 'Theory-minus', 'Cylinder'},'Location','southwest')
-legend([h1 h3 h4], {'Theory-equal', 'Theory-minus', 'Cylinder'},'Location','southwest')
+legend([h1 h2 h3 h4], {'Theory-equal', 'Theory-plus', 'Theory-minus', 'Cylinder'},'Location','southwest')
 ylim([0 75]); ylabel('Y-Focus Radius (um)'); xlabel('Angle (deg)')
 set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20, 'YTick', 0:25:75,'XTick',[0 5 10 15 20]);
 

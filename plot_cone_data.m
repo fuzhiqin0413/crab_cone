@@ -28,9 +28,9 @@ coneTipZ = coneProfileZ(1)*voxelSize;
 priorInd = find(zSteps < coneTipZ); priorInd = priorInd(end);
 topConeInds = find(coneProfileZ*voxelSize > coneTipZ - exposedHeight/1000);
 
-warning('Swap this to use firstIntersect when saved')
-%%% In which case following ind wont be needed
 coneBaseZ = coneProfileZ(end)*voxelSize;
+warning('Swap this to use firstIntersect when saved')
+%%% In which case followingInd wont be needed
 followingInd = find(zSteps < coneBaseZ); followingInd = followingInd(end);
 plotFailedBase = 1;
 
@@ -57,6 +57,7 @@ for aAngle = 1:length(incidenceAngle);
     finalRay = finalRayCells{aAngle};
     finalRayTRefract = finalRayTRefractCells{aAngle};
     TIRFlag = TIRFlagCells{aAngle};
+    firstIntersect = firstIntersectCells{aAngle};
 
     % Plot spot diagram first
     figure(spotF); 
@@ -73,20 +74,30 @@ for aAngle = 1:length(incidenceAngle);
         %%% Switch to check intersect is at height of cone base using firstIntersect when saved
        
         % problem seems to be that ray sneaks in base or around side of cone, so check for change in direction at base
-        rayTm1 = rayPathArray(:,followingInd,iOrigin) - rayPathArray(:,followingInd-1,iOrigin);
-        rayTp1 = rayPathArray(:,followingInd+1,iOrigin) - rayPathArray(:,followingInd,iOrigin);
-        
-        baseTest = any(rayTm1 - rayTp1 ~= 0);
+        if ~isnumeric(metaData.coneValue)
+            rayTm1 = rayPathArray(:,followingInd,iOrigin) - rayPathArray(:,followingInd-1,iOrigin);
+            rayTp1 = rayPathArray(:,followingInd+1,iOrigin) - rayPathArray(:,followingInd,iOrigin);
+
+            baseTest = any(rayTm1 - rayTp1 ~= 0);
+        else
+            if all(isnan(firstIntersect(iOrigin,:))) || all(~isnan(firstIntersect(iOrigin,:))) && abs(firstIntersect(iOrigin, 3) - coneBaseZ) < 1e-9
+                baseTest = 1;
+                firstIntersect(iOrigin, 3) - coneBaseZ
+            else
+                baseTest = 0;
+            end
+        end
         
         if metaData.displayProfiles.CinC
-            % limit to near border otherwise rays going into CinC will flag the test
+            % limit to near border otherwise rays going into CinC will flag either test
+            %%% Can use firstIntersect when availible
             if sqrt((rayPathArray(1,followingInd,iOrigin) - volumeSize(1)/2*voxelSize)^2 + ...
                     (rayPathArray(2,followingInd,iOrigin) - volumeSize(2)/2*voxelSize)^2) < coneProfileR(end)*voxelSize*0.95
-                    
+
                 baseTest = 1;
             end  
         end
-        
+
         if all(~isnan(finalRay(iOrigin,:))) && all(all(~isnan(rayPathArray(:,:,iOrigin)))) && ...
                 all(~isnan(finalIntersect(iOrigin,:))) && baseTest
 
