@@ -82,7 +82,7 @@ for aAngle = 1:length(incidenceAngle);
         else
             if all(isnan(firstIntersect(iOrigin,:))) || all(~isnan(firstIntersect(iOrigin,:))) && abs(firstIntersect(iOrigin, 3) - coneBaseZ) < 1e-9
                 baseTest = 1;
-                firstIntersect(iOrigin, 3) - coneBaseZ
+                
             else
                 baseTest = 0;
             end
@@ -344,6 +344,7 @@ for aAngle = 1:length(incidenceAngle);
 
 
             if (~justPlotCenterRays & plotOrigins(iOrigin)) | (justPlotCenterRays & tempRaysOnXZPlane(iOrigin))
+%                 plot3(rayPath(:,1), rayPath(:,2), rayPath(:,3), 'color', col, 'linestyle', style);
                 plot(rayPath(:,1),  rayPath(:,3), 'color', col, 'linestyle', style);
 %                     line([rayPath(end-1,1) extendedRay(1)], [rayPath(end-1,3) extendedRay(3)], 'color', col, 'linestyle', style)
             end

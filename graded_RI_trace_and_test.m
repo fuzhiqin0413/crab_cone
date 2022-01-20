@@ -2,7 +2,7 @@
 % lundaberg lens or graded fibre, as in nishdate 2011 papers
     
 % clear; 
-clearvars -except dataFolder metaFile 
+clearvars -except dataFolder metaFile interConeValueToUse
 clc; close all
 
 %% Set parameters
@@ -12,7 +12,7 @@ useRealData = 1;
 %%% Change back
 incidenceAngle = 0:2.5:20; [0 5 10];  % deg, in XZ - plane    
 
-interConeValueToUse = 1.40;
+% interConeValueToUse = 1.40;
 
 %%% Change back
 xSpacing = 5; % in voxels...
@@ -2085,9 +2085,15 @@ if useRealData
     
     plot_cone_data
     
+    if interConeValueToUse ~= 1.40
+        ICAddition = sprintf('_IC_%i', interConeValueToUse*100);
+    else
+        ICAddition = '';
+    end
+        
     % Do some saving
     if saveData
-        saveFile = sprintf('%s/Data/%s_SIMDATA.mat', analysisFolder, metaFile(1:end-4));
+        saveFile = sprintf('%s/Data/%s%s_SIMDATA.mat', analysisFolder, metaFile(1:end-4), ICAddition);
         save(saveFile, 'rayPathCells', 'finalIntersectCells', 'finalRayCells', 'finalRayTRefractCells', 'rayReverseCells', 'timePerAngle', 'TIRFlagCells', 'firstIntersectCells', ...
             'dataFile', 'metaFile', 'incidenceAngle', 'receptorRadius', 'receptorAcceptance', 'exposedHeight', 'blockExposedRentry', ...
             'xSpacing', 'plotSpacing', 'interpType', 'tolerance', 'initialDeltaS', 'iterativeFinal', 'epsilon',  'interfaceRefraction', 'blockMultipleExits', 'limitToConeBase', 'clearReverseRays', 'trace3D', ...
@@ -2100,19 +2106,19 @@ if useRealData
     end
     
     if saveFigures
-        imageFile = sprintf('%s/Figures/%s_SpotDiagram.pdf', analysisFolder, metaFile(1:end-4));
-        exportgraphics(spotF,imageFile,'ContentType','vector')
+        imageFile = sprintf('%s/Figures/%s%s_SpotDiagram.pdf', analysisFolder, metaFile(1:end-4), ICAddition);
+        exportgraphics(spotF,imageFile,'ContentType','vector') 
         
-        imageFile = sprintf('%s/Figures/%s_RaysX.pdf', analysisFolder, metaFile(1:end-4));
+        imageFile = sprintf('%s/Figures/%s%s_RaysX.pdf', analysisFolder, metaFile(1:end-4), ICAddition);
         exportgraphics(rayFX,imageFile,'ContentType','vector')
         
-        imageFile = sprintf('%s/Figures/%s_RaysY.pdf', analysisFolder, metaFile(1:end-4));
+        imageFile = sprintf('%s/Figures/%s%s_RaysY.pdf', analysisFolder, metaFile(1:end-4), ICAddition);
         exportgraphics(rayFY,imageFile,'ContentType','vector')
         
-        imageFile = sprintf('%s/Figures/%s_COLCLines.pdf', analysisFolder, metaFile(1:end-4));
+        imageFile = sprintf('%s/Figures/%s%s_COLCLines.pdf', analysisFolder, metaFile(1:end-4), ICAddition);
         exportgraphics(tipF,imageFile,'ContentType','vector')
         
-        imageFile = sprintf('%s/Figures/%s_Summary.pdf', analysisFolder, metaFile(1:end-4));
+        imageFile = sprintf('%s/Figures/%s%s_Summary.pdf', analysisFolder, metaFile(1:end-4), ICAddition);
         exportgraphics(sumF,imageFile,'ContentType','vector')
     end
     
@@ -2453,7 +2459,6 @@ elseif useTestData
                 tempRayPath = permute(trueRayPathArray(:, :, iOrigin), [2 1]);
 
                 plot((tempRayPath(:,1) - rayPath(:,1))*10^6, zSteps, 'color', rayCols(iOrigin,:))
-                
                 
                 plot((tempRayPath(bottomZ,1) - rayPath(bottomZ,1))*10^6, zSteps(bottomZ), 'rx')
                 plot((tempRayPath(topZ,1) - rayPath(topZ,1))*10^6, zSteps(topZ), 'rx')

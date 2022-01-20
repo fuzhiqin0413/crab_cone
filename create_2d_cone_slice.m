@@ -430,8 +430,19 @@ for i = 1:sliceSize(2)
                 % rescale length relative to full cone
                 tempZ = (coneLengthToUse-(i-tipOffset))/coneLengthToUse;
                 
+                if newVoxSize ~= 1
+                   % All radius rescaling (to 80) done assuming um while radius is actually in voxels. 
+                   % Ok if voxel size is 1, but need to adjust if not
+                   % Cylinder absolute radius also assumes um
+                        % RI error is actuall small - maximum at border: 0.001 for radial top, 0.0011 for cyldiner cone
+                   error('Need to rescale from voxels to radius') 
+                end
+                
                 switch coneValue
                     case 'cylinder'
+%                       tempRadius = tempRadius/fullRad*max(coneProfileToUse);
+%                         tempRadius = tempRadius/fullRad*80;
+                        
                         % note this radius is not rescaled and will produce lower values than radial at radius > |80| 
                         tempRI = 1.52*sech(pi*tempRadius*voxSize/2/cylinderRILength);
                         
@@ -627,7 +638,7 @@ if writeImage | write3D
     if ischar(coneValue)
         if ~tipGradientCorrection
             fileName = sprintf('%s_%i_nm_Cone_%i_SD_GRIN_%s',fileNameBase, round(voxSize*1000), SDMult.ConeProfile, coneValue);
-%             fileName = sprintf('%s_%i_nm_Cone_%i_SD_GRIN_%sm36',fileNameBase, round(voxSize*1000), SDMult.ConeProfile, coneValue);
+%             fileName = sprintf('%s_%i_nm_Cone_%i_SD_GRIN_%s_normalised_80',fileNameBase, round(voxSize*1000), SDMult.ConeProfile, coneValue);
         else
             fileName = sprintf('%s_%i_nm_Cone_%i_SD_GRIN_%s_TipCorrection',fileNameBase, round(voxSize*1000), SDMult.ConeProfile, coneValue);
         end
