@@ -315,6 +315,13 @@ plot(coneXRef, internalInterconeProfileToUseRight*voxSize);
 subplot(1,3,3); hold on
 plot(corneaXRef, epicorneaProfileToUse*voxSize);
 
+% get radiuses and distances
+[~, tempI] = max(coneProfileToUse);
+[max(coneProfileToUse) coneXRef(tempI)]
+[~, tempI] = min(abs(coneXRef - 15));
+[coneProfileToUse(tempI) coneXRef(tempI)]
+
+
 % Make slice to fit dimensions
 topEpicornea = tipOffset + ceil(coneLengthToUse) + ceil(outerCorneaLengthToUse) + ceil(epicorneaLengthToUse);
 

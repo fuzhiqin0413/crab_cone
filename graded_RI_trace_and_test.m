@@ -64,10 +64,11 @@ if useRealData
     plotRIImageOnRayDiagram = 0;
     useTestData = 0;
     
+    % Note this is actually the aperture radius... from Chamberlain and Barlow 1987
     receptorRadius = 30; % micron - night basically 0 out, 5 at 70 out for for day
     receptorAcceptance = 90; % degrees
     
-    exposedHeight = 15; % micron - night, maybe around 20 for day light
+    exposedHeight = 15; % micron - night, about the same for day (maybe a bit closer to 20)
     blockExposedRentry = 1;
         
     testOrigin = []; [5 6 7 8];
@@ -2111,7 +2112,7 @@ if useRealData
         
     % Do some saving
     if saveData
-        saveFile = sprintf('%s/Data/%s%s%s_SIMDATA.mat', analysisFolder, metaFile(1:end-4), ICAddition,PGAddition);
+        saveFile = sprintf('%s/Data/%s%s%s_SIMDATA.mat', analysisFolder, metaFile(1:end-4), ICAddition, PGAddition);
         save(saveFile, 'rayPathCells', 'finalIntersectCells', 'finalRayCells', 'finalRayTRefractCells', 'rayReverseCells', 'timePerAngle', 'TIRFlagCells', 'firstIntersectCells', ...
             'dataFile', 'metaFile', 'incidenceAngle', 'receptorRadius', 'receptorAcceptance', 'exposedHeight', 'blockExposedRentry', ...
             'xSpacing', 'plotSpacing', 'interpType', 'tolerance', 'initialDeltaS', 'iterativeFinal', 'epsilon',  'interfaceRefraction', 'blockMultipleExits', 'limitToConeBase', 'clearReverseRays', 'trace3D', ...
@@ -2124,19 +2125,19 @@ if useRealData
     end
     
     if saveFigures
-        imageFile = sprintf('%s/Figures/%s%s_SpotDiagram.pdf', analysisFolder, metaFile(1:end-4), ICAddition);
+        imageFile = sprintf('%s/Figures/%s%s%s_SpotDiagram.pdf', analysisFolder, metaFile(1:end-4), ICAddition, PGAddition);
         exportgraphics(spotF,imageFile,'ContentType','vector') 
         
-        imageFile = sprintf('%s/Figures/%s%s_RaysX.pdf', analysisFolder, metaFile(1:end-4), ICAddition);
+        imageFile = sprintf('%s/Figures/%s%s%s_RaysX.pdf', analysisFolder, metaFile(1:end-4), ICAddition, PGAddition);
         exportgraphics(rayFX,imageFile,'ContentType','vector')
         
-        imageFile = sprintf('%s/Figures/%s%s_RaysY.pdf', analysisFolder, metaFile(1:end-4), ICAddition);
+        imageFile = sprintf('%s/Figures/%s%s%s_RaysY.pdf', analysisFolder, metaFile(1:end-4), ICAddition, PGAddition);
         exportgraphics(rayFY,imageFile,'ContentType','vector')
         
-        imageFile = sprintf('%s/Figures/%s%s_COLCLines.pdf', analysisFolder, metaFile(1:end-4), ICAddition);
+        imageFile = sprintf('%s/Figures/%s%s%s_COLCLines.pdf', analysisFolder, metaFile(1:end-4), ICAddition, PGAddition);
         exportgraphics(tipF,imageFile,'ContentType','vector')
         
-        imageFile = sprintf('%s/Figures/%s%s_Summary.pdf', analysisFolder, metaFile(1:end-4), ICAddition);
+        imageFile = sprintf('%s/Figures/%s%s%s_Summary.pdf', analysisFolder, metaFile(1:end-4), ICAddition, PGAddition);
         exportgraphics(sumF,imageFile,'ContentType','vector')
     end
     
