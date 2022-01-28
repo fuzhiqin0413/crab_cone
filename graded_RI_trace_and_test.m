@@ -2,7 +2,7 @@
 % lundaberg lens or graded fibre, as in nishdate 2011 papers
     
 % clear; 
-clearvars -except dataFolder metaFile interConeValueToUse
+clearvars -except dataFolder metaFile interConeValueToUse externalPigmentValue
 clc; close all
 
 %% Set parameters
@@ -798,8 +798,9 @@ end
 %% Do general set up
 
 if useRealData
+    coneTipZ = coneProfileZ(1)*voxelSize;
+    
     % Connect GRIN vertexes to an exterior RI
-
     tempRIVolume = lensRIVolume;
 
     tempRIVolume(RIFlagVolume) = 0;
@@ -818,6 +819,12 @@ if useRealData
         vertexExteriorRI(vertexExteriorRI == 0) = tempRIVolume2(vertexIndexes(vertexExteriorRI == 0));
     end
     
+    exposedConeFlag = vertexExteriorRI == metaData.innerValue;
+    
+    % Change RI of exterior at border of exposed cone
+    if ~isempty(externalPigmentValue)
+        vertexExteriorRI( grinSurface.vertices(:,3)*voxelSize < coneTipZ - exposedHeight/1000 & vertexExteriorRI == metaData.innerValue) = externalPigmentValue;
+    end
     
     % Adjust vertices
     grinSurface.vertices = grinSurface.vertices*voxelSize;
@@ -1314,10 +1321,7 @@ for aAngle = 1:length(incidenceAngle);
 
                     if useTestData | (useRealData & minIntersect == 1) | (useRealData & fixedConeRI & minIntersect == 1 & previousIntersectValue ~= 1)
                        if useRealData
-                            rTemp = vertexExteriorRI(grinSurface.faces(faceIndices,:)); 
-                            rTemp = mean(rTemp(:));
-                            
-                            enteringFromExposed = rTemp == metaData.innerValue;
+                            enteringFromExposed = any(exposedConeFlag(grinSurface.faces(faceIndices,:)));
                        else
                           enteringFromExposed = 0; 
                        end
@@ -1490,8 +1494,16 @@ for aAngle = 1:length(incidenceAngle);
                                 case 5 % intercone 
                                     rIn = interConeValueUsed;
 
-                                    rOut = metaData.innerValue;
-
+                                    if isempty(externalPigmentValue)
+                                        rOut = metaData.innerValue;
+                                    else
+                                        % may not be neccersary, I exepect all intercone is below this
+                                        if rayX(3) < coneTipZ - exposedHeight/1000
+                                            rOut = externalPigmentValue; 
+                                        else
+                                            rOut = metaData.innerValue;
+                                        end
+                                    end
                                     surfaceNormal = mean(interconeNormals(faceIndices,:),1);
                             end
 
@@ -2090,17 +2102,23 @@ if useRealData
     else
         ICAddition = '';
     end
+    
+    if ~isempty(externalPigmentValue)
+        PGAddition = sprintf('_PG_%i', externalPigmentValue*100);
+    else
+        PGAddition = '';
+    end
         
     % Do some saving
     if saveData
-        saveFile = sprintf('%s/Data/%s%s_SIMDATA.mat', analysisFolder, metaFile(1:end-4), ICAddition);
+        saveFile = sprintf('%s/Data/%s%s%s_SIMDATA.mat', analysisFolder, metaFile(1:end-4), ICAddition,PGAddition);
         save(saveFile, 'rayPathCells', 'finalIntersectCells', 'finalRayCells', 'finalRayTRefractCells', 'rayReverseCells', 'timePerAngle', 'TIRFlagCells', 'firstIntersectCells', ...
             'dataFile', 'metaFile', 'incidenceAngle', 'receptorRadius', 'receptorAcceptance', 'exposedHeight', 'blockExposedRentry', ...
             'xSpacing', 'plotSpacing', 'interpType', 'tolerance', 'initialDeltaS', 'iterativeFinal', 'epsilon',  'interfaceRefraction', 'blockMultipleExits', 'limitToConeBase', 'clearReverseRays', 'trace3D', ...
             'alphaForIntercone', 'alphaForCone', 'alphaForCinC', 'dilateBorderRadius', 'flipVolume', 'flipSurfaces', ...
             'acceptancePercentage', 'focusXHeight', 'focusXRadius', 'focusYHeight', 'focusYRadius', 'colcHeight', 'colcRadius', 'rayReverseNum', 'TIRPercengtage', 'acceptanceAngle', ...
             'nOrigins', 'plotLineCols', 'colorTIR', 'plotOrigins', 'scaleBarsOnRayDiagram', 'plotColorsOnSummary', 'justPlotCenterRays', 'raysOnXZPlane', 'raysOnYZPlane', 'plotRIImageOnRayDiagram', 'acceptanceUsingReceptor', ...
-            'coneTipZ', 'corneaZ', 'epicorneaZ', 'coneBaseZ', 'interConeValueUsed', 'zSteps', ...
+            'coneTipZ', 'corneaZ', 'epicorneaZ', 'coneBaseZ', 'interConeValueUsed', 'externalPigmentValue', 'zSteps', ...
             'coneProfileR', 'coneProfileZ', 'cInCProfileR', 'cInCProfileZ', 'epicorneaProfileR', 'epicorneaProfileZ', 'interconeProfileR', 'interconeProfileZ', ...
             'voxelSize', 'volumeSize', 'xStartPointsOrig', 'rayOrigins', 'metaData')
     end

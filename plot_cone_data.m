@@ -24,7 +24,6 @@ rayReverseNum = zeros(length(incidenceAngle),1);
 
 nPlotRows = 2; % could do dynamically, but blah...
 
-coneTipZ = coneProfileZ(1)*voxelSize;
 priorInd = find(zSteps < coneTipZ); priorInd = priorInd(end);
 topConeInds = find(coneProfileZ*voxelSize > coneTipZ - exposedHeight/1000);
 
