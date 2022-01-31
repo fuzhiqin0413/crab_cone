@@ -11,7 +11,10 @@ tipF = figure;
 acceptancePercentageNight = zeros(length(incidenceAngle),1); % for night
 acceptancePercentageDay = zeros(length(incidenceAngle),1);
 acceptancePercentageColc = zeros(length(incidenceAngle),1);
+
 TIRPercengtage = zeros(length(incidenceAngle),1);
+beamDivergenceMax = zeros(length(incidenceAngle),1);
+beamDivergenceAverage = zeros(length(incidenceAngle),1);
 
 focusXHeight = zeros(length(incidenceAngle),1);
 focusXRadius = zeros(length(incidenceAngle),1);
@@ -80,6 +83,8 @@ for aAngle = 1:length(incidenceAngle);
     rayAcceptedNight = zeros(nOrigins, 1)*NaN; 
     rayAcceptedDay = zeros(nOrigins, 1)*NaN; 
     rayForColc = zeros(nOrigins, 1)*NaN;
+    
+    rayAngle = zeros(nOrigins, 1)*NaN;
 
     for iOrigin = 1:nOrigins
         % Good to test, but a bit of hack to account for the fact that there is can be a missing faces along the intercone - cone base interface (seems to just occur on cylinder)
@@ -130,11 +135,10 @@ for aAngle = 1:length(incidenceAngle);
                        xTip = finalIntersect(iOrigin, 1) - volumeSize(1)/2*voxelSize;
                        yTip = finalIntersect(iOrigin, 2) - volumeSize(2)/2*voxelSize;
                     else
-                       % should adjust with the refracted ray? (could be intersection after...)
                        if finalIntersect(iOrigin, 3) - coneTipZ <= 0
-                            % intesect is behind, can just extend refracted ray
+                            % intesect is behind, can just extend final ray
                             zDiff = coneTipZ - finalIntersect(iOrigin, 3);
-                            normRay = finalRayTRefract(iOrigin,:)/finalRayTRefract(iOrigin,3);
+                            normRay = finalRay(iOrigin,:)/finalRay(iOrigin,3);
 
                             xTip = finalIntersect(iOrigin, 1) + normRay(1)*zDiff - volumeSize(1)/2*voxelSize;
                             yTip = finalIntersect(iOrigin, 2) + normRay(2)*zDiff - volumeSize(2)/2*voxelSize;
@@ -150,7 +154,6 @@ for aAngle = 1:length(incidenceAngle);
                     yTip = rayPathArray(2,priorInd,iOrigin) + normRay(2)*zDiff - volumeSize(2)/2*voxelSize;
                 end
                 
-
                 % get position at night receptor
                 zDiff = coneTipZ + receptorDistanceNight/1000 - rayPathArray(3,priorIndNightReceptor,iOrigin);
                 normRay = finalRay(iOrigin,:)/finalRay(iOrigin,3);
@@ -209,6 +212,8 @@ for aAngle = 1:length(incidenceAngle);
                     %if plotOrigins(iOrigin); plot(xTip*1000, yTip*1000, 'x', 'color', col); end
                     plot(xTip*1000, yTip*1000, '.', 'color', col,'markersize',6);
                     rayForColc(iOrigin) = 1;
+                    
+                    rayAngle(iOrigin) = acos(dot(finalRay(iOrigin,:),[0 0 1])/(norm(finalRay(iOrigin,:))));
                 else
                     %if plotOrigins(iOrigin); plot(xTip*1000, yTip*1000, 'o', 'color', col); end
                     h = plot(xTip*1000, yTip*1000, 'o', 'color', col,'markersize',4); 
@@ -292,6 +297,11 @@ for aAngle = 1:length(incidenceAngle);
     TIRPercengtage(aAngle) = sum(TIRFlag(tempInds,1)>0)/sum( rayForColc(~isnan(rayForColc)));
     
     rayForColc(isnan(rayForColc)) = 0;
+    
+    % Get divergence
+    
+    beamDivergenceMax(aAngle) = max(rayAngle(~isnan(rayAngle)))/pi*180;
+    beamDivergenceAverage(aAngle) = mean(rayAngle(~isnan(rayAngle)))/pi*180;
     
     % Finalize spot plotting
     if ~metaData.createCylinder
@@ -835,12 +845,31 @@ ylim([0 100]); ylabel('Radius (um)'); xlabel('Angle (deg)')
 set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20, 'YTick', [0 25 50 75 100],'XTick',[0 5 10 15 20]);
 
 subplot(3,3,7); hold on
-plot(incidenceAngle, rayReverseNum, 'k-', 'linewidth',2)
+% swap ray reversals to beam divergence
+% plot(incidenceAngle, rayReverseNum, 'k-', 'linewidth',2)
+% if plotColorsOnSummary
+%     for aAngle = 1:length(incidenceAngle)
+%         plot(incidenceAngle(aAngle), rayReverseNum(aAngle), 'o', 'color', angleCols(aAngle,:))
+%     end
+% end
+% title('Ray reversals')
+% ylabel('Number'); xlabel('Angle (deg)')
+% set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20,'XTick',[0 5 10 15 20]);
+
+plot(incidenceAngle, beamDivergenceMax, 'k:', 'linewidth',2)
 if plotColorsOnSummary
     for aAngle = 1:length(incidenceAngle)
-        plot(incidenceAngle(aAngle), rayReverseNum(aAngle), 'o', 'color', angleCols(aAngle,:))
+        plot(incidenceAngle(aAngle), beamDivergenceMax(aAngle), 'o', 'color', angleCols(aAngle,:))
     end
 end
-title('Ray reversals')
-ylabel('Number'); xlabel('Angle (deg)')
-set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20,'XTick',[0 5 10 15 20]);
+
+plot(incidenceAngle, beamDivergenceAverage, 'k-', 'linewidth',2)
+if plotColorsOnSummary
+    for aAngle = 1:length(incidenceAngle)
+        plot(incidenceAngle(aAngle), beamDivergenceAverage(aAngle), 'o', 'color', angleCols(aAngle,:))
+    end
+end
+ylim([0 90])
+title('Beam divergence')
+ylabel('Angle (degrees)'); xlabel('Angle (deg)')
+set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20,'XTick',[0 5 10 15 20], 'Ytick', 0:30:90);

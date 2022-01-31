@@ -8,7 +8,8 @@ saveFigures = 0;
 saveFolder = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/AnalysisResults/Figures/';
 
 % Load reference acceptance function
-acceptanceAngle = readmatrix('/Users/gavintaylor/Documents/Matlab/Git_versioned_April_27/Crab_cone_git/Data/Acceptacne Function.csv');
+acceptanceFunctionNight = readmatrix('/Users/gavintaylor/Documents/Matlab/Git_versioned_April_27/Crab_cone_git/Data/Acceptance Function Night.csv');
+acceptanceFunctionDay = readmatrix('/Users/gavintaylor/Documents/Matlab/Git_versioned_April_27/Crab_cone_git/Data/Acceptance function Day.csv');
 
 nPlots = 4;
 cols = lines(7);
@@ -84,34 +85,60 @@ data_GRIN_cylinder_PG_140 = load('Cone_1000_nm_Cone_0_SD_GRIN_cylinder_PG_140_SI
 data_GRIN_cylinder_PG_145 = load('Cone_1000_nm_Cone_0_SD_GRIN_cylinder_PG_145_SIMDATA.mat');
 %%% add for 1.5
 
+%%
 % process acceptance angle from paper
 % Fix zero at zero
-acceptanceAngle(abs(acceptanceAngle(:,1)) < 0.1,1) = 0;
+acceptanceFunctionNight(abs(acceptanceFunctionNight(:,1)) < 0.1,1) = 0;
 
-negInds = find(acceptanceAngle(:,1) <= 0);
-posInds = find(acceptanceAngle(:,1) >= 0);
+negInds = find(acceptanceFunctionNight(:,1) <= 0);
+posInds = find(acceptanceFunctionNight(:,1) >= 0);
 
 angleSteps = 0:10;
-negInterp = interp1(-acceptanceAngle(negInds,1), acceptanceAngle(negInds,2), angleSteps, 'linear', 'extrap');
-posInterp = interp1(acceptanceAngle(posInds,1), acceptanceAngle(posInds,2), angleSteps, 'linear', 'extrap');
+negInterp = interp1(-acceptanceFunctionNight(negInds,1), acceptanceFunctionNight(negInds,2), angleSteps, 'linear', 'extrap');
+posInterp = interp1(acceptanceFunctionNight(posInds,1), acceptanceFunctionNight(posInds,2), angleSteps, 'linear', 'extrap');
 
-interpAcceptance = (negInterp+posInterp)/2;
+interpAcceptanceNight = (negInterp+posInterp)/2;
 
-lowInds = find(interpAcceptance > 0.5);
+lowInds = find(interpAcceptanceNight > 0.5);
 if ~isempty(lowInds)
     % Take last
     lowInds = lowInds(end);
     
-    slope = (interpAcceptance(lowInds + 1) - interpAcceptance(lowInds))/...
+    slope = (interpAcceptanceNight(lowInds + 1) - interpAcceptanceNight(lowInds))/...
         (angleSteps(lowInds + 1) - angleSteps(lowInds));
-    acceptanceAngle = angleSteps(lowInds) + (0.5 - interpAcceptance(lowInds))/slope;
+    acceptanceAngleNight = angleSteps(lowInds) + (0.5 - interpAcceptanceNight(lowInds))/slope;
+end
+
+% do for day as well
+acceptanceFunctionDay(abs(acceptanceFunctionDay(:,1)) < 0.1,1) = 0;
+
+negInds = find(acceptanceFunctionDay(:,1) <= 0);
+posInds = find(acceptanceFunctionDay(:,1) >= 0);
+
+angleSteps = 0:10;
+negInterp = interp1(-acceptanceFunctionDay(negInds,1), acceptanceFunctionDay(negInds,2), angleSteps, 'linear', 'extrap');
+posInterp = interp1(acceptanceFunctionDay(posInds,1), acceptanceFunctionDay(posInds,2), angleSteps, 'linear', 'extrap');
+
+interpAcceptanceDay = (negInterp+posInterp)/2;
+
+lowInds = find(interpAcceptanceDay > 0.5);
+if ~isempty(lowInds)
+    % Take last
+    lowInds = lowInds(end);
+    
+    slope = (interpAcceptanceDay(lowInds + 1) - interpAcceptanceDay(lowInds))/...
+        (angleSteps(lowInds + 1) - angleSteps(lowInds));
+    acceptanceAngleDay = angleSteps(lowInds) + (0.5 - interpAcceptanceDay(lowInds))/slope;
 end
 
 % figure; hold on
-% plot(angleSteps, interpAcceptance, 'k:', 'linewidth',2)
-% plot(acceptanceAngle, 0.5, 'kd','markersize',10, 'linewidth',2)
+% plot(angleSteps, interpAcceptanceNight, 'k:', 'linewidth',2)
+% plot(acceptanceAngleNight, 0.5, 'kd','markersize',10, 'linewidth',2)
+% 
+% plot(angleSteps, interpAcceptanceDay, 'k:', 'linewidth',2)
+% plot(acceptanceAngleDay, 0.5, 'kd','markersize',10, 'linewidth',2)
 
-%% Plot acceptance angle
+%% Plot acceptance angle for night
 acceptanceF = figure; set(gcf, 'position', [-1919        -149        1920        1104])
 
 subplot(4,nPlots,1); hold on
@@ -127,8 +154,8 @@ plot(data_GRIN_linear.acceptanceAngle, 0.5, 'd','markersize',10, 'linewidth',2, 
 h4= plot(data_GRIN_both.incidenceAngle, data_GRIN_both.acceptancePercentage, 'linewidth',2, 'color', cols(6,:));
 plot(data_GRIN_both.acceptanceAngle, 0.5, 'd','markersize',10, 'linewidth',2, 'color', cols(6,:))
 
-plot(angleSteps, interpAcceptance, 'k:', 'linewidth',2)
-plot(acceptanceAngle, 0.5, 'kd','markersize',10, 'linewidth',2)
+plot(angleSteps, interpAcceptanceNight, 'k:', 'linewidth',2)
+plot(acceptanceAngleNight, 0.5, 'kd','markersize',10, 'linewidth',2)
 
 legend([h1 h2 h3 h4], {'Radial-top','Radial-base','Linear','Radial+linear'},'Location','southwest')
 ylabel('% entering receptor'); 
@@ -142,8 +169,8 @@ plot(data_GRIN_radialTop.acceptanceAngle, 0.5, 'd','markersize',10, 'linewidth',
 h2= plot(data_GRIN_radialTop_tipCorr.incidenceAngle, data_GRIN_radialTop_tipCorr.acceptancePercentage, 'linewidth',2, 'color', cols(4,:));
 plot(data_GRIN_radialTop_tipCorr.acceptanceAngle, 0.5, 'd','markersize',10, 'linewidth',2, 'color', cols(4,:))
 
-plot(angleSteps, interpAcceptance, 'k:', 'linewidth',2)
-plot(acceptanceAngle, 0.5, 'kd','markersize',10, 'linewidth',2)
+plot(angleSteps, interpAcceptanceNight, 'k:', 'linewidth',2)
+plot(acceptanceAngleNight, 0.5, 'kd','markersize',10, 'linewidth',2)
 
 legend([h1 h2], {'Radial-top','W/ Tip Corr.'},'Location','southwest')
 ylabel('% entering receptor'); 
@@ -163,8 +190,8 @@ plot(data_GRIN_cylinder_m36.acceptanceAngle, 0.5, 'd','markersize',10, 'linewidt
 h4 = plot(data_GRIN_cylinder_shape.incidenceAngle, data_GRIN_cylinder_shape.acceptancePercentage, 'linewidth',2, 'color', cols(6,:));
 plot(data_GRIN_cylinder_shape.acceptanceAngle, 0.5, 'd','markersize',10, 'linewidth',2, 'color', cols(6,:))
 
-plot(angleSteps, interpAcceptance, 'k:', 'linewidth',2)
-plot(acceptanceAngle, 0.5, 'kd','markersize',10, 'linewidth',2)
+plot(angleSteps, interpAcceptanceNight, 'k:', 'linewidth',2)
+plot(acceptanceAngleNight, 0.5, 'kd','markersize',10, 'linewidth',2)
 
 lh = legend([h1 h2 h3 h4], {'Theory-equal', 'Theory-plus', 'Theory-minus', 'Cylinder'},'Location','southwest');
 ylabel('% entering receptor'); 
@@ -185,8 +212,8 @@ plot(data_GRIN_radialTop_EC.acceptanceAngle, 0.5, 'd','markersize',10, 'linewidt
 h4 = plot(data_GRIN_radialTop_CinC_EC.incidenceAngle, data_GRIN_radialTop_CinC_EC.acceptancePercentage, 'linewidth',2, 'color', cols(6,:));
 plot(data_GRIN_radialTop_CinC_EC.acceptanceAngle, 0.5, 'd','markersize',10, 'linewidth',2, 'color', cols(6,:))
 
-plot(angleSteps, interpAcceptance, 'k:', 'linewidth',2)
-plot(acceptanceAngle, 0.5, 'kd','markersize',10, 'linewidth',2)
+plot(angleSteps, interpAcceptanceNight, 'k:', 'linewidth',2)
+plot(acceptanceAngleNight, 0.5, 'kd','markersize',10, 'linewidth',2)
 
 legend([h1 h2 h3 h4], {'Radial-top', 'CinC', 'EC', 'CinC & EC'},'Location','southwest')
 ylabel('% entering receptor'); 
@@ -209,8 +236,8 @@ plot(data_GRIN_cylinder_norm_max.acceptanceAngle, 0.5, 'd','markersize',10, 'lin
 h5 = plot(data_GRIN_cylinder_norm_80.incidenceAngle, data_GRIN_cylinder_norm_80.acceptancePercentage, 'linewidth',2, 'color', cols(5,:));
 plot(data_GRIN_cylinder_norm_80.acceptanceAngle, 0.5, 'd','markersize',10, 'linewidth',2, 'color', cols(5,:))
 
-plot(angleSteps, interpAcceptance, 'k:', 'linewidth',2)
-plot(acceptanceAngle, 0.5, 'kd','markersize',10, 'linewidth',2)
+plot(angleSteps, interpAcceptanceNight, 'k:', 'linewidth',2)
+plot(acceptanceAngleNight, 0.5, 'kd','markersize',10, 'linewidth',2)
 
 lh2 = legend([h1 h2 h3 h4 h5], {'Radial-top','Theory-equal', 'SD 0', 'Normalised-max', 'Normalised-80'},'Location','southwest');
 ylabel('% entering receptor'); 
@@ -235,8 +262,8 @@ plot(data_uniform_p2SD.acceptanceAngle, 0.5, 'd','markersize',10, 'linewidth',2,
 h5 = plot(data_uniform_p4SD.incidenceAngle, data_uniform_p4SD.acceptancePercentage, 'linewidth',2, 'color', cols(7,:));
 plot(data_uniform_p4SD.acceptanceAngle, 0.5, 'd','markersize',10, 'linewidth',2, 'color', cols(7,:))
 
-plot(angleSteps, interpAcceptance, 'k:', 'linewidth',2)
-plot(acceptanceAngle, 0.5, 'kd','markersize',10, 'linewidth',2)
+plot(angleSteps, interpAcceptanceNight, 'k:', 'linewidth',2)
+plot(acceptanceAngleNight, 0.5, 'kd','markersize',10, 'linewidth',2)
 
 legend([h1 h2 h3 h4 h5], {'SD -4', 'SD -2', 'SD 0', 'SD +2', 'SD +4'},'Location','southwest')
 ylabel('% entering receptor'); 
@@ -256,8 +283,8 @@ plot(data_GRIN_uniform_EC.acceptanceAngle, 0.5, 'd','markersize',10, 'linewidth'
 h4 = plot(data_GRIN_uniform_CinC_EC.incidenceAngle, data_GRIN_uniform_CinC_EC.acceptancePercentage, 'linewidth',2, 'color', cols(6,:));
 plot(data_GRIN_uniform_CinC_EC.acceptanceAngle, 0.5, 'd','markersize',10, 'linewidth',2, 'color', cols(6,:))
 
-plot(angleSteps, interpAcceptance, 'k:', 'linewidth',2)
-plot(acceptanceAngle, 0.5, 'kd','markersize',10, 'linewidth',2)
+plot(angleSteps, interpAcceptanceNight, 'k:', 'linewidth',2)
+plot(acceptanceAngleNight, 0.5, 'kd','markersize',10, 'linewidth',2)
 
 legend([h1 h2 h3 h4], {'SD 0', 'CinC', 'EC', 'CinC & EC'},'Location','southwest')
 ylabel('% entering receptor'); 
@@ -281,8 +308,8 @@ plot(data_GRIN_radialTop_IC_146.acceptanceAngle, 0.5, 'd','markersize',10, 'line
 h5 = plot(data_GRIN_radialTop_IC_148.incidenceAngle, data_GRIN_radialTop_IC_148.acceptancePercentage, 'linewidth',2, 'color', cols(7,:));
 plot(data_GRIN_radialTop_IC_148.acceptanceAngle, 0.5, 'd','markersize',10, 'linewidth',2, 'color', cols(7,:))
 
-plot(angleSteps, interpAcceptance, 'k:', 'linewidth',2)
-plot(acceptanceAngle, 0.5, 'kd','markersize',10, 'linewidth',2)
+plot(angleSteps, interpAcceptanceNight, 'k:', 'linewidth',2)
+plot(acceptanceAngleNight, 0.5, 'kd','markersize',10, 'linewidth',2)
 
 legend([h1 h2 h3 h4 h5], {'Radial-top', 'IC-1.42', 'IC-1.44', 'IC-1.46', 'IC-1.48'},'Location','southwest')
 ylabel('% entering receptor'); 
@@ -305,8 +332,8 @@ plot(data_uniform_0SD_IC_146.acceptanceAngle, 0.5, 'd','markersize',10, 'linewid
 h5 = plot(data_uniform_0SD_IC_148.incidenceAngle, data_uniform_0SD_IC_148.acceptancePercentage, 'linewidth',2, 'color', cols(7,:));
 plot(data_uniform_0SD_IC_148.acceptanceAngle, 0.5, 'd','markersize',10, 'linewidth',2, 'color', cols(7,:))
 
-plot(angleSteps, interpAcceptance, 'k:', 'linewidth',2)
-plot(acceptanceAngle, 0.5, 'kd','markersize',10, 'linewidth',2)
+plot(angleSteps, interpAcceptanceNight, 'k:', 'linewidth',2)
+plot(acceptanceAngleNight, 0.5, 'kd','markersize',10, 'linewidth',2)
 
 legend([h1 h2 h3 h4 h5], {'SD 0', 'IC-1.42', 'IC-1.44', 'IC-1.46', 'IC-1.48'},'Location','southwest')
 ylabel('% entering receptor'); 
@@ -329,8 +356,8 @@ plot(data_GRIN_cylinder_IC_146.acceptanceAngle, 0.5, 'd','markersize',10, 'linew
 h5 = plot(data_GRIN_cylinder_IC_148.incidenceAngle, data_GRIN_cylinder_IC_148.acceptancePercentage, 'linewidth',2, 'color', cols(7,:));
 plot(data_GRIN_cylinder_IC_148.acceptanceAngle, 0.5, 'd','markersize',10, 'linewidth',2, 'color', cols(7,:))
 
-plot(angleSteps, interpAcceptance, 'k:', 'linewidth',2)
-plot(acceptanceAngle, 0.5, 'kd','markersize',10, 'linewidth',2)
+plot(angleSteps, interpAcceptanceNight, 'k:', 'linewidth',2)
+plot(acceptanceAngleNight, 0.5, 'kd','markersize',10, 'linewidth',2)
 
 lh3 =legend([h1 h2 h3 h4 h5], {'Theory-equal', 'IC-1.42', 'IC-1.44', 'IC-1.46', 'IC-1.48'},'Location','northwest');
 ylabel('% entering receptor'); 
@@ -352,8 +379,8 @@ plot(data_GRIN_radialTop_PG_145.acceptanceAngle, 0.5, 'd','markersize',10, 'line
 % h4 = plot(data_GRIN_radialTop_PG_150.incidenceAngle, data_GRIN_radialTop_PG_150.acceptancePercentage, 'linewidth',2, 'color', cols(6,:));
 % plot(data_GRIN_radialTop_PG_150.acceptanceAngle, 0.5, 'd','markersize',10, 'linewidth',2, 'color', cols(6,:))
 
-plot(angleSteps, interpAcceptance, 'k:', 'linewidth',2)
-plot(acceptanceAngle, 0.5, 'kd','markersize',10, 'linewidth',2)
+plot(angleSteps, interpAcceptanceNight, 'k:', 'linewidth',2)
+plot(acceptanceAngleNight, 0.5, 'kd','markersize',10, 'linewidth',2)
 
 legend([h1 h2 h3 h4], {'Radial-top', 'PG-1.40', 'PG-1.45', 'PG-1.50'},'Location','southwest')
 ylabel('% entering receptor'); 
@@ -373,8 +400,8 @@ plot(data_uniform_0SD.acceptanceAngle, 0.5, 'd','markersize',10, 'linewidth',2, 
 % h4 = plot(data_uniform_0SD_PG_150.incidenceAngle, data_uniform_0SD_PG_150.acceptancePercentage, 'linewidth',2, 'color', cols(6,:));
 % plot(data_uniform_0SD_PG_150.acceptanceAngle, 0.5, 'd','markersize',10, 'linewidth',2, 'color', cols(6,:))
 
-plot(angleSteps, interpAcceptance, 'k:', 'linewidth',2)
-plot(acceptanceAngle, 0.5, 'kd','markersize',10, 'linewidth',2)
+plot(angleSteps, interpAcceptanceNight, 'k:', 'linewidth',2)
+plot(acceptanceAngleNight, 0.5, 'kd','markersize',10, 'linewidth',2)
 
 legend([h1 h2 h3 h4], {'SD 0', 'PG-1.40', 'PG-1.45', 'PG-1.50'},'Location','southwest')
 ylabel('% entering receptor'); 
@@ -394,8 +421,8 @@ plot(data_GRIN_cylinder_PG_145.acceptanceAngle, 0.5, 'd','markersize',10, 'linew
 % h4 = plot(data_GRIN_cylinder_PG_150.incidenceAngle, data_GRIN_cylinder_PG_150.acceptancePercentage, 'linewidth',2, 'color', cols(6,:));
 % plot(data_GRIN_cylinder_PG_150.acceptanceAngle, 0.5, 'd','markersize',10, 'linewidth',2, 'color', cols(6,:))
 
-plot(angleSteps, interpAcceptance, 'k:', 'linewidth',2)
-plot(acceptanceAngle, 0.5, 'kd','markersize',10, 'linewidth',2)
+plot(angleSteps, interpAcceptanceNight, 'k:', 'linewidth',2)
+plot(acceptanceAngleNight, 0.5, 'kd','markersize',10, 'linewidth',2)
 
 lh4 =legend([h1 h2 h3 h4], {'Theory-equal', 'PG-1.40', 'PG-1.45', 'PG-1.50'},'Location','northwest');
 ylabel('% entering receptor'); 

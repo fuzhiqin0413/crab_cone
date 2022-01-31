@@ -131,9 +131,10 @@ if saveFlag
     % Remove
     %acceptanceAngle, acceptancePercentage, receptorRadius, acceptanceUsingReceptor
     
-    % Add - variables above
+    % Add - variables above, and:
     % acceptancePercentageNight, acceptanceAngleNight
     % acceptancePercentageDay, acceptanceAngleDay
     % acceptancePercentageColc, acceptanceAngleColc
+    % beamDivergenceMax, beamDivergenceAverage
 end
 end
