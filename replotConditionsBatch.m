@@ -6,6 +6,8 @@ saveFlag = 0;
 dataDirectory = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/AnalysisResults/Data/Varying RI Profile/';
 imageDirectory = '/Users/gavintaylor/Documents/Company/Client Projects/Cones MPI/AnalysisResults/Figures/Varying RI Profile/';
 loadReplot('Cone_1000_nm_Cone_0_SD_GRIN_both_SIMDATA.mat', dataDirectory, imageDirectory, saveFlag)
+%%
+
 loadReplot('Cone_1000_nm_Cone_0_SD_GRIN_radialBase_SIMDATA.mat', dataDirectory, imageDirectory, saveFlag)
 loadReplot('Cone_1000_nm_Cone_0_SD_GRIN_radialTop_SIMDATA.mat', dataDirectory, imageDirectory, saveFlag)
 loadReplot('Cone_1000_nm_Cone_0_SD_GRIN_linear_SIMDATA.mat', dataDirectory, imageDirectory, saveFlag)
@@ -84,13 +86,24 @@ loadReplot('Cone_1000_nm_Cone_0_SD_GRIN_cylinder_PG_140_SIMDATA.mat', dataDirect
 loadReplot('Cone_1000_nm_Cone_0_SD_GRIN_cylinder_PG_145_SIMDATA.mat', dataDirectory, imageDirectory, saveFlag)
 % loadReplot(filename, dataDirectory, imageDirectory, saveFlag)
 
+
 function loadReplot(filename, dataDirectory, imageDirectory, saveFlag)
 close all; clc
 
 cd(dataDirectory)
 data = load(filename);
 
-data.receptorRadius = NaN;
+% Pull fields from data structure to direct workspace variables
+fields = fieldnames(data);
+
+for i = 1:length(fields)
+    eval(sprintf('%s = data.%s;', fields{i}, fields{i}))
+end
+
+receptorRadius = NaN;
+acceptanceUsingReceptor = NaN;
+
+limitCOLCToExterior = 1;
 
 % All from schematic Chamberlain and Barlow 1987
 receptorRadiusDay = 30/2;
@@ -115,5 +128,12 @@ if saveFlag
     cd(imageDirectory)
 
     %%% Plot over exisiting figures
+    % Remove
+    %acceptanceAngle, acceptancePercentage, receptorRadius, acceptanceUsingReceptor
+    
+    % Add - variables above
+    % acceptancePercentageNight, acceptanceAngleNight
+    % acceptancePercentageDay, acceptanceAngleDay
+    % acceptancePercentageColc, acceptanceAngleColc
 end
 end
