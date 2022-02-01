@@ -8,9 +8,9 @@ rayFX = figure;
 rayFY = figure; 
 tipF = figure;
 
-acceptancePercentageNight = zeros(length(incidenceAngle),1); % for night
-acceptancePercentageDay = zeros(length(incidenceAngle),1);
-acceptancePercentageColc = zeros(length(incidenceAngle),1);
+acceptanceNumNight = zeros(length(incidenceAngle),1); % for night
+acceptanceNumDay = zeros(length(incidenceAngle),1);
+acceptanceNumColC = zeros(length(incidenceAngle),1);
 
 TIRPercengtage = zeros(length(incidenceAngle),1);
 beamDivergenceMax = zeros(length(incidenceAngle),1);
@@ -41,7 +41,7 @@ priorIndDayNarrowEnd = find(zSteps < coneTipZ + dayNarrowEnd/1000); priorIndDayN
 coneBaseZ = coneProfileZ(end)*voxelSize;
 %%% Kept following ind for legacy results where firstIntersect wasn't saved
 followingInd = find(zSteps < coneBaseZ); followingInd = followingInd(end);
-plotFailedBase = 1;
+plotFailedBase = 0;
 
 % Get plot points
 xPlotPoints = xStartPointsOrig*0; xPlotPoints(1:plotSpacing:end) = 1;
@@ -66,7 +66,7 @@ for aAngle = 1:length(incidenceAngle);
     finalRay = finalRayCells{aAngle};
     finalRayTRefract = finalRayTRefractCells{aAngle};
     TIRFlag = TIRFlagCells{aAngle};
-    if exist('firstIntersectCells','var') == 1
+    if iscell(firstIntersectCells)
         firstIntersect = firstIntersectCells{aAngle};
         noFirstIntersect = 0;
     else
@@ -115,8 +115,8 @@ for aAngle = 1:length(incidenceAngle);
                     baseTest = 1;
                 end  
             else
-                if sqrt((firstIntersect(1,iOrigin) - volumeSize(1)/2*voxelSize)^2 + ...
-                        (firstIntersect(2,iOrigin) - volumeSize(2)/2*voxelSize)^2) < coneProfileR(end)*voxelSize*0.95
+                if sqrt((firstIntersect(iOrigin,1) - volumeSize(1)/2*voxelSize)^2 + ...
+                        (firstIntersect(iOrigin,2) - volumeSize(2)/2*voxelSize)^2) < coneProfileR(end)*voxelSize*0.95
 
                     baseTest = 1;
                 end 
@@ -126,6 +126,8 @@ for aAngle = 1:length(incidenceAngle);
         if all(~isnan(finalRay(iOrigin,:))) && all(all(~isnan(rayPathArray(:,:,iOrigin)))) && ...
                 all(~isnan(finalIntersect(iOrigin,:))) && baseTest
 
+            normRay = finalRay(iOrigin,:)/finalRay(iOrigin,3);
+            
             if finalIntersect(iOrigin,3) >= rayHeightReq
                 % get position at tip
                 % check if final intersect is closer than last z step    
@@ -138,7 +140,6 @@ for aAngle = 1:length(incidenceAngle);
                        if finalIntersect(iOrigin, 3) - coneTipZ <= 0
                             % intesect is behind, can just extend final ray
                             zDiff = coneTipZ - finalIntersect(iOrigin, 3);
-                            normRay = finalRay(iOrigin,:)/finalRay(iOrigin,3);
 
                             xTip = finalIntersect(iOrigin, 1) + normRay(1)*zDiff - volumeSize(1)/2*voxelSize;
                             yTip = finalIntersect(iOrigin, 2) + normRay(2)*zDiff - volumeSize(2)/2*voxelSize;
@@ -148,7 +149,6 @@ for aAngle = 1:length(incidenceAngle);
                    end
                 else
                     zDiff = coneTipZ - rayPathArray(3,priorInd,iOrigin);
-                    normRay = finalRay(iOrigin,:)/finalRay(iOrigin,3);
 
                     xTip = rayPathArray(1,priorInd,iOrigin) + normRay(1)*zDiff - volumeSize(1)/2*voxelSize;
                     yTip = rayPathArray(2,priorInd,iOrigin) + normRay(2)*zDiff - volumeSize(2)/2*voxelSize;
@@ -163,19 +163,16 @@ for aAngle = 1:length(incidenceAngle);
                 
                 % get position at day receptor, and both narrows
                 zDiff = coneTipZ + receptorDistanceDay/1000 - rayPathArray(3,priorIndDayReceptor,iOrigin);
-                normRay = finalRay(iOrigin,:)/finalRay(iOrigin,3);
 
                 xTipDay = rayPathArray(1,priorIndDayReceptor,iOrigin) + normRay(1)*zDiff - volumeSize(1)/2*voxelSize;
                 yTipDay = rayPathArray(2,priorIndDayReceptor,iOrigin) + normRay(2)*zDiff - volumeSize(2)/2*voxelSize;
                 
                 zDiff = coneTipZ + dayNarrowStart/1000 - rayPathArray(3,priorIndDayNarrowStart,iOrigin);
-                normRay = finalRay(iOrigin,:)/finalRay(iOrigin,3);
 
                 xTipDayNarrowStart = rayPathArray(1,priorIndDayNarrowStart,iOrigin) + normRay(1)*zDiff - volumeSize(1)/2*voxelSize;
                 yTipDayNarrowStart = rayPathArray(2,priorIndDayNarrowStart,iOrigin) + normRay(2)*zDiff - volumeSize(2)/2*voxelSize;
                 
                 zDiff = coneTipZ + dayNarrowEnd/1000 - rayPathArray(3,priorIndDayNarrowEnd,iOrigin);
-                normRay = finalRay(iOrigin,:)/finalRay(iOrigin,3);
 
                 xTipDayNarrowEnd = rayPathArray(1,priorIndDayNarrowEnd,iOrigin) + normRay(1)*zDiff - volumeSize(1)/2*voxelSize;
                 yTipDayNarrowEnd = rayPathArray(2,priorIndDayNarrowEnd,iOrigin) + normRay(2)*zDiff - volumeSize(2)/2*voxelSize;
@@ -280,16 +277,15 @@ for aAngle = 1:length(incidenceAngle);
     end
 
     %Get accpetance angle for all
-    acceptancePercentageNight(aAngle) = sum( rayAcceptedNight(~isnan(rayAcceptedNight)))/sum(~isnan(rayAcceptedNight));
-     
-    acceptancePercentageDay(aAngle) = sum( rayAcceptedDay(~isnan(rayAcceptedDay)))/sum(~isnan(rayAcceptedDay));
-
     viscircles([0 0],receptorRadiusDay, 'color', 'r', 'linewidth', 2, 'linestyle', ':')
     
     viscircles([0 0],receptorRadiusNight, 'color', 'r', 'linewidth', 2)
 
-    acceptancePercentageColc(aAngle) = sum( rayForColc(~isnan(rayForColc)))/sum(~isnan(rayForColc));
-
+    acceptanceNumNight(aAngle)  = sum( rayAcceptedNight(~isnan(rayAcceptedNight)));
+    
+    acceptanceNumDay(aAngle)  = sum( rayAcceptedDay(~isnan(rayAcceptedDay)));
+    
+    acceptanceNumColC(aAngle)  = sum( rayForColc(~isnan(rayForColc)));
     
     % Get TIR rays in COLC
     tempInds = find(rayForColc == 1);
@@ -300,9 +296,13 @@ for aAngle = 1:length(incidenceAngle);
     
     % Get divergence
     
-    beamDivergenceMax(aAngle) = max(rayAngle(~isnan(rayAngle)))/pi*180;
-    beamDivergenceAverage(aAngle) = mean(rayAngle(~isnan(rayAngle)))/pi*180;
-    
+    if any(~isnan(rayAngle))
+        beamDivergenceMax(aAngle) = max(rayAngle(~isnan(rayAngle)))/pi*180;
+        beamDivergenceAverage(aAngle) = mean(rayAngle(~isnan(rayAngle)))/pi*180;
+    else
+        beamDivergenceMax(aAngle) = NaN;
+        beamDivergenceAverage(aAngle) = NaN;
+    end
     % Finalize spot plotting
     if ~metaData.createCylinder
         viscircles([0 0],coneProfileR(exposedConeInds(end))*1000*voxelSize, 'color', [0.5 0 0.5]);
@@ -685,7 +685,7 @@ subplot(1,3,3);
 title('Y Focus by angle')
 
 % Get accpetance angles
-acceptancePercentageNight = acceptancePercentageNight/acceptancePercentageNight(1);
+acceptancePercentageNight = acceptanceNumNight/acceptanceNumNight(1);
 lowInds = find(acceptancePercentageNight > 0.5);
 % Take last
 lowInds = lowInds(end);
@@ -693,24 +693,24 @@ lowInds = lowInds(end);
         (incidenceAngle(lowInds + 1) - incidenceAngle(lowInds));
     acceptanceAngleNight = incidenceAngle(lowInds) + (0.5 - acceptancePercentageNight(lowInds))/slope;
 
-acceptancePercentageDay = acceptancePercentageDay/acceptancePercentageDay(1);
+acceptancePercentageDay = acceptanceNumDay/acceptanceNumDay(1);
 lowInds = find(acceptancePercentageDay > 0.5);
-if ~isempty(lowInds)
-    % Take last
-    lowInds = lowInds(end);
-        slope = (acceptancePercentageDay(lowInds + 1) - acceptancePercentageDay(lowInds))/...
-            (incidenceAngle(lowInds + 1) - incidenceAngle(lowInds));
-        acceptanceAngleDay = incidenceAngle(lowInds) + (0.5 - acceptancePercentageDay(lowInds))/slope;
-end
+% Take last
+lowInds = lowInds(end);
+slope = (acceptancePercentageDay(lowInds + 1) - acceptancePercentageDay(lowInds))/...
+    (incidenceAngle(lowInds + 1) - incidenceAngle(lowInds));
+acceptanceAngleDay = incidenceAngle(lowInds) + (0.5 - acceptancePercentageDay(lowInds))/slope;
 
-acceptancePercentageColc = acceptancePercentageColc/acceptancePercentageColc(1);
+acceptancePercentageColc = acceptanceNumColC/acceptanceNumColC(1);
 lowInds = find(acceptancePercentageColc > 0.5);
-if ~isempty(lowInds)
+if length(lowInds) < length(acceptancePercentageColc)
     % Take last
     lowInds = lowInds(end);
-        slope = (acceptancePercentageColc(lowInds + 1) - acceptancePercentageColc(lowInds))/...
-            (incidenceAngle(lowInds + 1) - incidenceAngle(lowInds));
-        acceptanceAngleColc = incidenceAngle(lowInds) + (0.5 - acceptancePercentageColc(lowInds))/slope;
+    slope = (acceptancePercentageColc(lowInds + 1) - acceptancePercentageColc(lowInds))/...
+        (incidenceAngle(lowInds + 1) - incidenceAngle(lowInds));
+    acceptanceAngleColc = incidenceAngle(lowInds) + (0.5 - acceptancePercentageColc(lowInds))/slope;
+else
+    acceptanceAngleColc = NaN;
 end
 
 figure(spotF); set(gcf, 'position', [-1919 -149 1920 1104])
@@ -745,10 +745,10 @@ if plotColorsOnSummary
     end
 end
 title('Acceptance function')
-ylim([0 1]); 
-ylabel('% entering receptor/passing cone tip'); 
+ylim([0 1.25]); 
+ylabel('% enter recep./exit cone'); 
 xlabel('Angle (deg)')
-set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20,'YTick',[0 0.25 0.5 0.75 1],'XTick',[0 5 10 15 20]);
+set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20,'YTick',[0 0.25 0.5 0.75 1 1.25],'XTick',[0 5 10 15 20]);
 
 subplot(3,3,4); hold on
 plot(incidenceAngle, TIRPercengtage, 'k-', 'linewidth',2)
@@ -769,7 +769,7 @@ if plotColorsOnSummary
     end
 end
 title('COLC Height from Tip')
-line([0 20], [0 0], 'color', 'k', 'linewidth',2)
+line([0 20], [0 0], 'color', outlineCol, 'linewidth',2, 'linestyle', ':')
 if limitCOLCToExterior
     ylim([-25 50]); ylabel('Height (um)'); xlabel('Angle (deg)')
     set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20, 'YTick', [-25 0 25 50],'XTick',[0 5 10 15 20]);
@@ -797,7 +797,7 @@ if plotColorsOnSummary
     end
 end
 title('X Focus Height from Tip')
-line([0 20], [0 0], 'color', 'k', 'linewidth',2)
+line([0 20], [0 0], 'color', outlineCol, 'linewidth',2, 'linestyle', ':')
 if limitCOLCToExterior
     ylim([-25 50]); ylabel('Height (um)'); xlabel('Angle (deg)')
     set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20, 'YTick', [-25 0 25 50],'XTick',[0 5 10 15 20]);
@@ -824,7 +824,7 @@ if plotColorsOnSummary
     end
 end
 title('Y Focus Height from Tip')
-line([0 20], [0 0], 'color', 'k', 'linewidth',2)
+line([0 20], [0 0], 'color', outlineCol, 'linewidth',2, 'linestyle', ':')
 if limitCOLCToExterior
     ylim([-25 50]); ylabel('Height (um)'); xlabel('Angle (deg)')
     set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20, 'YTick', [-25 0 25 50],'XTick',[0 5 10 15 20]);
@@ -871,5 +871,5 @@ if plotColorsOnSummary
 end
 ylim([0 90])
 title('Beam divergence')
-ylabel('Angle (degrees)'); xlabel('Angle (deg)')
+ylabel('Angle (deg)'); xlabel('Angle (deg)')
 set(gca,'TickDir','out', 'LineWidth', 1, 'FontSize', 20,'XTick',[0 5 10 15 20], 'Ytick', 0:30:90);
